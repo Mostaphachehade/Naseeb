@@ -2,6 +2,7 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
+const { init } = require('./db');
 
 const authRoutes = require('./routes/auth');
 const giveawayRoutes = require('./routes/giveaways');
@@ -18,6 +19,14 @@ app.use('/api/giveaways', giveawayRoutes);
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Naseeb running at http://localhost:${PORT}`);
-});
+
+init()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Naseeb running at http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to connect to the database:', err.message);
+    process.exit(1);
+  });

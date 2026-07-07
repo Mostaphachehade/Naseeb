@@ -1,45 +1,53 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+const { Pool } = require('pg');
 
-const db = new Database(path.join(__dirname, '..', 'naseeb.db'));
-db.pragma('journal_mode = WAL');
+// Postgres connection. Works with any hosted Postgres (Neon, Supabase, Render
+// Postgres, etc). Most hosted providers require SSL but use certificates that
+// Node doesn't automatically trust, hence rejectUnauthorized: false below.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost')
+    ? false
+    : { rejectUnauthorized: false },
+});
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+async function init() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
--- Note: intentionally no price/amount/payment columns on giveaways or entries.
--- Entry into a giveaway must always be free; prizes are funded by the host as
--- a marketing cost, never from participant payments. See server/routes/giveaways.js.
-CREATE TABLE IF NOT EXISTS giveaways (
-  id TEXT PRIMARY KEY,
-  host_id TEXT NOT NULL REFERENCES users(id),
-  title TEXT NOT NULL,
-  description TEXT NOT NULL,
-  prize_description TEXT NOT NULL,
-  estimated_value_aed REAL,
-  image_url TEXT,
-  funded_by TEXT NOT NULL, -- required disclosure, e.g. "Marketing budget of Acme Real Estate"
-  entry_deadline TEXT NOT NULL,
-  max_entries_per_person INTEGER NOT NULL DEFAULT 1,
-  status TEXT NOT NULL DEFAULT 'active', -- active | drawn | cancelled
-  winner_entry_id TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+    -- Intentionally no price/amount/payment columns on giveaways or entries.
+    -- Entry into a giveaway must always be free; prizes are funded by the host
+    -- as a marketing cost, never from participant payments.
+    CREATE TABLE IF NOT EXISTS giveaways (
+      id TEXT PRIMARY KEY,
+      host_id TEXT NOT NULL REFERENCES users(id),
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      prize_description TEXT NOT NULL,
+      estimated_value_aed REAL,
+      image_url TEXT,
+      funded_by TEXT NOT NULL,
+      entry_deadline TEXT NOT NULL,
+      max_entries_per_person INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'active',
+      winner_entry_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
-CREATE TABLE IF NOT EXISTS entries (
-  id TEXT PRIMARY KEY,
-  giveaway_id TEXT NOT NULL REFERENCES giveaways(id),
-  user_id TEXT NOT NULL REFERENCES users(id),
-  ticket_number INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(giveaway_id, user_id)
-);
-`);
+    CREATE TABLE IF NOT EXISTS entries (
+      id TEXT PRIMARY KEY,
+      giveaway_id TEXT NOT NULL REFERENCES giveaways(id),
+      user_id TEXT NOT NULL REFERENCES users(id),
+      ticket_number INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(giveaway_id, user_id)
+    );
+  `);
+}
 
-module.exports = db;
+module.exports = { pool, init };

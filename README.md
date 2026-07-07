@@ -22,22 +22,31 @@ before building or launching that.
 
 ## Stack
 
-- **Backend:** Node.js, Express, SQLite (via `better-sqlite3`), JWT auth, bcrypt password hashing
+- **Backend:** Node.js, Express, Postgres (via `pg`), JWT auth, bcrypt password hashing
 - **Frontend:** Plain HTML/CSS/JS (no build step, no framework) — just open and deploy
-- **No external services required** — everything runs from one process and one local `.db` file
+- **Database:** Any hosted Postgres works (Neon, Supabase, Render Postgres, etc). A free
+  hosted Postgres is required — local SQLite files don't survive restarts on most free
+  hosting platforms (Render's free tier included), so this app no longer uses SQLite.
+
+## Setting up a free database
+
+1. Go to **neon.tech** (or supabase.com), sign up free, create a new project
+2. Copy the connection string it gives you — it looks like
+   `postgresql://user:password@host/dbname?sslmode=require`
+3. That's your `DATABASE_URL`
 
 ## Running it locally
 
 ```bash
 npm install
 cp .env.example .env
-# edit .env and set JWT_SECRET to a long random string
+# edit .env: set JWT_SECRET to a long random string, and DATABASE_URL to your Neon/Supabase connection string
 npm start
 ```
 
 Then open http://localhost:3000
 
-The SQLite database file (`naseeb.db`) is created automatically on first run, in the project root.
+Tables are created automatically on first run if they don't already exist.
 
 ## Project structure
 
@@ -63,9 +72,10 @@ naseeb/
 
 Any Node host works (Render, Railway, Fly.io, a VPS, etc.). Things to change before going live:
 
-1. Set a strong, secret `JWT_SECRET`.
-2. Put the SQLite file on a persistent disk/volume, or switch `server/db.js` to Postgres if you
-   expect meaningful concurrent traffic.
+1. Set a strong, secret `JWT_SECRET` as an environment variable on your host.
+2. Set `DATABASE_URL` as an environment variable on your host too (same Neon/Supabase
+   connection string you used locally). This is required — don't skip it, or the app
+   will fail to start.
 3. Add rate limiting on `/api/auth/*` and `/api/giveaways/:id/enter` to slow down abuse.
 4. Consider email verification before letting a new account enter giveaways, since the
    one-entry-per-person rule is only as good as your ability to stop one person from
