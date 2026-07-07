@@ -34,6 +34,7 @@ function renderHeader() {
     nav.innerHTML = `
       <a href="/index.html">Browse</a>
       <a href="/dashboard.html">My giveaways</a>
+      <a href="/pricing.html">Pricing</a>
       <a href="/create.html" class="btn-gold" style="border-radius:100px;">Host a giveaway</a>
       <span style="opacity:0.7;">Hi, ${escapeHtml(user.name)}</span>
       <button id="logout-btn">Sign out</button>
@@ -45,6 +46,7 @@ function renderHeader() {
   } else {
     nav.innerHTML = `
       <a href="/index.html">Browse</a>
+      <a href="/pricing.html">Pricing</a>
       <a href="/login.html">Sign in</a>
       <a href="/signup.html" class="btn-gold" style="border-radius:100px;">Join free</a>
     `;

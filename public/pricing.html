@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pricing for hosts — Naseeb</title>
+<link rel="stylesheet" href="/css/style.css" />
+<style>
+  .plans { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:22px; margin-top:32px; }
+  .plan { background:#fff; border:1px solid rgba(11,59,54,0.12); border-radius:var(--radius); padding:28px; display:flex; flex-direction:column; }
+  .plan.featured { border:2px solid var(--gold); position:relative; }
+  .plan.featured::before { content:"Most popular"; position:absolute; top:-12px; left:24px; background:var(--gold); color:var(--ink-deep); font-size:0.72rem; font-weight:700; padding:4px 12px; border-radius:100px; text-transform:uppercase; letter-spacing:0.06em; }
+  .plan .price { font-family:'Fraunces',serif; font-size:2.2rem; color:var(--ink-deep); margin:10px 0 4px; }
+  .plan .price span { font-size:1rem; font-weight:400; color:var(--text-soft); }
+  .plan ul { list-style:none; padding:0; margin:18px 0 24px; flex:1; }
+  .plan li { padding:8px 0; border-bottom:1px dashed rgba(11,59,54,0.15); font-size:0.92rem; color:var(--text-soft); }
+  .plan li:last-child { border-bottom:none; }
+  .faq { max-width:720px; margin:64px auto 0; }
+  .faq details { background:#fff; border:1px solid rgba(11,59,54,0.12); border-radius:10px; padding:16px 20px; margin-bottom:12px; }
+  .faq summary { font-weight:600; cursor:pointer; color:var(--ink-deep); }
+  .faq p { color:var(--text-soft); margin-top:10px; margin-bottom:0; }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <h2>Pricing for hosts</h2>
+        <p>Entering is always free for everyone. These plans are only for businesses and individuals who want to host a giveaway.</p>
+      </div>
+    </div>
+
+    <div class="plans">
+      <div class="plan">
+        <h3>Pilot listing</h3>
+        <div class="price">Free<span> / first giveaway</span></div>
+        <p style="color:var(--text-soft); font-size:0.9rem;">For first-time hosts, to see real entries before paying anything.</p>
+        <ul>
+          <li>One giveaway listing</li>
+          <li>Standard placement in Browse</li>
+          <li>Full entry &amp; draw tools</li>
+          <li>Public funding disclosure</li>
+        </ul>
+        <a class="btn ghost" style="justify-content:center;" href="mailto:hello@naseeb.ae?subject=Pilot%20giveaway%20listing">Contact us</a>
+      </div>
+
+      <div class="plan featured">
+        <h3>Standard listing</h3>
+        <div class="price">AED 250<span> / giveaway</span></div>
+        <p style="color:var(--text-soft); font-size:0.9rem;">Pay per giveaway you publish, no ongoing commitment.</p>
+        <ul>
+          <li>One giveaway listing, live for your chosen deadline</li>
+          <li>Standard placement in Browse</li>
+          <li>Full entry &amp; draw tools</li>
+          <li>Winner announcement page</li>
+        </ul>
+        <a class="btn primary" style="justify-content:center;" href="mailto:hello@naseeb.ae?subject=Standard%20listing%20inquiry">Get started</a>
+      </div>
+
+      <div class="plan">
+        <h3>Partner plan</h3>
+        <div class="price">AED 900<span> / month</span></div>
+        <p style="color:var(--text-soft); font-size:0.9rem;">For businesses that want to run giveaways regularly.</p>
+        <ul>
+          <li>Unlimited giveaway listings</li>
+          <li>Featured placement on the homepage</li>
+          <li>Verified business badge</li>
+          <li>Priority support</li>
+        </ul>
+        <a class="btn ghost" style="justify-content:center;" href="mailto:hello@naseeb.ae?subject=Partner%20plan%20inquiry">Talk to us</a>
+      </div>
+    </div>
+
+    <div class="faq">
+      <h2 style="margin-bottom:20px;">Questions hosts ask</h2>
+      <details>
+        <summary>Do entrants ever pay anything?</summary>
+        <p>No. Entry is always free, for every giveaway, for every entrant, no exceptions. These plans only apply to hosts publishing a listing.</p>
+      </details>
+      <details>
+        <summary>Why do hosts pay if entrants don't?</summary>
+        <p>You're paying for the audience, the entry infrastructure, and a transparent random draw — the same reason businesses pay for any marketing placement. It keeps Naseeb entirely in the free-promotion model rather than anything resembling paid gambling.</p>
+      </details>
+      <details>
+        <summary>Can I cancel a listing early?</summary>
+        <p>Reach out to us directly and we'll help adjust or close a listing before its deadline if something comes up.</p>
+      </details>
+      <details>
+        <summary>Is there a contract for the Partner plan?</summary>
+        <p>No lock-in — it renews monthly and you can stop anytime.</p>
+      </details>
+    </div>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap">Naseeb is a free-entry giveaway platform. Hosts pay to list; entrants never pay to enter.</div>
+</footer>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
