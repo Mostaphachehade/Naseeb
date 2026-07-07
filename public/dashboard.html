@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>My giveaways — Naseeb</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="section-head">
+      <div><h2>Giveaways you're hosting</h2><p>Manage your listings and draw winners once entries close.</p></div>
+      <a href="/create.html" class="btn primary">Host a giveaway</a>
+    </div>
+    <div class="grid" id="hosted-grid" style="margin-bottom:56px;"><p>Loading…</p></div>
+
+    <div class="section-head">
+      <div><h2>Giveaways you've entered</h2><p>Your live tickets, all in one place.</p></div>
+    </div>
+    <div class="grid" id="entered-grid"><p>Loading…</p></div>
+  </div>
+</main>
+
+<script src="/js/app.js"></script>
+<script>
+  if (!getToken()) window.location.href = '/login.html';
+
+  async function load() {
+    const hostedGrid = document.getElementById('hosted-grid');
+    const enteredGrid = document.getElementById('entered-grid');
+    try {
+      const hosted = await api('/giveaways/mine/hosted');
+      hostedGrid.innerHTML = hosted.length
+        ? hosted.map(giveawayCard).join('')
+        : `<div class="empty" style="grid-column:1/-1;">You haven't hosted a giveaway yet. <a href="/create.html">Start one</a>.</div>`;
+    } catch (err) {
+      hostedGrid.innerHTML = `<p class="form-error show">${err.message}</p>`;
+    }
+
+    try {
+      const entered = await api('/giveaways/mine/entered');
+      enteredGrid.innerHTML = entered.length
+        ? entered.map(giveawayCard).join('')
+        : `<div class="empty" style="grid-column:1/-1;">You haven't entered anything yet. <a href="/index.html">Browse open giveaways</a>.</div>`;
+    } catch (err) {
+      enteredGrid.innerHTML = `<p class="form-error show">${err.message}</p>`;
+    }
+  }
+  load();
+</script>
+</body>
+</html>

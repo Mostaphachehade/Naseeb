@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Giveaway — Naseeb</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<section class="detail-hero">
+  <div class="wrap">
+    <span class="eyebrow mono" id="status-eyebrow">LOADING…</span>
+    <h1 id="title" style="color:var(--paper);">Loading…</h1>
+    <p class="lede" id="hosted-by"></p>
+  </div>
+</section>
+
+<main>
+  <div class="wrap">
+    <div class="detail-grid">
+      <div>
+        <img class="detail-img" id="image" alt="" />
+        <h3 style="margin-top:28px;">About this giveaway</h3>
+        <p id="description" style="color:var(--text-soft);"></p>
+        <h3 style="margin-top:24px;">The prize</h3>
+        <p id="prize" style="color:var(--text-soft);"></p>
+      </div>
+
+      <div>
+        <div class="side-card">
+          <div class="row"><span>Status</span><span id="row-status">—</span></div>
+          <div class="row"><span>Entries so far</span><span id="row-entries">—</span></div>
+          <div class="row"><span>Estimated value</span><span id="row-value">—</span></div>
+          <div class="row"><span>Entry deadline</span><span id="row-deadline">—</span></div>
+          <div class="row"><span>Funded by</span><span id="row-funded">—</span></div>
+
+          <div id="winner-box" style="display:none; margin-top:18px; background:var(--mint); border-radius:10px; padding:14px 16px;">
+            <strong>Winner:</strong> <span id="winner-text"></span>
+          </div>
+
+          <button class="btn primary" id="enter-btn" style="width:100%; margin-top:22px; justify-content:center;">Enter for free</button>
+          <button class="btn ghost" id="draw-btn" style="width:100%; margin-top:12px; justify-content:center; display:none;">Draw winner now</button>
+          <p class="form-error" id="action-error"></p>
+          <p class="form-success" id="action-success"></p>
+          <p class="hint" style="margin-top:14px;">No payment is ever requested to enter or to improve your odds. One entry per person.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/js/app.js"></script>
+<script>
+  const id = new URLSearchParams(window.location.search).get('id');
+  const user = getUser();
+  let currentGiveaway = null;
+
+  async function load() {
+    try {
+      const g = await api(`/giveaways/${id}`);
+      currentGiveaway = g;
+
+      document.title = `${g.title} — Naseeb`;
+      document.getElementById('title').textContent = g.title;
+      document.getElementById('hosted-by').textContent = `Hosted by ${g.host_name}`;
+      document.getElementById('description').textContent = g.description;
+      document.getElementById('prize').textContent = g.prize_description;
+      document.getElementById('image').src = g.image_url || 'https://images.unsplash.com/photo-1513151233558-d860c5398176?w=1200&q=60';
+
+      document.getElementById('row-status').textContent = g.status === 'drawn' ? 'Winner drawn' : 'Open';
+      document.getElementById('row-entries').textContent = g.entry_count;
+      document.getElementById('row-value').textContent = g.estimated_value_aed ? `AED ${g.estimated_value_aed.toLocaleString()}` : 'Not disclosed';
+      document.getElementById('row-deadline').textContent = new Date(g.entry_deadline).toLocaleString();
+      document.getElementById('row-funded').textContent = g.funded_by;
+
+      const eyebrow = document.getElementById('status-eyebrow');
+      eyebrow.textContent = g.status === 'drawn' ? 'WINNER DRAWN' : timeLeft(g.entry_deadline).toUpperCase();
+
+      const enterBtn = document.getElementById('enter-btn');
+      const drawBtn = document.getElementById('draw-btn');
+      const isHost = user && user.id === g.host_id;
+      const deadlinePassed = new Date(g.entry_deadline) <= new Date();
+
+      if (g.winner) {
+        document.getElementById('winner-box').style.display = 'block';
+        document.getElementById('winner-text').textContent = `${g.winner.name} (ticket #${g.winner.ticket_number})`;
+      }
+
+      if (g.status === 'drawn') {
+        enterBtn.style.display = 'none';
+      } else if (!user) {
+        enterBtn.textContent = 'Sign in to enter';
+        enterBtn.onclick = () => (window.location.href = '/login.html');
+      } else if (g.already_entered) {
+        enterBtn.textContent = "You're entered ✓";
+        enterBtn.disabled = true;
+      } else if (deadlinePassed) {
+        enterBtn.textContent = 'Entries closed';
+        enterBtn.disabled = true;
+      } else {
+        enterBtn.onclick = enterGiveaway;
+      }
+
+      if (isHost && g.status === 'active') {
+        drawBtn.style.display = 'block';
+        drawBtn.disabled = !deadlinePassed;
+        drawBtn.textContent = deadlinePassed ? 'Draw winner now' : 'Draw available after deadline';
+        drawBtn.onclick = drawWinner;
+      }
+    } catch (err) {
+      document.getElementById('title').textContent = 'Not found';
+      document.getElementById('description').textContent = err.message;
+    }
+  }
+
+  async function enterGiveaway() {
+    const errorEl = document.getElementById('action-error');
+    const successEl = document.getElementById('action-success');
+    errorEl.classList.remove('show');
+    successEl.classList.remove('show');
+    try {
+      const { ticket_number } = await api(`/giveaways/${id}/enter`, { method: 'POST' });
+      successEl.textContent = `You're in! Your ticket number is #${ticket_number}.`;
+      successEl.classList.add('show');
+      load();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+    }
+  }
+
+  async function drawWinner() {
+    const errorEl = document.getElementById('action-error');
+    errorEl.classList.remove('show');
+    try {
+      await api(`/giveaways/${id}/draw`, { method: 'POST' });
+      load();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>

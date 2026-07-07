@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Host a giveaway — Naseeb</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="max-width:640px;">
+    <div class="section-head"><div><h2>Host a giveaway</h2><p>Free to enter, always. You cover the prize as a marketing cost — participants never pay anything.</p></div></div>
+
+    <form class="card narrow" id="create-form" style="max-width:none;">
+      <label for="title">Giveaway title</label>
+      <input id="title" placeholder="e.g. Weekend stay for two in Ras Al Khaimah" required />
+
+      <label for="prize_description">What's the prize?</label>
+      <input id="prize_description" placeholder="e.g. 2-night stay, breakfast included" required />
+
+      <label for="description">Full description</label>
+      <textarea id="description" placeholder="Tell people what's included, who's eligible, and how the winner will be contacted." required></textarea>
+
+      <label for="estimated_value_aed">Estimated value (AED, optional)</label>
+      <input id="estimated_value_aed" type="number" min="0" step="1" placeholder="e.g. 1500" />
+
+      <label for="image_url">Image URL (optional)</label>
+      <input id="image_url" type="url" placeholder="https://…" />
+
+      <label for="funded_by">Funding disclosure</label>
+      <input id="funded_by" placeholder="e.g. Marketing budget of [your business/name]" required />
+      <p class="hint">Shown publicly on the listing. This confirms the prize is funded by you as a promotional cost, not by anything entrants pay.</p>
+
+      <label for="entry_deadline">Entry deadline</label>
+      <input id="entry_deadline" type="datetime-local" required />
+
+      <div class="compliance-box">
+        By publishing, you confirm entry is free to everyone, no purchase or payment is required or accepted at any point, and the winner will be chosen by a random draw from all eligible entries after the deadline.
+      </div>
+
+      <button class="btn primary" type="submit">Publish giveaway</button>
+      <p class="form-error" id="error"></p>
+    </form>
+  </div>
+</main>
+
+<script src="/js/app.js"></script>
+<script>
+  if (!getToken()) window.location.href = '/login.html';
+
+  document.getElementById('create-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('error');
+    errorEl.classList.remove('show');
+    try {
+      const g = await api('/giveaways', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: document.getElementById('title').value,
+          description: document.getElementById('description').value,
+          prize_description: document.getElementById('prize_description').value,
+          estimated_value_aed: document.getElementById('estimated_value_aed').value || null,
+          image_url: document.getElementById('image_url').value || null,
+          funded_by: document.getElementById('funded_by').value,
+          entry_deadline: new Date(document.getElementById('entry_deadline').value).toISOString(),
+        }),
+      });
+      window.location.href = `/giveaway.html?id=${g.id}`;
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+    }
+  });
+</script>
+</body>
+</html>

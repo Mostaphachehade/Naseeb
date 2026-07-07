@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Naseeb — Free-entry giveaways</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow">No purchase necessary</span>
+    <h1>Every ticket is free.<br>Every draw is real.</h1>
+    <p class="lede">Naseeb hosts giveaways funded by the people running them, not by entry fees. Enter with one tap, no card required, and see exactly how the winner is picked.</p>
+    <div class="hero-actions">
+      <a href="#listings" class="btn primary">Browse giveaways</a>
+      <a href="/create.html" class="btn ghost">Host your own</a>
+    </div>
+  </div>
+</section>
+
+<main>
+  <div class="wrap">
+    <div class="section-head" id="listings">
+      <div>
+        <h2>Open giveaways</h2>
+        <p>Free to enter. One entry per person, so every ticket carries the same odds.</p>
+      </div>
+    </div>
+    <div class="grid" id="grid">
+      <p>Loading…</p>
+    </div>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap">Naseeb is a free-entry giveaway platform. No purchase is ever required or accepted to enter or to improve your odds.</div>
+</footer>
+
+<script src="/js/app.js"></script>
+<script>
+  async function load() {
+    const grid = document.getElementById('grid');
+    try {
+      const giveaways = await api('/giveaways');
+      if (giveaways.length === 0) {
+        grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">No giveaways yet. <a href="/create.html">Be the first to host one</a>.</div>`;
+        return;
+      }
+      grid.innerHTML = giveaways.map(giveawayCard).join('');
+    } catch (err) {
+      grid.innerHTML = `<p class="form-error show">${err.message}</p>`;
+    }
+  }
+  load();
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Join Naseeb</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="max-width:560px;">
+    <div class="section-head"><div><h2>Join free</h2><p>Takes a minute. No payment details, ever.</p></div></div>
+    <form class="card narrow" id="signup-form">
+      <label for="name">Full name</label>
+      <input id="name" required />
+
+      <label for="email">Email</label>
+      <input id="email" type="email" required />
+
+      <label for="password">Password</label>
+      <input id="password" type="password" minlength="8" required />
+      <p class="hint">At least 8 characters.</p>
+
+      <button class="btn primary" type="submit">Create account</button>
+      <p class="form-error" id="error"></p>
+    </form>
+    <p style="text-align:center; margin-top:18px; color:var(--text-soft);">Already have an account? <a href="/login.html" style="font-weight:600;">Sign in</a></p>
+  </div>
+</main>
+
+<script src="/js/app.js"></script>
+<script>
+  document.getElementById('signup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('error');
+    errorEl.classList.remove('show');
+    try {
+      const { token, user } = await api('/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: document.getElementById('name').value,
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+        }),
+      });
+      setSession(token, user);
+      window.location.href = '/index.html';
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sign in — Naseeb</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="max-width:560px;">
+    <div class="section-head"><div><h2>Sign in</h2><p>Welcome back.</p></div></div>
+    <form class="card narrow" id="login-form">
+      <label for="email">Email</label>
+      <input id="email" type="email" required />
+
+      <label for="password">Password</label>
+      <input id="password" type="password" required />
+
+      <button class="btn primary" type="submit">Sign in</button>
+      <p class="form-error" id="error"></p>
+    </form>
+    <p style="text-align:center; margin-top:18px; color:var(--text-soft);">New here? <a href="/signup.html" style="font-weight:600;">Join free</a></p>
+  </div>
+</main>
+
+<script src="/js/app.js"></script>
+<script>
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('error');
+    errorEl.classList.remove('show');
+    try {
+      const { token, user } = await api('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+        }),
+      });
+      setSession(token, user);
+      window.location.href = '/index.html';
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+    }
+  });
+</script>
+</body>
+</html>
