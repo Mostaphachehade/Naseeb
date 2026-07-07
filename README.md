@@ -54,7 +54,7 @@ Tables are created automatically on first run if they don't already exist.
 naseeb/
   server/
     index.js            # Express app entry point
-    db.js                # SQLite schema (users, giveaways, entries)
+    db.js                # Postgres schema (users, giveaways, entries)
     middleware/auth.js    # JWT auth middleware
     routes/auth.js        # signup / login
     routes/giveaways.js   # browse, create, enter, draw, dashboard
