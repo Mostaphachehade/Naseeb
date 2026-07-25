@@ -580,6 +580,33 @@ footer.site a:hover { color: var(--gold-bright); }
 }
 .pill-badge.company { background: var(--gold-bright); }
 
+/* ---------- Ad banner ---------- */
+.ad-banner-wrap { margin-bottom: 40px; }
+.ad-banner-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-soft);
+  margin-bottom: 6px;
+  display: block;
+}
+.ad-banner {
+  display: block;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid rgba(11,59,54,0.12);
+}
+.ad-banner img {
+  width: 100%;
+  aspect-ratio: 5 / 1;
+  object-fit: cover;
+  display: block;
+}
+@media (max-width: 600px) {
+  .ad-banner img { aspect-ratio: 16 / 9; }
+}
+
 /* ---------- Winner celebration ---------- */
 .confetti-piece {
   position: absolute;

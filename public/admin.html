@@ -26,7 +26,44 @@
         <p>Everyone who's applied to host on a paid plan, newest unreviewed first.</p>
       </div>
     </div>
-    <div id="content"><p>Loading…</p></div>
+    <div id="content" style="margin-bottom:56px;"><p>Loading…</p></div>
+
+    <div class="section-head">
+      <div>
+        <h2>Ad inquiries</h2>
+        <p>Everyone who's asked about advertising, newest unreviewed first.</p>
+      </div>
+    </div>
+    <div id="ad-inquiries-content" style="margin-bottom:56px;"><p>Loading…</p></div>
+
+    <div class="section-head">
+      <div>
+        <h2>Ads</h2>
+        <p>Manage the single homepage banner slot. Only one ad can be active at a time.</p>
+      </div>
+    </div>
+
+    <form class="card narrow" id="ad-create-form" style="max-width:none; margin-bottom:24px;">
+      <label for="ad_business_name">Business name</label>
+      <input id="ad_business_name" required />
+
+      <label for="ad_image_file">Banner image</label>
+      <div id="ad-image-upload-row" style="display:none; margin-bottom:10px;">
+        <input type="file" id="ad_image_file" accept="image/*" />
+        <span class="hint" id="ad-upload-status"></span>
+        <img id="ad-image-preview" alt="" style="display:none; max-width:240px; border-radius:8px; margin-top:8px;" />
+      </div>
+      <input id="ad_image_url" type="url" placeholder="https://…" required />
+      <p class="hint" id="ad-image-url-hint">Paste an image URL. Wide banner shape works best (e.g. 1200×240).</p>
+
+      <label for="ad_target_url">Destination link</label>
+      <input id="ad_target_url" type="url" placeholder="https://the-advertiser's-site.com" required />
+
+      <button class="btn primary" type="submit">Add ad</button>
+      <p class="form-error" id="ad-create-error"></p>
+    </form>
+
+    <div id="ads-content"><p>Loading…</p></div>
   </div>
 </main>
 
@@ -106,7 +143,184 @@
     }
   }
 
-  if (getToken()) load();
+  function adInquiryRow(a) {
+    return `
+      <tr class="${a.contacted ? 'contacted' : ''}" data-id="${a.id}">
+        <td>${escapeHtml(a.business_name)}</td>
+        <td>${escapeHtml(a.contact_email)}${a.contact_phone ? `<br><span style="color:var(--text-soft); font-size:0.82rem;">${escapeHtml(a.contact_phone)}</span>` : ''}</td>
+        <td style="max-width:260px;">${a.message ? escapeHtml(a.message) : '<span style="color:var(--text-soft);">—</span>'}</td>
+        <td>${new Date(a.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+        <td><input type="checkbox" class="ad-inquiry-contacted-toggle" ${a.contacted ? 'checked' : ''} /></td>
+      </tr>
+    `;
+  }
+
+  async function loadAdInquiries() {
+    const content = document.getElementById('ad-inquiries-content');
+    try {
+      const inquiries = await api('/admin/ad-inquiries');
+      if (inquiries.length === 0) {
+        content.innerHTML = `<div class="empty">No ad inquiries yet.</div>`;
+        return;
+      }
+      content.innerHTML = `
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Business</th><th>Contact</th><th>Message</th><th>Submitted</th><th>Contacted</th></tr></thead>
+            <tbody>${inquiries.map(adInquiryRow).join('')}</tbody>
+          </table>
+        </div>
+      `;
+      content.querySelectorAll('.ad-inquiry-contacted-toggle').forEach((box) => {
+        box.addEventListener('change', async (e) => {
+          const row = e.target.closest('tr');
+          const id = row.dataset.id;
+          const contacted = e.target.checked;
+          e.target.disabled = true;
+          try {
+            await api(`/admin/ad-inquiries/${id}`, { method: 'PATCH', body: JSON.stringify({ contacted }) });
+            row.classList.toggle('contacted', contacted);
+          } catch (err) {
+            e.target.checked = !contacted;
+            alert(err.message);
+          } finally {
+            e.target.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function adRow(a) {
+    return `
+      <tr data-id="${a.id}">
+        <td><img src="${escapeHtml(a.image_url)}" alt="" style="width:100px; height:40px; object-fit:cover; border-radius:6px; display:block;" /></td>
+        <td>${escapeHtml(a.business_name)}</td>
+        <td style="max-width:200px; word-break:break-all;"><a href="${escapeHtml(a.target_url)}" target="_blank" rel="noopener">${escapeHtml(a.target_url)}</a></td>
+        <td class="mono">${a.click_count}</td>
+        <td>${a.active ? '<span class="pill-badge company">active</span>' : '<span class="pill-badge">inactive</span>'}</td>
+        <td>
+          <button class="btn ghost ad-toggle-btn" style="padding:6px 12px; font-size:0.8rem;" data-active="${a.active}">${a.active ? 'Deactivate' : 'Activate'}</button>
+          <button class="btn ghost ad-delete-btn" style="padding:6px 12px; font-size:0.8rem; border-color:var(--danger); color:var(--danger);">Delete</button>
+        </td>
+      </tr>
+    `;
+  }
+
+  async function loadAds() {
+    const content = document.getElementById('ads-content');
+    try {
+      const ads = await api('/admin/ads');
+      if (ads.length === 0) {
+        content.innerHTML = `<div class="empty">No ads yet. Add one above.</div>`;
+        return;
+      }
+      content.innerHTML = `
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Banner</th><th>Business</th><th>Destination</th><th>Clicks</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>${ads.map(adRow).join('')}</tbody>
+          </table>
+        </div>
+      `;
+      content.querySelectorAll('.ad-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          const row = e.target.closest('tr');
+          const id = row.dataset.id;
+          const nextActive = btn.dataset.active !== 'true';
+          btn.disabled = true;
+          try {
+            await api(`/admin/ads/${id}`, { method: 'PATCH', body: JSON.stringify({ active: nextActive }) });
+            loadAds();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
+          }
+        });
+      });
+      content.querySelectorAll('.ad-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          if (!confirm('Delete this ad? This cannot be undone.')) return;
+          const row = e.target.closest('tr');
+          const id = row.dataset.id;
+          btn.disabled = true;
+          try {
+            await api(`/admin/ads/${id}`, { method: 'DELETE' });
+            loadAds();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  let cloudinaryConfig = null;
+  fetch('/api/config').then((r) => r.json()).then((config) => {
+    if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
+      cloudinaryConfig = config;
+      document.getElementById('ad-image-upload-row').style.display = 'block';
+      document.getElementById('ad-image-url-hint').textContent = 'Upload a file above, or paste an image URL.';
+    }
+  }).catch(() => {});
+
+  document.getElementById('ad_image_file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file || !cloudinaryConfig) return;
+    const statusEl = document.getElementById('ad-upload-status');
+    statusEl.textContent = 'Uploading…';
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
+    try {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudinary_cloud_name}/image/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
+      document.getElementById('ad_image_url').value = data.secure_url;
+      const preview = document.getElementById('ad-image-preview');
+      preview.src = data.secure_url;
+      preview.style.display = 'block';
+      statusEl.textContent = 'Uploaded.';
+    } catch (err) {
+      statusEl.textContent = err.message;
+    }
+  });
+
+  document.getElementById('ad-create-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('ad-create-error');
+    errorEl.classList.remove('show');
+    try {
+      await api('/admin/ads', {
+        method: 'POST',
+        body: JSON.stringify({
+          business_name: document.getElementById('ad_business_name').value,
+          image_url: document.getElementById('ad_image_url').value,
+          target_url: document.getElementById('ad_target_url').value,
+        }),
+      });
+      e.target.reset();
+      document.getElementById('ad-image-preview').style.display = 'none';
+      loadAds();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+    }
+  });
+
+  if (getToken()) {
+    load();
+    loadAdInquiries();
+    loadAds();
+  }
 </script>
 </body>
 </html>

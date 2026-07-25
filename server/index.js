@@ -7,6 +7,8 @@ const { init } = require('./db');
 const authRoutes = require('./routes/auth');
 const giveawayRoutes = require('./routes/giveaways');
 const hostApplicationRoutes = require('./routes/hostApplications');
+const adInquiryRoutes = require('./routes/adInquiries');
+const adsRoutes = require('./routes/ads');
 const adminRoutes = require('./routes/admin');
 const configRoutes = require('./routes/config');
 
@@ -18,6 +20,8 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/giveaways', giveawayRoutes);
 app.use('/api/host-applications', hostApplicationRoutes);
+app.use('/api/ad-inquiries', adInquiryRoutes);
+app.use('/api/ads', adsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/config', configRoutes);
 

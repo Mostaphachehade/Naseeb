@@ -82,6 +82,32 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     ALTER TABLE host_applications ADD COLUMN IF NOT EXISTS contacted BOOLEAN NOT NULL DEFAULT FALSE;
+
+    -- Ad inquiries: same pattern as host_applications — captures interest,
+    -- billed and followed up on manually, nothing automated.
+    CREATE TABLE IF NOT EXISTS ad_inquiries (
+      id TEXT PRIMARY KEY,
+      business_name TEXT NOT NULL,
+      contact_email TEXT NOT NULL,
+      contact_phone TEXT,
+      message TEXT,
+      contacted BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- Only one ad is ever "active" at a time (single homepage banner slot),
+    -- enforced in application logic, not a DB constraint. click_count is a
+    -- simple running total for manual billing — there's no CPC calculator,
+    -- just a number the admin can point to.
+    CREATE TABLE IF NOT EXISTS ads (
+      id TEXT PRIMARY KEY,
+      business_name TEXT NOT NULL,
+      image_url TEXT NOT NULL,
+      target_url TEXT NOT NULL,
+      active BOOLEAN NOT NULL DEFAULT FALSE,
+      click_count INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 }
 
