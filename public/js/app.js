@@ -1,5 +1,31 @@
 const API = '/api';
 
+// Skips the admin panel so the site owner's own visits don't skew traffic
+// numbers. No-ops entirely if GA_MEASUREMENT_ID isn't set on the server.
+(function loadAnalytics() {
+  if (window.location.pathname === '/admin.html') return;
+  fetch(`${API}/config`)
+    .then((r) => r.json())
+    .then((config) => {
+      if (!config.ga_measurement_id) return;
+      const script = document.createElement('script');
+      script.async = true;
+      script.src = `https://www.googletagmanager.com/gtag/js?id=${config.ga_measurement_id}`;
+      document.head.appendChild(script);
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function gtag() { window.dataLayer.push(arguments); };
+      window.gtag('js', new Date());
+      // Keep this in sync with the privacy policy's "we don't use it for
+      // advertising" claim — without these, GA links data to Google's ad
+      // products by default.
+      window.gtag('config', config.ga_measurement_id, {
+        allow_google_signals: false,
+        allow_ad_personalization_signals: false,
+      });
+    })
+    .catch(() => {});
+})();
+
 function getToken() { return localStorage.getItem('naseeb_token'); }
 function getUser() {
   const raw = localStorage.getItem('naseeb_user');
