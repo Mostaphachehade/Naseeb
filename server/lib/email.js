@@ -27,4 +27,11 @@ async function sendEmail({ to, subject, html }) {
   }
 }
 
-module.exports = { sendEmail };
+function escapeHtmlForEmail(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+module.exports = { sendEmail, escapeHtmlForEmail };

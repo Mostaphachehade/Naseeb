@@ -6,7 +6,7 @@ const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimit');
-const { sendEmail } = require('../lib/email');
+const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
 
 const router = express.Router();
 
@@ -30,7 +30,7 @@ async function sendVerificationEmail(user, token) {
   await sendEmail({
     to: user.email,
     subject: 'Verify your email for Naseeb',
-    html: `<p>Hi ${user.name},</p><p>Confirm your email to enter and host giveaways on Naseeb:</p><p><a href="${link}">${link}</a></p><p>This link expires in 24 hours.</p>`,
+    html: `<p>Hi ${escapeHtmlForEmail(user.name)},</p><p>Confirm your email to enter and host giveaways on Naseeb:</p><p><a href="${link}">${link}</a></p><p>This link expires in 24 hours.</p>`,
   });
 }
 
@@ -195,7 +195,7 @@ router.post('/forgot-password', authLimiter, async (req, res) => {
       await sendEmail({
         to: user.email,
         subject: 'Reset your Naseeb password',
-        html: `<p>Hi ${user.name},</p><p>Reset your password:</p><p><a href="${link}">${link}</a></p><p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
+        html: `<p>Hi ${escapeHtmlForEmail(user.name)},</p><p>Reset your password:</p><p><a href="${link}">${link}</a></p><p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
       });
     }
     // Always respond the same way whether or not the email exists, so this

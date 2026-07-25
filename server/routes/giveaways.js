@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
@@ -275,7 +276,7 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'No one has entered yet, so there is no one to draw.' });
     }
 
-    const winner = entries[Math.floor(Math.random() * entries.length)];
+    const winner = entries[crypto.randomInt(entries.length)];
     await pool.query("UPDATE giveaways SET status = 'drawn', winner_entry_id = $1 WHERE id = $2", [
       winner.id,
       req.params.id,
