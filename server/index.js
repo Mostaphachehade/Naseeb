@@ -1,9 +1,10 @@
 require('dotenv').config();
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const { init } = require('./db');
+const { init, pool } = require('./db');
 
 const authRoutes = require('./routes/auth');
 const giveawayRoutes = require('./routes/giveaways');
@@ -35,6 +36,72 @@ app.use('/api/ad-inquiries', adInquiryRoutes);
 app.use('/api/ads', adsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/config', configRoutes);
+
+function escapeHtmlAttr(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+const giveawayPageTemplate = fs.readFileSync(
+  path.join(__dirname, '..', 'public', 'giveaway.html'),
+  'utf8'
+);
+
+// Social crawlers (WhatsApp, Facebook, Twitter/X) don't run the client-side
+// JS that fills in the page, so without this every shared giveaway link
+// shows the same generic title/description instead of the actual prize.
+// This only rewrites <head> tags — the client-side script below still
+// fetches and renders the same data for real visitors.
+app.get('/giveaway.html', async (req, res, next) => {
+  const id = req.query.id;
+  if (!id) return next();
+
+  try {
+    const result = await pool.query(
+      'SELECT title, description, prize_description, image_url FROM giveaways WHERE id = $1',
+      [id]
+    );
+    const giveaway = result.rows[0];
+    if (!giveaway) return next();
+
+    const title = `${giveaway.title} — Naseeb`;
+    const description = (giveaway.prize_description || giveaway.description || '')
+      .slice(0, 200)
+      .trim();
+    const url = `${APP_URL}/giveaway.html?id=${encodeURIComponent(id)}`;
+
+    let html = giveawayPageTemplate
+      .replace(
+        '<title>Giveaway — Naseeb</title>',
+        `<title>${escapeHtmlAttr(title)}</title>`
+      )
+      .replace(
+        '<meta name="description" content="Enter this free giveaway on Naseeb — no purchase necessary, ever." />',
+        `<meta name="description" content="${escapeHtmlAttr(description)}" />`
+      );
+
+    const ogTags = [
+      `<meta property="og:title" content="${escapeHtmlAttr(title)}" />`,
+      `<meta property="og:description" content="${escapeHtmlAttr(description)}" />`,
+      `<meta property="og:type" content="website" />`,
+      `<meta property="og:url" content="${escapeHtmlAttr(url)}" />`,
+      giveaway.image_url ? `<meta property="og:image" content="${escapeHtmlAttr(giveaway.image_url)}" />` : '',
+      `<meta name="twitter:card" content="${giveaway.image_url ? 'summary_large_image' : 'summary'}" />`,
+    ].filter(Boolean).join('\n');
+
+    html = html.replace('</head>', `${ogTags}\n</head>`);
+
+    res.set('Content-Type', 'text/html');
+    res.send(html);
+  } catch (err) {
+    console.error(err);
+    next();
+  }
+});
 
 // Serve the frontend
 app.use(express.static(path.join(__dirname, '..', 'public')));

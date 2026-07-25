@@ -4,6 +4,9 @@ const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { enterLimiter } = require('../middleware/rateLimit');
+const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
+
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
 const router = express.Router();
 
@@ -208,8 +211,11 @@ router.post('/', requireAuth, async (req, res) => {
 // nothing to charge. One entry per person per giveaway.
 router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
   try {
-    const verifiedRes = await pool.query('SELECT email_verified FROM users WHERE id = $1', [req.userId]);
-    if (!verifiedRes.rows[0] || !verifiedRes.rows[0].email_verified) {
+    const userRes = await pool.query('SELECT name, email, email_verified FROM users WHERE id = $1', [
+      req.userId,
+    ]);
+    const enteringUser = userRes.rows[0];
+    if (!enteringUser || !enteringUser.email_verified) {
       return res.status(403).json({ error: 'Please verify your email before entering a giveaway.' });
     }
 
@@ -242,6 +248,13 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
     );
 
     res.status(201).json({ id, ticket_number: ticketNumber });
+
+    const giveawayUrl = `${APP_URL}/giveaway.html?id=${req.params.id}`;
+    sendEmail({
+      to: enteringUser.email,
+      subject: `You're entered: ${giveaway.title}`,
+      html: `<p>Hi ${escapeHtmlForEmail(enteringUser.name)},</p><p>You're entered in <strong>${escapeHtmlForEmail(giveaway.title)}</strong> — ticket #${ticketNumber}.</p><p>The winner is drawn at random once entries close on ${new Date(giveaway.entry_deadline).toLocaleDateString()}. Good luck!</p><p><a href="${giveawayUrl}">${giveawayUrl}</a></p>`,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -282,10 +295,20 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
       req.params.id,
     ]);
 
-    const winnerUserRes = await pool.query('SELECT name FROM users WHERE id = $1', [winner.user_id]);
+    const winnerUserRes = await pool.query('SELECT name, email FROM users WHERE id = $1', [
+      winner.user_id,
+    ]);
+    const winnerUser = winnerUserRes.rows[0];
     res.json({
-      winner_name: winnerUserRes.rows[0].name,
+      winner_name: winnerUser.name,
       winner_ticket_number: winner.ticket_number,
+    });
+
+    const giveawayUrl = `${APP_URL}/giveaway.html?id=${req.params.id}`;
+    sendEmail({
+      to: winnerUser.email,
+      subject: `You won: ${giveaway.title}`,
+      html: `<p>Hi ${escapeHtmlForEmail(winnerUser.name)},</p><p>Congratulations — you won <strong>${escapeHtmlForEmail(giveaway.title)}</strong> with ticket #${winner.ticket_number}!</p><p>The host, funded by ${escapeHtmlForEmail(giveaway.funded_by)}, will be in touch to arrange your prize.</p><p><a href="${giveawayUrl}">${giveawayUrl}</a></p>`,
     });
   } catch (err) {
     console.error(err);
