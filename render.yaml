@@ -24,3 +24,7 @@ services:
         sync: false
       - key: CLOUDINARY_UPLOAD_PRESET
         sync: false
+      - key: GA_MEASUREMENT_ID
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
