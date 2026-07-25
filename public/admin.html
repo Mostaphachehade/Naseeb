@@ -151,7 +151,10 @@
         <td>${planBadge}</td>
         <td style="max-width:260px;">${a.message ? escapeHtml(a.message) : '<span style="color:var(--text-soft);">—</span>'}</td>
         <td>${submitted}</td>
-        <td><input type="checkbox" class="contacted-toggle" ${a.contacted ? 'checked' : ''} /></td>
+        <td style="white-space:nowrap;">
+          <button class="btn ghost app-contacted-btn" style="padding:6px 10px; font-size:0.78rem;" data-contacted="${a.contacted}">${a.contacted ? 'Mark not contacted' : 'Mark contacted'}</button>
+          <button class="btn ghost app-delete-btn" style="padding:6px 10px; font-size:0.78rem; border-color:var(--danger); color:var(--danger);">Delete</button>
+        </td>
       </tr>
     `;
   }
@@ -169,30 +172,45 @@
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Type</th><th>Who</th><th>Contact</th><th>Plan</th><th>Message</th><th>Submitted</th><th>Contacted</th>
+                <th>Type</th><th>Who</th><th>Contact</th><th>Plan</th><th>Message</th><th>Submitted</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>${applications.map(appRow).join('')}</tbody>
           </table>
         </div>
       `;
-      content.querySelectorAll('.contacted-toggle').forEach((box) => {
-        box.addEventListener('change', async (e) => {
+      content.querySelectorAll('.app-contacted-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
           const row = e.target.closest('tr');
           const id = row.dataset.id;
-          const contacted = e.target.checked;
-          e.target.disabled = true;
+          const nextContacted = btn.dataset.contacted !== 'true';
+          btn.disabled = true;
           try {
             await api(`/admin/host-applications/${id}`, {
               method: 'PATCH',
-              body: JSON.stringify({ contacted }),
+              body: JSON.stringify({ contacted: nextContacted }),
             });
-            row.classList.toggle('contacted', contacted);
+            load();
+            loadStats();
           } catch (err) {
-            e.target.checked = !contacted;
             alert(err.message);
-          } finally {
-            e.target.disabled = false;
+            btn.disabled = false;
+          }
+        });
+      });
+      content.querySelectorAll('.app-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          if (!confirm('Delete this application? This cannot be undone.')) return;
+          const row = e.target.closest('tr');
+          const id = row.dataset.id;
+          btn.disabled = true;
+          try {
+            await api(`/admin/host-applications/${id}`, { method: 'DELETE' });
+            load();
+            loadStats();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
           }
         });
       });
@@ -208,7 +226,10 @@
         <td>${escapeHtml(a.contact_email)}${a.contact_phone ? `<br><span style="color:var(--text-soft); font-size:0.82rem;">${escapeHtml(a.contact_phone)}</span>` : ''}</td>
         <td style="max-width:260px;">${a.message ? escapeHtml(a.message) : '<span style="color:var(--text-soft);">—</span>'}</td>
         <td>${new Date(a.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</td>
-        <td><input type="checkbox" class="ad-inquiry-contacted-toggle" ${a.contacted ? 'checked' : ''} /></td>
+        <td style="white-space:nowrap;">
+          <button class="btn ghost inquiry-contacted-btn" style="padding:6px 10px; font-size:0.78rem;" data-contacted="${a.contacted}">${a.contacted ? 'Mark not contacted' : 'Mark contacted'}</button>
+          <button class="btn ghost inquiry-delete-btn" style="padding:6px 10px; font-size:0.78rem; border-color:var(--danger); color:var(--danger);">Delete</button>
+        </td>
       </tr>
     `;
   }
@@ -224,25 +245,40 @@
       content.innerHTML = `
         <div class="table-wrap">
           <table class="admin-table">
-            <thead><tr><th>Business</th><th>Contact</th><th>Message</th><th>Submitted</th><th>Contacted</th></tr></thead>
+            <thead><tr><th>Business</th><th>Contact</th><th>Message</th><th>Submitted</th><th>Actions</th></tr></thead>
             <tbody>${inquiries.map(adInquiryRow).join('')}</tbody>
           </table>
         </div>
       `;
-      content.querySelectorAll('.ad-inquiry-contacted-toggle').forEach((box) => {
-        box.addEventListener('change', async (e) => {
+      content.querySelectorAll('.inquiry-contacted-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
           const row = e.target.closest('tr');
           const id = row.dataset.id;
-          const contacted = e.target.checked;
-          e.target.disabled = true;
+          const nextContacted = btn.dataset.contacted !== 'true';
+          btn.disabled = true;
           try {
-            await api(`/admin/ad-inquiries/${id}`, { method: 'PATCH', body: JSON.stringify({ contacted }) });
-            row.classList.toggle('contacted', contacted);
+            await api(`/admin/ad-inquiries/${id}`, { method: 'PATCH', body: JSON.stringify({ contacted: nextContacted }) });
+            loadAdInquiries();
+            loadStats();
           } catch (err) {
-            e.target.checked = !contacted;
             alert(err.message);
-          } finally {
-            e.target.disabled = false;
+            btn.disabled = false;
+          }
+        });
+      });
+      content.querySelectorAll('.inquiry-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          if (!confirm('Delete this inquiry? This cannot be undone.')) return;
+          const row = e.target.closest('tr');
+          const id = row.dataset.id;
+          btn.disabled = true;
+          try {
+            await api(`/admin/ad-inquiries/${id}`, { method: 'DELETE' });
+            loadAdInquiries();
+            loadStats();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
           }
         });
       });
@@ -395,6 +431,9 @@
 
   function userRow(u) {
     const joined = new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const deleteBtn = u.is_admin
+      ? '<span style="color:var(--text-soft); font-size:0.82rem;">—</span>'
+      : `<button class="btn ghost user-delete-btn" style="padding:6px 10px; font-size:0.78rem; border-color:var(--danger); color:var(--danger);">Delete</button>`;
     return `
       <tr data-id="${u.id}">
         <td>${escapeHtml(u.name)}${u.is_admin ? ' <span class="pill-badge company">admin</span>' : ''}</td>
@@ -402,6 +441,7 @@
         <td class="mono">${u.giveaways_hosted}</td>
         <td>${joined}</td>
         <td><input type="checkbox" class="verified-toggle" ${u.is_verified_business ? 'checked' : ''} /></td>
+        <td>${deleteBtn}</td>
       </tr>
     `;
   }
@@ -417,7 +457,7 @@
       content.innerHTML = `
         <div class="table-wrap">
           <table class="admin-table">
-            <thead><tr><th>Name</th><th>Email</th><th>Hosted</th><th>Joined</th><th>Verified</th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Hosted</th><th>Joined</th><th>Verified</th><th>Actions</th></tr></thead>
             <tbody>${users.map(userRow).join('')}</tbody>
           </table>
         </div>
@@ -435,6 +475,22 @@
             alert(err.message);
           } finally {
             e.target.disabled = false;
+          }
+        });
+      });
+      content.querySelectorAll('.user-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          const row = e.target.closest('tr');
+          const id = row.dataset.id;
+          if (!confirm('Delete this host account? This cannot be undone.')) return;
+          btn.disabled = true;
+          try {
+            await api(`/admin/users/${id}`, { method: 'DELETE' });
+            loadUsers();
+            loadStats();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
           }
         });
       });

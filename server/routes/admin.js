@@ -71,6 +71,21 @@ router.patch('/host-applications/:id', requireAdmin, async (req, res) => {
   }
 });
 
+router.delete('/host-applications/:id', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM host_applications WHERE id = $1 RETURNING id', [
+      req.params.id,
+    ]);
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'Application not found.' });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
 router.get('/ad-inquiries', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
@@ -97,6 +112,21 @@ router.patch('/ad-inquiries/:id', requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Inquiry not found.' });
     }
     res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+router.delete('/ad-inquiries/:id', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM ad_inquiries WHERE id = $1 RETURNING id', [
+      req.params.id,
+    ]);
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'Inquiry not found.' });
+    }
+    res.json({ ok: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -261,6 +291,34 @@ router.patch('/users/:id', requireAdmin, async (req, res) => {
     }
     res.json(result.rows[0]);
   } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// Deleting a user only works while nothing references them (no giveaways,
+// entries, or host applications) — Postgres's foreign key constraints
+// enforce that, so a host with real activity can't be deleted by accident.
+router.delete('/users/:id', requireAdmin, async (req, res) => {
+  try {
+    if (req.params.id === req.userId) {
+      return res.status(400).json({ error: "You can't delete your own account." });
+    }
+    const target = await pool.query('SELECT is_admin FROM users WHERE id = $1', [req.params.id]);
+    if (!target.rows[0]) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    if (target.rows[0].is_admin) {
+      return res.status(400).json({ error: "Admin accounts can't be deleted here." });
+    }
+    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.code === '23503') {
+      return res.status(400).json({
+        error: 'This host still has giveaways, entries, or applications on record — cancel or remove those first.',
+      });
+    }
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
