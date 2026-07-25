@@ -8,6 +8,7 @@ router.get('/', (req, res) => {
   res.json({
     cloudinary_cloud_name: process.env.CLOUDINARY_CLOUD_NAME || null,
     cloudinary_upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET || null,
+    ga_measurement_id: process.env.GA_MEASUREMENT_ID || null,
   });
 });
 

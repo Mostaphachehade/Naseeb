@@ -4,7 +4,21 @@ const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const Sentry = require('@sentry/node');
 const { init, pool } = require('./db');
+
+// Every route in this app already catches its own errors and logs them via
+// console.error rather than calling next(err), so Sentry's automatic Express
+// error handler alone wouldn't see any of them. captureConsoleIntegration
+// mirrors every console.error call into Sentry too, without having to touch
+// every route file's catch block individually.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'production',
+    integrations: [Sentry.captureConsoleIntegration({ levels: ['error'] })],
+  });
+}
 
 const authRoutes = require('./routes/auth');
 const giveawayRoutes = require('./routes/giveaways');
@@ -105,6 +119,13 @@ app.get('/giveaway.html', async (req, res, next) => {
 
 // Serve the frontend
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Safety net for anything that slips past a route's own try/catch (e.g. a
+// bug in middleware itself) — most real errors are already covered by
+// captureConsoleIntegration above.
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
