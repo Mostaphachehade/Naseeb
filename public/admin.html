@@ -20,15 +20,33 @@
 
 <main>
   <div class="wrap">
-    <div class="section-head">
+    <nav class="admin-nav">
+      <a href="#overview">Overview</a>
+      <a href="#applications">Applications</a>
+      <a href="#ad-inquiries">Ad inquiries</a>
+      <a href="#ads-section">Ads</a>
+      <a href="#giveaways">Giveaways</a>
+      <a href="#hosts">Hosts</a>
+    </nav>
+
+    <div class="section-head" id="overview">
+      <div>
+        <h2>Overview</h2>
+        <p>What needs attention right now.</p>
+      </div>
+    </div>
+    <div id="stats-content" class="admin-dashboard"><p>Loading…</p></div>
+
+    <div class="section-head" id="applications">
       <div>
         <h2>Host applications</h2>
         <p>Everyone who's applied to host on a paid plan, newest unreviewed first.</p>
       </div>
     </div>
+    <input class="admin-search" type="search" id="applications-search" placeholder="Search by name, business, or email…" />
     <div id="content" style="margin-bottom:56px;"><p>Loading…</p></div>
 
-    <div class="section-head">
+    <div class="section-head" id="ad-inquiries">
       <div>
         <h2>Ad inquiries</h2>
         <p>Everyone who's asked about advertising, newest unreviewed first.</p>
@@ -36,7 +54,7 @@
     </div>
     <div id="ad-inquiries-content" style="margin-bottom:56px;"><p>Loading…</p></div>
 
-    <div class="section-head">
+    <div class="section-head" id="ads-section">
       <div>
         <h2>Ads</h2>
         <p>Manage the single homepage banner slot. Only one ad can be active at a time.</p>
@@ -65,12 +83,21 @@
 
     <div id="ads-content" style="margin-bottom:56px;"><p>Loading…</p></div>
 
-    <div class="section-head">
+    <div class="section-head" id="giveaways">
+      <div>
+        <h2>Giveaways</h2>
+        <p>Every giveaway on the platform. Cancel one if it's spam, abusive, or a mistake — cancelling blocks new entries the same way a host cancelling their own would.</p>
+      </div>
+    </div>
+    <div id="giveaways-content" style="margin-bottom:56px;"><p>Loading…</p></div>
+
+    <div class="section-head" id="hosts">
       <div>
         <h2>Hosts</h2>
         <p>Every registered account. Toggle the verified badge after you've actually checked a business (trade license, etc.) — it's shown publicly next to their name on giveaways.</p>
       </div>
     </div>
+    <input class="admin-search" type="search" id="hosts-search" placeholder="Search by name or email…" />
     <div id="users-content"><p>Loading…</p></div>
   </div>
 </main>
@@ -84,6 +111,29 @@
   }
 
   const PLAN_LABELS = { pilot: 'Pilot', standard: 'Standard', partner: 'Partner' };
+
+  async function loadStats() {
+    const content = document.getElementById('stats-content');
+    try {
+      const s = await api('/admin/stats');
+      const cards = [
+        { num: s.pending_host_applications, label: 'Pending applications', attention: s.pending_host_applications > 0 },
+        { num: s.pending_ad_inquiries, label: 'Pending ad inquiries', attention: s.pending_ad_inquiries > 0 },
+        { num: s.live_giveaways, label: 'Live giveaways' },
+        { num: s.total_hosts, label: 'Total hosts' },
+        { num: s.verified_hosts, label: 'Verified hosts' },
+        { num: s.active_ad ? s.active_ad.click_count : '—', label: s.active_ad ? `Clicks — ${escapeHtml(s.active_ad.business_name)}` : 'No active ad' },
+      ];
+      content.innerHTML = cards.map((c) => `
+        <div class="admin-stat ${c.attention ? 'attention' : ''}">
+          <div class="admin-stat-num">${c.num}</div>
+          <div class="admin-stat-label">${c.label}</div>
+        </div>
+      `).join('');
+    } catch (err) {
+      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    }
+  }
 
   function appRow(a) {
     const who = a.applicant_type === 'company'
@@ -268,6 +318,81 @@
     }
   }
 
+  const GIVEAWAY_STATUS_CLASS = { active: 'company', cancelled: '', drawn: '' };
+
+  function giveawayRow(g) {
+    const deadline = new Date(g.entry_deadline).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const statusBadge = `<span class="pill-badge ${GIVEAWAY_STATUS_CLASS[g.status] || ''}">${escapeHtml(g.status)}</span>`;
+    let action = '<span style="color:var(--text-soft); font-size:0.82rem;">—</span>';
+    if (g.status === 'active') {
+      action = `<button class="btn ghost giveaway-cancel-btn" style="padding:6px 12px; font-size:0.8rem; border-color:var(--danger); color:var(--danger);">Cancel</button>`;
+    } else if (g.status === 'cancelled') {
+      action = `<button class="btn ghost giveaway-reinstate-btn" style="padding:6px 12px; font-size:0.8rem;">Reinstate</button>`;
+    }
+    return `
+      <tr data-id="${g.id}">
+        <td>${escapeHtml(g.title)}</td>
+        <td>${escapeHtml(g.host_name)}<br><span style="color:var(--text-soft); font-size:0.82rem;">${escapeHtml(g.host_email)}</span></td>
+        <td class="mono">${g.entry_count}</td>
+        <td>${deadline}</td>
+        <td>${statusBadge}</td>
+        <td>${action}</td>
+      </tr>
+    `;
+  }
+
+  async function loadGiveaways() {
+    const content = document.getElementById('giveaways-content');
+    try {
+      const giveaways = await api('/admin/giveaways');
+      if (giveaways.length === 0) {
+        content.innerHTML = `<div class="empty">No giveaways yet.</div>`;
+        return;
+      }
+      content.innerHTML = `
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Title</th><th>Host</th><th>Entries</th><th>Deadline</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>${giveaways.map(giveawayRow).join('')}</tbody>
+          </table>
+        </div>
+      `;
+      content.querySelectorAll('.giveaway-cancel-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          if (!confirm('Cancel this giveaway? Entrants will no longer be able to enter.')) return;
+          const row = e.target.closest('tr');
+          const id = row.dataset.id;
+          btn.disabled = true;
+          try {
+            await api(`/admin/giveaways/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'cancelled' }) });
+            loadGiveaways();
+            loadStats();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
+          }
+        });
+      });
+      content.querySelectorAll('.giveaway-reinstate-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          const row = e.target.closest('tr');
+          const id = row.dataset.id;
+          btn.disabled = true;
+          try {
+            await api(`/admin/giveaways/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'active' }) });
+            loadGiveaways();
+            loadStats();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
   function userRow(u) {
     const joined = new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
     return `
@@ -374,10 +499,23 @@
     }
   });
 
+  function wireSearch(inputId, containerId) {
+    document.getElementById(inputId).addEventListener('input', (e) => {
+      const term = e.target.value.trim().toLowerCase();
+      document.querySelectorAll(`#${containerId} tbody tr`).forEach((row) => {
+        row.style.display = row.textContent.toLowerCase().includes(term) ? '' : 'none';
+      });
+    });
+  }
+  wireSearch('applications-search', 'content');
+  wireSearch('hosts-search', 'users-content');
+
   if (getToken()) {
+    loadStats();
     load();
     loadAdInquiries();
     loadAds();
+    loadGiveaways();
     loadUsers();
   }
 </script>
