@@ -29,11 +29,11 @@
     </div>
 
     <form class="card narrow" id="apply-form" style="max-width:none;">
-      <label for="applicant_type">Who's applying?</label>
-      <select id="applicant_type">
-        <option value="individual">An individual</option>
-        <option value="company">A company / business</option>
-      </select>
+      <label>Who's applying?</label>
+      <div class="segmented" id="applicant-type-toggle">
+        <button type="button" class="segmented-option active" data-value="individual" aria-pressed="true">An individual</button>
+        <button type="button" class="segmented-option" data-value="company" aria-pressed="false">A company / business</button>
+      </div>
 
       <div id="company-fields" style="display:none;">
         <label for="business_name">Business name</label>
@@ -52,12 +52,21 @@
       <label for="contact_phone">Phone (optional)</label>
       <input id="contact_phone" type="tel" placeholder="e.g. +971 50 123 4567" />
 
-      <label for="plan">Plan you're interested in</label>
-      <select id="plan">
-        <option value="pilot">Pilot listing — free for your first giveaway</option>
-        <option value="standard">Standard listing — AED 250 / giveaway</option>
-        <option value="partner">Partner plan — AED 900 / month</option>
-      </select>
+      <label>Plan you're interested in</label>
+      <div class="plan-cards" id="plan-cards">
+        <button type="button" class="plan-card active" data-value="pilot" aria-pressed="true">
+          <span class="plan-card-name">Pilot</span>
+          <span class="plan-card-price">Free</span>
+        </button>
+        <button type="button" class="plan-card" data-value="standard" aria-pressed="false">
+          <span class="plan-card-name">Standard</span>
+          <span class="plan-card-price">AED 250</span>
+        </button>
+        <button type="button" class="plan-card" data-value="partner" aria-pressed="false">
+          <span class="plan-card-name">Partner</span>
+          <span class="plan-card-price">AED 900/mo</span>
+        </button>
+      </div>
 
       <label for="message">Anything else? (optional)</label>
       <textarea id="message" placeholder="Tell us about the giveaway you're planning, or ask a question."></textarea>
@@ -82,25 +91,55 @@
 
 <script src="/js/app.js"></script>
 <script>
-  const params = new URLSearchParams(window.location.search);
-  const requestedPlan = params.get('plan');
-  if (['pilot', 'standard', 'partner'].includes(requestedPlan)) {
-    document.getElementById('plan').value = requestedPlan;
-  }
-
-  const typeSelect = document.getElementById('applicant_type');
   const companyFields = document.getElementById('company-fields');
   const fullNameLabel = document.getElementById('full_name-label');
   const businessNameInput = document.getElementById('business_name');
 
+  let applicantType = 'individual';
+  const typeButtons = document.querySelectorAll('#applicant-type-toggle .segmented-option');
+
   function syncApplicantType() {
-    const isCompany = typeSelect.value === 'company';
+    const isCompany = applicantType === 'company';
     companyFields.style.display = isCompany ? 'block' : 'none';
     businessNameInput.required = isCompany;
     fullNameLabel.textContent = isCompany ? 'Contact person' : 'Full name';
+    typeButtons.forEach((btn) => {
+      const active = btn.dataset.value === applicantType;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active);
+    });
   }
-  typeSelect.addEventListener('change', syncApplicantType);
+  typeButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      applicantType = btn.dataset.value;
+      syncApplicantType();
+    });
+  });
   syncApplicantType();
+
+  let selectedPlan = 'pilot';
+  const planButtons = document.querySelectorAll('#plan-cards .plan-card');
+
+  function syncPlan() {
+    planButtons.forEach((btn) => {
+      const active = btn.dataset.value === selectedPlan;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active);
+    });
+  }
+  planButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      selectedPlan = btn.dataset.value;
+      syncPlan();
+    });
+  });
+
+  const params = new URLSearchParams(window.location.search);
+  const requestedPlan = params.get('plan');
+  if (['pilot', 'standard', 'partner'].includes(requestedPlan)) {
+    selectedPlan = requestedPlan;
+    syncPlan();
+  }
 
   document.getElementById('apply-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -110,13 +149,13 @@
       await api('/host-applications', {
         method: 'POST',
         body: JSON.stringify({
-          applicant_type: typeSelect.value,
+          applicant_type: applicantType,
           full_name: document.getElementById('full_name').value,
           business_name: businessNameInput.value || null,
           trade_license: document.getElementById('trade_license').value || null,
           contact_email: document.getElementById('contact_email').value,
           contact_phone: document.getElementById('contact_phone').value || null,
-          plan: document.getElementById('plan').value,
+          plan: selectedPlan,
           message: document.getElementById('message').value || null,
         }),
       });

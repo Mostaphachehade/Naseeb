@@ -471,6 +471,78 @@ footer.site a:hover { color: var(--gold-bright); }
   100% { background-position: 0 50%; }
 }
 
+/* ---------- Segmented toggle (e.g. individual / company) ---------- */
+.segmented {
+  display: flex;
+  background: var(--paper);
+  border: 1.5px solid rgba(11,59,54,0.18);
+  border-radius: 100px;
+  padding: 4px;
+  gap: 4px;
+}
+.segmented-option {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 10px 16px;
+  border-radius: 100px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.segmented-option:hover { color: var(--ink-deep); }
+.segmented-option.active { background: var(--ink); color: var(--paper); }
+
+/* ---------- Plan cards ---------- */
+.plan-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.plan-card {
+  border: 1.5px solid rgba(11,59,54,0.18);
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px 10px;
+  text-align: center;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  position: relative;
+}
+.plan-card:hover { border-color: var(--gold); }
+.plan-card .plan-card-name {
+  display: block;
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: var(--ink-deep);
+  margin-bottom: 4px;
+}
+.plan-card .plan-card-price {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.76rem;
+  color: var(--text-soft);
+}
+.plan-card.active { border-color: var(--gold); background: var(--mint); }
+.plan-card.active .plan-card-price { color: var(--ink-deep); }
+.plan-card.active::after {
+  content: "✓";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+@media (max-width: 480px) {
+  .plan-cards { grid-template-columns: 1fr; }
+}
+
 /* ---------- Admin table ---------- */
 .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid rgba(11,59,54,0.1); }
 .admin-table { width: 100%; border-collapse: collapse; background: #fff; }
