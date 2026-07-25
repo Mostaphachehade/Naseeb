@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Host a giveaway — Naseeb</title>
+<meta name="description" content="Host a free-entry giveaway on Naseeb. You cover the prize as a marketing cost — entrants never pay anything." />
+<meta name="theme-color" content="#0B3B36" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
@@ -32,8 +35,14 @@
       <label for="estimated_value_aed">Estimated value (AED, optional)</label>
       <input id="estimated_value_aed" type="number" min="0" step="1" placeholder="e.g. 1500" />
 
-      <label for="image_url">Image URL (optional)</label>
+      <label for="image_url">Giveaway image (optional)</label>
+      <div id="image-upload-row" style="display:none; margin-bottom:10px;">
+        <input type="file" id="image_file" accept="image/*" />
+        <span class="hint" id="upload-status"></span>
+        <img id="image-preview" alt="" style="display:none; max-width:160px; border-radius:8px; margin-top:8px;" />
+      </div>
       <input id="image_url" type="url" placeholder="https://…" />
+      <p class="hint" id="image-url-hint">Paste an image URL.</p>
 
       <label for="funded_by">Funding disclosure</label>
       <input id="funded_by" placeholder="e.g. Marketing budget of [your business/name]" required />
@@ -52,9 +61,45 @@
   </div>
 </main>
 
+<div id="site-footer"></div>
+
 <script src="/js/app.js"></script>
 <script>
   if (!getToken()) window.location.href = '/login.html';
+
+  let cloudinaryConfig = null;
+  fetch('/api/config').then((r) => r.json()).then((config) => {
+    if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
+      cloudinaryConfig = config;
+      document.getElementById('image-upload-row').style.display = 'block';
+      document.getElementById('image-url-hint').textContent = 'Upload a file above, or paste an image URL.';
+    }
+  }).catch(() => {});
+
+  document.getElementById('image_file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file || !cloudinaryConfig) return;
+    const statusEl = document.getElementById('upload-status');
+    statusEl.textContent = 'Uploading…';
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
+    try {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudinary_cloud_name}/image/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
+      document.getElementById('image_url').value = data.secure_url;
+      const preview = document.getElementById('image-preview');
+      preview.src = data.secure_url;
+      preview.style.display = 'block';
+      statusEl.textContent = 'Uploaded.';
+    } catch (err) {
+      statusEl.textContent = err.message;
+    }
+  });
 
   document.getElementById('create-form').addEventListener('submit', async (e) => {
     e.preventDefault();

@@ -17,8 +17,23 @@ async function init() {
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+      email_verified BOOLEAN NOT NULL DEFAULT TRUE,
+      verification_token TEXT,
+      verification_token_expires TIMESTAMPTZ,
+      reset_token TEXT,
+      reset_token_expires TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+    -- Default TRUE so accounts that already existed before this column was
+    -- added aren't suddenly locked out. New signups override this to FALSE
+    -- explicitly in the signup route.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token_expires TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMPTZ;
 
     -- Intentionally no price/amount/payment columns on giveaways or entries.
     -- Entry into a giveaway must always be free; prizes are funded by the host
@@ -47,6 +62,26 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(giveaway_id, user_id)
     );
+
+    -- Host applications aren't gating anything today (no payment processor is
+    -- wired up, so anyone signed in can already create giveaways for free).
+    -- This just captures company/individual intent to host on a paid plan so
+    -- it can be followed up on manually.
+    CREATE TABLE IF NOT EXISTS host_applications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id),
+      applicant_type TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      business_name TEXT,
+      trade_license TEXT,
+      contact_email TEXT NOT NULL,
+      contact_phone TEXT,
+      plan TEXT NOT NULL,
+      message TEXT,
+      contacted BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE host_applications ADD COLUMN IF NOT EXISTS contacted BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 }
 

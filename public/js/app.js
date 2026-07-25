@@ -33,8 +33,10 @@ function renderHeader() {
   if (user) {
     nav.innerHTML = `
       <a href="/index.html">Browse</a>
+      <a href="/about.html">About</a>
       <a href="/dashboard.html">My giveaways</a>
       <a href="/pricing.html">Pricing</a>
+      ${user.is_admin ? '<a href="/admin.html">Admin</a>' : ''}
       <a href="/create.html" class="btn-gold" style="border-radius:100px;">Host a giveaway</a>
       <span style="opacity:0.7;">Hi, ${escapeHtml(user.name)}</span>
       <button id="logout-btn">Sign out</button>
@@ -46,6 +48,7 @@ function renderHeader() {
   } else {
     nav.innerHTML = `
       <a href="/index.html">Browse</a>
+      <a href="/about.html">About</a>
       <a href="/pricing.html">Pricing</a>
       <a href="/login.html">Sign in</a>
       <a href="/signup.html" class="btn-gold" style="border-radius:100px;">Join free</a>
@@ -53,10 +56,58 @@ function renderHeader() {
   }
 }
 
+function renderFooter() {
+  const el = document.getElementById('site-footer');
+  if (!el) return;
+  const year = new Date().getFullYear();
+  el.innerHTML = `
+    <footer class="site">
+      <div class="wrap footer-grid">
+        <div class="footer-brand">
+          <a href="/index.html" class="brand" style="font-size:1.2rem;">Naseeb<span class="dot">.</span></a>
+          <p>Free-entry giveaways, always. No purchase is ever required or accepted to enter or to improve your odds.</p>
+        </div>
+        <div class="footer-links">
+          <span class="footer-heading">Explore</span>
+          <a href="/index.html">Browse giveaways</a>
+          <a href="/create.html">Host a giveaway</a>
+          <a href="/pricing.html">Pricing</a>
+          <a href="/about.html">About Naseeb</a>
+        </div>
+        <div class="footer-links">
+          <span class="footer-heading">Legal</span>
+          <a href="/terms.html">Terms of Service</a>
+          <a href="/privacy.html">Privacy Policy</a>
+        </div>
+      </div>
+      <div class="wrap footer-bottom">© ${year} Naseeb. Every ticket is free.</div>
+    </footer>
+  `;
+}
+
+// Only allow same-site relative paths (e.g. "/create.html") so a crafted
+// ?redirect= query param can't send someone off-site after login/signup.
+function safeRedirect(path) {
+  if (!path || !path.startsWith('/') || path.startsWith('//')) return null;
+  return path;
+}
+
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// escapeHtml alone doesn't encode quotes, so it's not safe for values placed
+// inside an HTML attribute (e.g. style="...${value}..."). This also encodes
+// ' and " so a value can't break out of the surrounding quotes.
+function escapeAttr(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function timeLeft(deadlineIso) {
@@ -75,7 +126,7 @@ function giveawayCard(g) {
   const statusClass = g.status === 'drawn' ? 'drawn' : '';
   return `
     <a class="stub" href="/giveaway.html?id=${g.id}">
-      <div class="img" style="${img ? `background-image:url('${img}')` : ''}">
+      <div class="img" style="${img ? `background-image:url('${escapeAttr(img)}')` : ''}">
         <span class="status-pill ${statusClass}">${statusLabel}</span>
       </div>
       <div class="body">
@@ -90,4 +141,55 @@ function giveawayCard(g) {
   `;
 }
 
-document.addEventListener('DOMContentLoaded', renderHeader);
+function renderVerificationBanner() {
+  const user = getUser();
+  if (!user || user.email_verified) return;
+  const header = document.querySelector('header.site');
+  if (!header || document.querySelector('.verify-banner')) return;
+
+  const banner = document.createElement('div');
+  banner.className = 'verify-banner';
+  banner.innerHTML = `
+    <div class="wrap">
+      <span>Verify your email to host or enter giveaways — check your inbox.</span>
+      <button id="resend-verify-btn">Resend email</button>
+    </div>
+  `;
+  header.insertAdjacentElement('afterend', banner);
+
+  document.getElementById('resend-verify-btn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+      await api('/auth/resend-verification', { method: 'POST' });
+      btn.textContent = 'Sent — check your inbox';
+    } catch (err) {
+      btn.textContent = 'Resend email';
+      btn.disabled = false;
+      alert(err.message);
+    }
+  });
+}
+
+function skeletonCards(n) {
+  return Array.from({ length: n }, () => `
+    <div class="stub skeleton-card">
+      <div class="img skeleton-block"></div>
+      <div class="body">
+        <div class="skeleton-line" style="width:70%; height:1.15rem;"></div>
+        <div class="skeleton-line" style="width:90%;"></div>
+        <div class="meta">
+          <div class="skeleton-line" style="width:60px; margin:0;"></div>
+          <div class="skeleton-line" style="width:60px; margin:0;"></div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderHeader();
+  renderFooter();
+  renderVerificationBanner();
+});

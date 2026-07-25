@@ -2,8 +2,16 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
+const { enterLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
+
+const MAX_LENGTHS = {
+  title: 200,
+  description: 5000,
+  prize_description: 2000,
+  funded_by: 300,
+};
 
 async function withHostAndCount(row) {
   const hostRes = await pool.query('SELECT name FROM users WHERE id = $1', [row.host_id]);
@@ -17,14 +25,41 @@ async function withHostAndCount(row) {
   };
 }
 
-// Browse all giveaways. Active ones first, newest first.
+// Browse all giveaways. Active ones first, newest first, paginated.
 router.get('/', async (req, res) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(48, Math.max(1, parseInt(req.query.pageSize, 10) || 12));
+    const offset = (page - 1) * pageSize;
+
+    const countRes = await pool.query('SELECT COUNT(*)::int AS c FROM giveaways');
+    const total = countRes.rows[0].c;
+
     const result = await pool.query(
-      `SELECT * FROM giveaways ORDER BY (status = 'active') DESC, entry_deadline ASC`
+      `SELECT * FROM giveaways ORDER BY (status = 'active') DESC, entry_deadline ASC LIMIT $1 OFFSET $2`,
+      [pageSize, offset]
     );
-    const rows = await Promise.all(result.rows.map(withHostAndCount));
-    res.json(rows);
+    const items = await Promise.all(result.rows.map(withHostAndCount));
+    res.json({ items, total, page, pageSize });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// Homepage trust-bar numbers. Real counts only — no padding, no estimates.
+router.get('/stats/summary', async (req, res) => {
+  try {
+    const giveawaysRes = await pool.query('SELECT COUNT(*)::int AS c FROM giveaways');
+    const entriesRes = await pool.query('SELECT COUNT(*)::int AS c FROM entries');
+    const valueRes = await pool.query(
+      'SELECT COALESCE(SUM(estimated_value_aed), 0)::numeric AS v FROM giveaways WHERE estimated_value_aed IS NOT NULL'
+    );
+    res.json({
+      giveaways_hosted: giveawaysRes.rows[0].c,
+      entries_submitted: entriesRes.rows[0].c,
+      value_listed_aed: Number(valueRes.rows[0].v),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -73,6 +108,11 @@ router.get('/:id', optionalAuth, async (req, res) => {
 // than something paid for by entrants.
 router.post('/', requireAuth, async (req, res) => {
   try {
+    const verifiedRes = await pool.query('SELECT email_verified FROM users WHERE id = $1', [req.userId]);
+    if (!verifiedRes.rows[0] || !verifiedRes.rows[0].email_verified) {
+      return res.status(403).json({ error: 'Please verify your email before hosting a giveaway.' });
+    }
+
     const {
       title,
       description,
@@ -91,9 +131,45 @@ router.post('/', requireAuth, async (req, res) => {
       });
     }
 
+    for (const [field, max] of Object.entries(MAX_LENGTHS)) {
+      const value = { title, description, prize_description, funded_by }[field];
+      if (value.trim().length > max) {
+        return res.status(400).json({ error: `${field.replace(/_/g, ' ')} must be ${max} characters or fewer.` });
+      }
+    }
+
     const deadline = new Date(entry_deadline);
     if (isNaN(deadline.getTime()) || deadline <= new Date()) {
       return res.status(400).json({ error: 'Entry deadline must be a valid date in the future.' });
+    }
+
+    let value = null;
+    if (estimated_value_aed !== undefined && estimated_value_aed !== null && estimated_value_aed !== '') {
+      value = Number(estimated_value_aed);
+      if (isNaN(value) || value < 0) {
+        return res.status(400).json({ error: 'Estimated value must be a non-negative number.' });
+      }
+    }
+
+    let entryCap = 1;
+    if (max_entries_per_person !== undefined && max_entries_per_person !== null && max_entries_per_person !== '') {
+      entryCap = Number(max_entries_per_person);
+      if (!Number.isInteger(entryCap) || entryCap < 1) {
+        return res.status(400).json({ error: 'Max entries per person must be a positive whole number.' });
+      }
+    }
+
+    let normalizedImageUrl = null;
+    if (image_url && image_url.trim()) {
+      try {
+        const parsed = new URL(image_url.trim());
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          throw new Error('bad protocol');
+        }
+        normalizedImageUrl = parsed.href;
+      } catch {
+        return res.status(400).json({ error: 'Image URL must be a valid http(s) URL.' });
+      }
     }
 
     const id = uuid();
@@ -107,11 +183,11 @@ router.post('/', requireAuth, async (req, res) => {
         title.trim(),
         description.trim(),
         prize_description.trim(),
-        estimated_value_aed ? Number(estimated_value_aed) : null,
-        image_url ? image_url.trim() : null,
+        value,
+        normalizedImageUrl,
         funded_by.trim(),
         deadline.toISOString(),
-        max_entries_per_person ? Number(max_entries_per_person) : 1,
+        entryCap,
       ]
     );
 
@@ -126,8 +202,13 @@ router.post('/', requireAuth, async (req, res) => {
 
 // Enter a giveaway. Always free — there is no amount, no payment reference,
 // nothing to charge. One entry per person per giveaway.
-router.post('/:id/enter', requireAuth, async (req, res) => {
+router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
   try {
+    const verifiedRes = await pool.query('SELECT email_verified FROM users WHERE id = $1', [req.userId]);
+    if (!verifiedRes.rows[0] || !verifiedRes.rows[0].email_verified) {
+      return res.status(403).json({ error: 'Please verify your email before entering a giveaway.' });
+    }
+
     const result = await pool.query('SELECT * FROM giveaways WHERE id = $1', [req.params.id]);
     const giveaway = result.rows[0];
     if (!giveaway) return res.status(404).json({ error: 'This giveaway does not exist.' });

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin — Naseeb</title>
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#0B3B36" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <h2>Host applications</h2>
+        <p>Everyone who's applied to host on a paid plan, newest unreviewed first.</p>
+      </div>
+    </div>
+    <div id="content"><p>Loading…</p></div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="/js/app.js"></script>
+<script>
+  if (!getToken()) {
+    window.location.href = '/login.html?redirect=%2Fadmin.html';
+  }
+
+  const PLAN_LABELS = { pilot: 'Pilot', standard: 'Standard', partner: 'Partner' };
+
+  function appRow(a) {
+    const who = a.applicant_type === 'company'
+      ? `${escapeHtml(a.business_name || '—')}<br><span style="color:var(--text-soft); font-size:0.82rem;">${escapeHtml(a.full_name)}${a.trade_license ? ` · ${escapeHtml(a.trade_license)}` : ''}</span>`
+      : escapeHtml(a.full_name);
+    const contact = `${escapeHtml(a.contact_email)}${a.contact_phone ? `<br><span style="color:var(--text-soft); font-size:0.82rem;">${escapeHtml(a.contact_phone)}</span>` : ''}`;
+    const typeBadge = `<span class="pill-badge ${a.applicant_type === 'company' ? 'company' : ''}">${a.applicant_type}</span>`;
+    const planBadge = `<span class="pill-badge">${escapeHtml(PLAN_LABELS[a.plan] || a.plan)}</span>`;
+    const submitted = new Date(a.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return `
+      <tr class="${a.contacted ? 'contacted' : ''}" data-id="${a.id}">
+        <td>${typeBadge}</td>
+        <td>${who}</td>
+        <td>${contact}</td>
+        <td>${planBadge}</td>
+        <td style="max-width:260px;">${a.message ? escapeHtml(a.message) : '<span style="color:var(--text-soft);">—</span>'}</td>
+        <td>${submitted}</td>
+        <td><input type="checkbox" class="contacted-toggle" ${a.contacted ? 'checked' : ''} /></td>
+      </tr>
+    `;
+  }
+
+  async function load() {
+    const content = document.getElementById('content');
+    try {
+      const applications = await api('/admin/host-applications');
+      if (applications.length === 0) {
+        content.innerHTML = `<div class="empty">No applications yet.</div>`;
+        return;
+      }
+      content.innerHTML = `
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Type</th><th>Who</th><th>Contact</th><th>Plan</th><th>Message</th><th>Submitted</th><th>Contacted</th>
+              </tr>
+            </thead>
+            <tbody>${applications.map(appRow).join('')}</tbody>
+          </table>
+        </div>
+      `;
+      content.querySelectorAll('.contacted-toggle').forEach((box) => {
+        box.addEventListener('change', async (e) => {
+          const row = e.target.closest('tr');
+          const id = row.dataset.id;
+          const contacted = e.target.checked;
+          e.target.disabled = true;
+          try {
+            await api(`/admin/host-applications/${id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ contacted }),
+            });
+            row.classList.toggle('contacted', contacted);
+          } catch (err) {
+            e.target.checked = !contacted;
+            alert(err.message);
+          } finally {
+            e.target.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  if (getToken()) load();
+</script>
+</body>
+</html>

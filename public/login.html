@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sign in — Naseeb</title>
+<meta name="description" content="Sign in to Naseeb to enter and host free giveaways." />
+<meta name="theme-color" content="#0B3B36" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
@@ -24,16 +27,22 @@
 
       <label for="password">Password</label>
       <input id="password" type="password" required />
+      <p class="hint"><a href="/forgot-password.html" style="font-weight:600; color:var(--ink);">Forgot your password?</a></p>
 
       <button class="btn primary" type="submit">Sign in</button>
       <p class="form-error" id="error"></p>
     </form>
-    <p style="text-align:center; margin-top:18px; color:var(--text-soft);">New here? <a href="/signup.html" style="font-weight:600;">Join free</a></p>
+    <p style="text-align:center; margin-top:18px; color:var(--text-soft);">New here? <a id="signup-link" href="/signup.html" style="font-weight:600;">Join free</a></p>
   </div>
 </main>
 
+<div id="site-footer"></div>
+
 <script src="/js/app.js"></script>
 <script>
+  const redirectTo = safeRedirect(new URLSearchParams(window.location.search).get('redirect')) || '/index.html';
+  document.getElementById('signup-link').href = `/signup.html?redirect=${encodeURIComponent(redirectTo)}`;
+
   document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorEl = document.getElementById('error');
@@ -47,7 +56,7 @@
         }),
       });
       setSession(token, user);
-      window.location.href = '/index.html';
+      window.location.href = redirectTo;
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.add('show');
