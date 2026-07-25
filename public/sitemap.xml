@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://www.mynaseeb.ae/index.html</loc><priority>1.0</priority></url>
+  <url><loc>https://www.mynaseeb.ae/about.html</loc><priority>0.8</priority></url>
+  <url><loc>https://www.mynaseeb.ae/pricing.html</loc><priority>0.8</priority></url>
+  <url><loc>https://www.mynaseeb.ae/host-apply.html</loc><priority>0.6</priority></url>
+  <url><loc>https://www.mynaseeb.ae/advertise.html</loc><priority>0.5</priority></url>
+  <url><loc>https://www.mynaseeb.ae/signup.html</loc><priority>0.5</priority></url>
+  <url><loc>https://www.mynaseeb.ae/login.html</loc><priority>0.3</priority></url>
+  <url><loc>https://www.mynaseeb.ae/terms.html</loc><priority>0.3</priority></url>
+  <url><loc>https://www.mynaseeb.ae/privacy.html</loc><priority>0.3</priority></url>
+</urlset>
