@@ -67,6 +67,8 @@
       </div>
     </div>
 
+    <div id="ad-banner-slot"></div>
+
     <div class="section-head" id="listings">
       <div>
         <h2>Open giveaways</h2>
@@ -121,8 +123,26 @@
     }
   }
 
+  async function loadAdBanner() {
+    try {
+      const ad = await api('/ads/active');
+      if (!ad) return;
+      document.getElementById('ad-banner-slot').innerHTML = `
+        <div class="ad-banner-wrap">
+          <span class="ad-banner-label">Advertisement</span>
+          <a class="ad-banner" href="/api/ads/${ad.id}/click" target="_blank" rel="noopener sponsored">
+            <img src="${escapeHtml(ad.image_url)}" alt="${escapeHtml(ad.business_name)}" />
+          </a>
+        </div>
+      `;
+    } catch (err) {
+      // Non-critical — just don't show a banner if this fails.
+    }
+  }
+
   load();
   loadStats();
+  loadAdBanner();
 </script>
 </body>
 </html>

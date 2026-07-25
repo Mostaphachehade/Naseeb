@@ -73,6 +73,7 @@ function renderFooter() {
           <a href="/create.html">Host a giveaway</a>
           <a href="/pricing.html">Pricing</a>
           <a href="/about.html">About Naseeb</a>
+          <a href="/advertise.html">Advertise with us</a>
         </div>
         <div class="footer-links">
           <span class="footer-heading">Legal</span>

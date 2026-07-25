@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Advertise with us — Naseeb</title>
+<meta name="description" content="Put your business in front of Naseeb's audience with a homepage ad placement." />
+<meta name="theme-color" content="#0B3B36" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="max-width:640px;">
+    <div class="section-head" id="form-head">
+      <div>
+        <h2>Advertise with us</h2>
+        <p>A single banner placement on the Naseeb homepage. Tell us about your business and we'll follow up with pricing and availability.</p>
+      </div>
+    </div>
+
+    <form class="card narrow" id="ad-form" style="max-width:none;">
+      <label for="business_name">Business name</label>
+      <input id="business_name" placeholder="e.g. Al Fahim Marketing LLC" required />
+
+      <label for="contact_email">Email</label>
+      <input id="contact_email" type="email" required />
+
+      <label for="contact_phone">Phone (optional)</label>
+      <input id="contact_phone" type="tel" placeholder="e.g. +971 50 123 4567" />
+
+      <label for="message">Anything else? (optional)</label>
+      <textarea id="message" placeholder="What are you advertising, and when would you want it live?"></textarea>
+
+      <div class="compliance-box">
+        Submitting this doesn't charge you anything — it's how we get in touch to arrange pricing and get your banner live.
+      </div>
+
+      <button class="btn primary" type="submit">Submit inquiry</button>
+      <p class="form-error" id="error"></p>
+    </form>
+
+    <div class="card narrow" id="confirmation" style="display:none; text-align:center;">
+      <h2>Got it.</h2>
+      <p style="color:var(--text-soft);">Thanks — we've got your inquiry and will reach out with pricing and availability.</p>
+      <a href="/index.html" class="btn primary" style="margin-top:16px;">Back to Naseeb</a>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="/js/app.js"></script>
+<script>
+  document.getElementById('ad-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('error');
+    errorEl.classList.remove('show');
+    try {
+      await api('/ad-inquiries', {
+        method: 'POST',
+        body: JSON.stringify({
+          business_name: document.getElementById('business_name').value,
+          contact_email: document.getElementById('contact_email').value,
+          contact_phone: document.getElementById('contact_phone').value || null,
+          message: document.getElementById('message').value || null,
+        }),
+      });
+      document.getElementById('form-head').style.display = 'none';
+      document.getElementById('ad-form').style.display = 'none';
+      document.getElementById('confirmation').style.display = 'block';
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+    }
+  });
+</script>
+</body>
+</html>
