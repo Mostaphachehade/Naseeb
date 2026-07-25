@@ -63,7 +63,15 @@
       <p class="form-error" id="ad-create-error"></p>
     </form>
 
-    <div id="ads-content"><p>Loading…</p></div>
+    <div id="ads-content" style="margin-bottom:56px;"><p>Loading…</p></div>
+
+    <div class="section-head">
+      <div>
+        <h2>Hosts</h2>
+        <p>Every registered account. Toggle the verified badge after you've actually checked a business (trade license, etc.) — it's shown publicly next to their name on giveaways.</p>
+      </div>
+    </div>
+    <div id="users-content"><p>Loading…</p></div>
   </div>
 </main>
 
@@ -260,6 +268,56 @@
     }
   }
 
+  function userRow(u) {
+    const joined = new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return `
+      <tr data-id="${u.id}">
+        <td>${escapeHtml(u.name)}${u.is_admin ? ' <span class="pill-badge company">admin</span>' : ''}</td>
+        <td>${escapeHtml(u.email)}</td>
+        <td class="mono">${u.giveaways_hosted}</td>
+        <td>${joined}</td>
+        <td><input type="checkbox" class="verified-toggle" ${u.is_verified_business ? 'checked' : ''} /></td>
+      </tr>
+    `;
+  }
+
+  async function loadUsers() {
+    const content = document.getElementById('users-content');
+    try {
+      const users = await api('/admin/users');
+      if (users.length === 0) {
+        content.innerHTML = `<div class="empty">No accounts yet.</div>`;
+        return;
+      }
+      content.innerHTML = `
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Name</th><th>Email</th><th>Hosted</th><th>Joined</th><th>Verified</th></tr></thead>
+            <tbody>${users.map(userRow).join('')}</tbody>
+          </table>
+        </div>
+      `;
+      content.querySelectorAll('.verified-toggle').forEach((box) => {
+        box.addEventListener('change', async (e) => {
+          const row = e.target.closest('tr');
+          const id = row.dataset.id;
+          const is_verified_business = e.target.checked;
+          e.target.disabled = true;
+          try {
+            await api(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify({ is_verified_business }) });
+          } catch (err) {
+            e.target.checked = !is_verified_business;
+            alert(err.message);
+          } finally {
+            e.target.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
   let cloudinaryConfig = null;
   fetch('/api/config').then((r) => r.json()).then((config) => {
     if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
@@ -320,6 +378,7 @@
     load();
     loadAdInquiries();
     loadAds();
+    loadUsers();
   }
 </script>
 </body>

@@ -75,7 +75,7 @@
 
       document.title = `${g.title} — Naseeb`;
       document.getElementById('title').textContent = g.title;
-      document.getElementById('hosted-by').textContent = `Hosted by ${g.host_name}`;
+      document.getElementById('hosted-by').innerHTML = `Hosted by ${escapeHtml(g.host_name)}${g.host_verified ? verifiedBadge() : ''}`;
       document.getElementById('description').textContent = g.description;
       document.getElementById('prize').textContent = g.prize_description;
       document.getElementById('image').src = g.image_url || 'https://images.unsplash.com/photo-1513151233558-d860c5398176?w=1200&q=60';
