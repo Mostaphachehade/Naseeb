@@ -97,6 +97,12 @@
       if (g.winner) {
         document.getElementById('winner-box').style.display = 'block';
         document.getElementById('winner-text').textContent = `${g.winner.name} (ticket #${g.winner.ticket_number})`;
+
+        const celebratedKey = `naseeb_celebrated_${id}`;
+        if (!sessionStorage.getItem(celebratedKey)) {
+          celebrate();
+          sessionStorage.setItem(celebratedKey, '1');
+        }
       }
 
       if (g.status === 'drawn') {
