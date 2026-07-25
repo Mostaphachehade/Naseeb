@@ -3,17 +3,10 @@ const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { optionalAuth } = require('../middleware/auth');
 const { applicationLimiter } = require('../middleware/rateLimit');
-const { sendEmail } = require('../lib/email');
+const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
 
 const router = express.Router();
 const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_NOTIFY_EMAIL;
-
-function escapeHtmlForEmail(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const APPLICANT_TYPES = ['individual', 'company'];

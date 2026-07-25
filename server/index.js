@@ -2,6 +2,7 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const { init } = require('./db');
 
 const authRoutes = require('./routes/auth');
@@ -14,7 +15,17 @@ const configRoutes = require('./routes/config');
 
 const app = express();
 
-app.use(cors());
+// Render terminates TLS and proxies every request — without this, req.ip
+// collapses to the proxy's address for all traffic, and the rate limiters
+// end up sharing one bucket across every visitor instead of per-IP.
+app.set('trust proxy', 1);
+
+// CSP is left off: every page here uses inline <script>/<style> and loads
+// images from arbitrary host-provided URLs (prizes, ad banners), so a
+// default-restrictive CSP would break the app rather than harden it. The
+// other headers (HSTS, no-sniff, frame-deny, etc.) still apply.
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({ origin: process.env.APP_URL || 'http://localhost:3000' }));
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);

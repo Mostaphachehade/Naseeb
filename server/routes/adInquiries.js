@@ -2,18 +2,11 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { applicationLimiter } = require('../middleware/rateLimit');
-const { sendEmail } = require('../lib/email');
+const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
 
 const router = express.Router();
 const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_NOTIFY_EMAIL;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function escapeHtmlForEmail(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
 
 // Ad placement inquiries. Advertising is a separate product from hosting
 // giveaways — sold to anyone, billed manually, tracked via click_count on
