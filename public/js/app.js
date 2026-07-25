@@ -172,6 +172,32 @@ function renderVerificationBanner() {
   });
 }
 
+// A brief confetti burst for celebratory moments (e.g. a winner being drawn).
+function celebrate() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const colors = ['#C9A15A', '#E4C078', '#DCEEE7', '#0B3B36'];
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed; inset:0; pointer-events:none; z-index:9999; overflow:hidden;';
+  document.body.appendChild(container);
+
+  for (let i = 0; i < 60; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const left = Math.random() * 100;
+    const width = 6 + Math.random() * 6;
+    const height = width * 1.6;
+    const duration = (2.2 + Math.random() * 1.4).toFixed(2);
+    const delay = (Math.random() * 0.4).toFixed(2);
+    const rotate = Math.floor(Math.random() * 360);
+    piece.style.cssText = `left:${left}%; width:${width}px; height:${height}px; background:${color}; transform:rotate(${rotate}deg); animation-duration:${duration}s; animation-delay:${delay}s;`;
+    container.appendChild(piece);
+  }
+
+  setTimeout(() => container.remove(), 4200);
+}
+
 function skeletonCards(n) {
   return Array.from({ length: n }, () => `
     <div class="stub skeleton-card">

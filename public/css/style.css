@@ -580,7 +580,21 @@ footer.site a:hover { color: var(--gold-bright); }
 }
 .pill-badge.company { background: var(--gold-bright); }
 
+/* ---------- Winner celebration ---------- */
+.confetti-piece {
+  position: absolute;
+  top: -20px;
+  opacity: 0.9;
+  animation-name: naseeb-confetti-fall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+@keyframes naseeb-confetti-fall {
+  to { transform: translateY(105vh) rotate(720deg); opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stub, html { transition: none; scroll-behavior: auto; }
   .skeleton-block, .skeleton-line { animation: none; }
+  .confetti-piece { display: none; }
 }
