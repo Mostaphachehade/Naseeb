@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Apply to host — Naseeb</title>
+<meta name="description" content="Apply to host a giveaway on Naseeb as an individual or a company." />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#0B3B36" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="max-width:640px;">
+    <div class="section-head" id="form-head">
+      <div>
+        <h2>Apply to host</h2>
+        <p>Tell us a bit about you or your business. We'll follow up to set up billing for your plan — and you can start building your listing right away.</p>
+      </div>
+    </div>
+
+    <form class="card narrow" id="apply-form" style="max-width:none;">
+      <label for="applicant_type">Who's applying?</label>
+      <select id="applicant_type">
+        <option value="individual">An individual</option>
+        <option value="company">A company / business</option>
+      </select>
+
+      <div id="company-fields" style="display:none;">
+        <label for="business_name">Business name</label>
+        <input id="business_name" placeholder="e.g. Al Fahim Marketing LLC" />
+
+        <label for="trade_license">Trade license number (optional)</label>
+        <input id="trade_license" placeholder="e.g. CN-1234567" />
+      </div>
+
+      <label for="full_name" id="full_name-label">Full name</label>
+      <input id="full_name" required />
+
+      <label for="contact_email">Email</label>
+      <input id="contact_email" type="email" required />
+
+      <label for="contact_phone">Phone (optional)</label>
+      <input id="contact_phone" type="tel" placeholder="e.g. +971 50 123 4567" />
+
+      <label for="plan">Plan you're interested in</label>
+      <select id="plan">
+        <option value="pilot">Pilot listing — free for your first giveaway</option>
+        <option value="standard">Standard listing — AED 250 / giveaway</option>
+        <option value="partner">Partner plan — AED 900 / month</option>
+      </select>
+
+      <label for="message">Anything else? (optional)</label>
+      <textarea id="message" placeholder="Tell us about the giveaway you're planning, or ask a question."></textarea>
+
+      <div class="compliance-box">
+        Submitting this doesn't charge you anything. It's just how we get in touch to set up billing for a paid plan — and since hosting itself is already open to any signed-in account, you can start building your listing today.
+      </div>
+
+      <button class="btn primary" type="submit">Submit application</button>
+      <p class="form-error" id="error"></p>
+    </form>
+
+    <div class="card narrow" id="confirmation" style="display:none; text-align:center;">
+      <h2>You're in.</h2>
+      <p style="color:var(--text-soft);">Thanks — we've got your application and will reach out to set up billing for your plan. In the meantime, hosting is already open, so go ahead and build your listing.</p>
+      <div id="confirmation-actions" style="margin-top:22px;"></div>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="/js/app.js"></script>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const requestedPlan = params.get('plan');
+  if (['pilot', 'standard', 'partner'].includes(requestedPlan)) {
+    document.getElementById('plan').value = requestedPlan;
+  }
+
+  const typeSelect = document.getElementById('applicant_type');
+  const companyFields = document.getElementById('company-fields');
+  const fullNameLabel = document.getElementById('full_name-label');
+  const businessNameInput = document.getElementById('business_name');
+
+  function syncApplicantType() {
+    const isCompany = typeSelect.value === 'company';
+    companyFields.style.display = isCompany ? 'block' : 'none';
+    businessNameInput.required = isCompany;
+    fullNameLabel.textContent = isCompany ? 'Contact person' : 'Full name';
+  }
+  typeSelect.addEventListener('change', syncApplicantType);
+  syncApplicantType();
+
+  document.getElementById('apply-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('error');
+    errorEl.classList.remove('show');
+    try {
+      await api('/host-applications', {
+        method: 'POST',
+        body: JSON.stringify({
+          applicant_type: typeSelect.value,
+          full_name: document.getElementById('full_name').value,
+          business_name: businessNameInput.value || null,
+          trade_license: document.getElementById('trade_license').value || null,
+          contact_email: document.getElementById('contact_email').value,
+          contact_phone: document.getElementById('contact_phone').value || null,
+          plan: document.getElementById('plan').value,
+          message: document.getElementById('message').value || null,
+        }),
+      });
+
+      document.getElementById('form-head').style.display = 'none';
+      document.getElementById('apply-form').style.display = 'none';
+
+      const actions = document.getElementById('confirmation-actions');
+      if (getUser()) {
+        actions.innerHTML = `<a href="/create.html" class="btn primary">Host your giveaway</a>`;
+      } else {
+        actions.innerHTML = `
+          <a href="/signup.html?redirect=%2Fcreate.html" class="btn primary">Create your free account</a>
+          <a href="/login.html?redirect=%2Fcreate.html" class="btn ghost" style="border-color:var(--ink); color:var(--ink); margin-left:10px;">Sign in instead</a>
+        `;
+      }
+      document.getElementById('confirmation').style.display = 'block';
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+    }
+  });
+</script>
+</body>
+</html>

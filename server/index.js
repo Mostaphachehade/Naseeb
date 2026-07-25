@@ -6,6 +6,9 @@ const { init } = require('./db');
 
 const authRoutes = require('./routes/auth');
 const giveawayRoutes = require('./routes/giveaways');
+const hostApplicationRoutes = require('./routes/hostApplications');
+const adminRoutes = require('./routes/admin');
+const configRoutes = require('./routes/config');
 
 const app = express();
 
@@ -14,9 +17,18 @@ app.use(express.json());
 
 app.use('/api/auth', authRoutes);
 app.use('/api/giveaways', giveawayRoutes);
+app.use('/api/host-applications', hostApplicationRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/config', configRoutes);
 
 // Serve the frontend
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
+
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(__dirname, '..', 'public', '404.html'));
+});
 
 const PORT = process.env.PORT || 3000;
 
