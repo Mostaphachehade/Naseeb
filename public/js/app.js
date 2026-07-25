@@ -121,6 +121,10 @@ function timeLeft(deadlineIso) {
   return `${hours}h ${mins}m left`;
 }
 
+function verifiedBadge() {
+  return `<svg class="verified-badge" viewBox="0 0 20 20" width="14" height="14" role="img"><title>Verified business</title><circle cx="10" cy="10" r="9" fill="#C9A15A"/><path d="M6 10.3l2.6 2.6L14 7.3" stroke="#072925" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
 function giveawayCard(g) {
   const img = g.image_url || '';
   const statusLabel = g.status === 'drawn' ? 'Winner drawn' : timeLeft(g.entry_deadline);
@@ -135,7 +139,7 @@ function giveawayCard(g) {
         <p class="prize">${escapeHtml(g.prize_description)}</p>
         <div class="meta">
           <span class="num">${g.entry_count} entered</span>
-          <span>by ${escapeHtml(g.host_name)}</span>
+          <span>by ${escapeHtml(g.host_name)}${g.host_verified ? verifiedBadge() : ''}</span>
         </div>
       </div>
     </a>

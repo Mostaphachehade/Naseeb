@@ -580,6 +580,8 @@ footer.site a:hover { color: var(--gold-bright); }
 }
 .pill-badge.company { background: var(--gold-bright); }
 
+.verified-badge { vertical-align: -2px; margin-left: 4px; }
+
 /* ---------- Ad banner ---------- */
 .ad-banner-wrap { margin-bottom: 40px; }
 .ad-banner-label {

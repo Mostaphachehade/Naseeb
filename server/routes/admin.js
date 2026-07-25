@@ -148,4 +148,43 @@ router.delete('/ads/:id', requireAdmin, async (req, res) => {
   }
 });
 
+router.get('/users', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        users.id, users.name, users.email, users.is_admin, users.is_verified_business, users.created_at,
+        (SELECT COUNT(*)::int FROM giveaways WHERE giveaways.host_id = users.id) AS giveaways_hosted
+      FROM users
+      ORDER BY users.is_verified_business ASC, users.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// Only toggles the verified-business badge. Admin promotion stays a direct
+// DB action (see README) — not exposed here, so a UI slip can't hand out
+// admin access.
+router.patch('/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const { is_verified_business } = req.body;
+    if (typeof is_verified_business !== 'boolean') {
+      return res.status(400).json({ error: 'is_verified_business must be true or false.' });
+    }
+    const result = await pool.query(
+      'UPDATE users SET is_verified_business = $1 WHERE id = $2 RETURNING id, name, email, is_admin, is_verified_business, created_at',
+      [is_verified_business, req.params.id]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
 module.exports = router;

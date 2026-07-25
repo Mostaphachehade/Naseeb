@@ -18,6 +18,7 @@ async function init() {
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+      is_verified_business BOOLEAN NOT NULL DEFAULT FALSE,
       email_verified BOOLEAN NOT NULL DEFAULT TRUE,
       verification_token TEXT,
       verification_token_expires TIMESTAMPTZ,
@@ -26,6 +27,9 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+    -- Manually toggled by an admin after actually checking a business (trade
+    -- license etc.) — no automated verification exists.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified_business BOOLEAN NOT NULL DEFAULT FALSE;
     -- Default TRUE so accounts that already existed before this column was
     -- added aren't suddenly locked out. New signups override this to FALSE
     -- explicitly in the signup route.

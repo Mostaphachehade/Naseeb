@@ -14,13 +14,16 @@ const MAX_LENGTHS = {
 };
 
 async function withHostAndCount(row) {
-  const hostRes = await pool.query('SELECT name FROM users WHERE id = $1', [row.host_id]);
+  const hostRes = await pool.query('SELECT name, is_verified_business FROM users WHERE id = $1', [
+    row.host_id,
+  ]);
   const countRes = await pool.query('SELECT COUNT(*)::int AS c FROM entries WHERE giveaway_id = $1', [
     row.id,
   ]);
   return {
     ...row,
     host_name: hostRes.rows[0] ? hostRes.rows[0].name : 'Unknown',
+    host_verified: hostRes.rows[0] ? hostRes.rows[0].is_verified_business : false,
     entry_count: countRes.rows[0].c,
   };
 }
