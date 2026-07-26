@@ -94,6 +94,60 @@
   </div>
 </main>
 
+<section class="promo-showcase" id="promo-showcase">
+  <div class="wrap promo-grid">
+    <div class="promo-copy">
+      <span class="eyebrow mono">Spotlight</span>
+      <h2>Don't miss this one.</h2>
+      <p>Every giveaway on Naseeb is free to enter, funded by the host, and drawn at random the moment the clock hits zero. Here's what's live right now.</p>
+      <a class="btn primary" id="promo-cta-outer">Enter free</a>
+    </div>
+    <div class="promo-frame" id="promo-frame">
+      <div class="promo-ambient"></div>
+      <div class="promo-confetti" id="promo-confetti"></div>
+
+      <div class="promo-scene" data-pscene="1">
+        <span class="promo-eyebrow">No purchase necessary</span>
+        <h3 class="promo-s1-head">Every ticket<br><span class="em">is free.</span></h3>
+        <p class="promo-s1-sub">No entry fee. No card. No catch.</p>
+      </div>
+
+      <div class="promo-scene" data-pscene="2">
+        <span class="promo-eyebrow">This week's giveaway</span>
+        <div class="promo-ticket">
+          <div class="promo-ticket-art" id="promo-ticket-img" style="background-size:cover; background-position:center;"></div>
+          <div class="promo-notch l"></div>
+          <div class="promo-notch r"></div>
+          <div class="promo-perf"></div>
+          <div class="promo-ticket-body">
+            <span class="promo-ticket-label" id="promo-ticket-label">Open now</span>
+            <h4 class="promo-ticket-title" id="promo-ticket-title"></h4>
+            <span class="promo-ticket-value" id="promo-ticket-value"></span>
+          </div>
+        </div>
+        <p class="promo-s2-caption">Funded by the host. Free for you to enter.</p>
+      </div>
+
+      <div class="promo-scene" data-pscene="3">
+        <div class="promo-countdown-wrap">
+          <span class="promo-pulse"></span>
+          <span class="promo-pulse d2"></span>
+          <span class="promo-pulse d3"></span>
+          <span class="promo-countdown-num" id="promo-countdown-num"></span>
+        </div>
+        <p class="promo-countdown-caption">Days left to enter</p>
+        <p class="promo-s3-fine">One entry per person. Winner picked at random.</p>
+      </div>
+
+      <div class="promo-scene" data-pscene="4">
+        <h3 class="promo-s4-head">Enter free.<br><span class="em">Win real.</span></h3>
+        <a class="promo-cta-btn" id="promo-cta-inner">See the giveaway</a>
+        <p class="promo-s4-fine">No purchase. No catch. Just enter.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <div id="site-footer"></div>
 
 <script src="/js/app.js"></script>
@@ -119,6 +173,95 @@
     } catch (err) {
       // Non-critical — the hero's decorative dashed outline stays as-is.
     }
+  }
+
+  // Animated spotlight on the top live giveaway — same idea as the hero
+  // card, but a richer looping sequence (hook, prize, countdown, CTA).
+  // Stays hidden entirely if there's no active giveaway; nothing to be
+  // urgent about otherwise.
+  async function loadPromoShowcase() {
+    try {
+      const { items } = await api('/giveaways?page=1&pageSize=1');
+      const g = items[0];
+      if (!g || g.status !== 'active') return;
+
+      const url = `/giveaway.html?id=${g.id}`;
+      document.getElementById('promo-cta-outer').href = url;
+      document.getElementById('promo-cta-inner').href = url;
+      if (g.image_url) {
+        document.getElementById('promo-ticket-img').style.backgroundImage = `url('${escapeAttr(g.image_url)}')`;
+      }
+      document.getElementById('promo-ticket-label').textContent = `${g.entry_count} entered · open now`;
+      document.getElementById('promo-ticket-title').textContent = g.title;
+      if (g.estimated_value_aed) {
+        document.getElementById('promo-ticket-value').textContent = `AED ${Number(g.estimated_value_aed).toLocaleString()} value`;
+      } else {
+        document.getElementById('promo-ticket-value').style.display = 'none';
+      }
+
+      const deadline = new Date(g.entry_deadline).getTime();
+      const days = Math.max(1, Math.ceil((deadline - Date.now()) / 86400000));
+      document.getElementById('promo-countdown-num').textContent = days;
+
+      document.getElementById('promo-showcase').classList.add('is-visible');
+      runPromoLoop();
+    } catch (err) {
+      // Non-critical — the section just stays hidden.
+    }
+  }
+
+  function runPromoLoop() {
+    const scenes = Array.from(document.querySelectorAll('.promo-scene'));
+    const confetti = document.getElementById('promo-confetti');
+    const colors = ['#C9A15A', '#E4C078', '#DCEEE7'];
+    const SEQUENCE = [
+      { n: 1, hold: 3600 },
+      { n: 2, hold: 4000 },
+      { n: 3, hold: 4000 },
+      { n: 4, hold: 4400 },
+    ];
+
+    function spawnConfetti() {
+      confetti.innerHTML = '';
+      for (let i = 0; i < 8; i++) {
+        const s = document.createElement('span');
+        s.className = 'promo-speck';
+        s.style.left = (6 + Math.random() * 88) + '%';
+        s.style.background = colors[i % colors.length];
+        s.style.animationDelay = (Math.random() * 1.6) + 's';
+        confetti.appendChild(s);
+      }
+      confetti.classList.add('is-on');
+    }
+
+    function showScene(n) {
+      scenes.forEach((s) => {
+        const active = Number(s.dataset.pscene) === n;
+        s.classList.toggle('is-exiting', s.classList.contains('is-active') && !active);
+        s.classList.toggle('is-active', active);
+      });
+    }
+
+    (async () => {
+      // Pauses when scrolled out of view so it isn't burning CPU/battery
+      // off-screen — resumes the loop next time it's visible.
+      const frame = document.getElementById('promo-frame');
+      let visible = true;
+      new IntersectionObserver((entries) => {
+        visible = entries[0].isIntersecting;
+      }, { threshold: 0.15 }).observe(frame);
+
+      while (true) {
+        for (const step of SEQUENCE) {
+          if (visible) {
+            showScene(step.n);
+            if (step.n === 4) spawnConfetti();
+            if (step.n === 1) confetti.classList.remove('is-on');
+          }
+          await new Promise((r) => setTimeout(r, step.hold));
+        }
+      }
+    })();
   }
 
   async function load(page = 1) {
@@ -178,6 +321,7 @@
   loadStats();
   loadAdBanner();
   loadFeaturedHero();
+  loadPromoShowcase();
 </script>
 </body>
 </html>

@@ -726,8 +726,135 @@ footer.site a:hover { color: var(--gold-bright); }
   to { transform: translateY(105vh) rotate(720deg); opacity: 0; }
 }
 
+/* ---------- Promo showcase (animated spotlight on the top live giveaway) ---------- */
+.promo-showcase {
+  display: none; /* revealed by JS only once a real active giveaway loads */
+  background: var(--ink-deep);
+  padding: 64px 0;
+}
+.promo-showcase.is-visible { display: block; }
+.promo-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 48px;
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .promo-grid { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+}
+.promo-copy .eyebrow { color: var(--gold-bright); }
+.promo-copy h2 { color: var(--paper); font-size: 2rem; margin: 10px 0 12px; text-wrap: balance; }
+.promo-copy p { color: var(--mint); font-size: 1.02rem; max-width: 46ch; margin: 0 0 24px; }
+
+.promo-frame {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  aspect-ratio: 9 / 16;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--ink);
+  box-shadow: 0 30px 60px -24px rgba(0,0,0,0.55), 0 0 0 1px rgba(228,192,120,0.14);
+  flex-shrink: 0;
+}
+.promo-ambient {
+  position: absolute; inset: -20%;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(228,192,120,0.16), transparent 55%),
+    radial-gradient(circle at 75% 80%, rgba(220,238,231,0.10), transparent 50%);
+  animation: promoDrift 14s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes promoDrift {
+  from { transform: translate(-2%, -1%) scale(1); }
+  to   { transform: translate(2%, 2%) scale(1.06); }
+}
+.promo-scene {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 9%;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.7s cubic-bezier(.22,.8,.3,1), transform 0.7s cubic-bezier(.22,.8,.3,1);
+  pointer-events: none;
+}
+.promo-scene.is-active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.promo-scene.is-exiting { opacity: 0; transform: translateY(-14px); }
+.promo-eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--gold-bright); margin: 0 0 12px;
+}
+.promo-s1-head {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.5rem, 6.4vw, 1.9rem);
+  line-height: 1.16;
+  color: var(--paper);
+  margin: 0;
+}
+.promo-s1-head .em { color: var(--gold-bright); }
+.promo-s1-sub { font-size: 0.78rem; color: var(--mint); opacity: 0.85; max-width: 24ch; margin: 12px 0 0; }
+
+.promo-ticket {
+  position: relative;
+  width: 100%; max-width: 220px;
+  background: var(--paper);
+  border-radius: 14px;
+  box-shadow: 0 20px 40px -16px rgba(0,0,0,0.5);
+  transform: scale(0.94);
+}
+.promo-scene.is-active .promo-ticket { animation: promoTicketIn 0.6s cubic-bezier(.2,1.1,.3,1) 0.1s forwards; }
+@keyframes promoTicketIn { to { transform: scale(1); } }
+.promo-ticket-art { position: relative; height: 84px; background: linear-gradient(180deg, #12463F 0%, var(--ink) 100%); border-radius: 14px 14px 0 0; overflow: hidden; }
+.promo-notch { position: absolute; width: 14px; height: 14px; background: var(--ink); border-radius: 50%; top: 84px; margin-top: -7px; }
+.promo-notch.l { left: -7px; }
+.promo-notch.r { right: -7px; }
+.promo-perf { position: absolute; top: 84px; left: 12px; right: 12px; border-top: 1.5px dashed rgba(11,59,54,0.22); }
+.promo-ticket-body { padding: 14px 14px 16px; text-align: left; }
+.promo-ticket-label { font-family: 'IBM Plex Mono', monospace; font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); opacity: 0.6; }
+.promo-ticket-title { font-family: 'Fraunces', serif; font-size: 0.94rem; line-height: 1.25; color: var(--ink-deep); margin: 4px 0 8px; }
+.promo-ticket-value { display: inline-flex; align-items: center; gap: 5px; background: var(--gold); color: var(--ink-deep); font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 0.62rem; padding: 4px 9px; border-radius: 100px; }
+.promo-s2-caption { font-size: 0.72rem; color: var(--mint); opacity: 0.85; margin: 14px 0 0; }
+
+.promo-countdown-wrap { position: relative; display: flex; align-items: center; justify-content: center; width: 130px; height: 130px; }
+.promo-pulse { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(228,192,120,0.5); animation: promoPulseRing 1.8s ease-out infinite; }
+.promo-pulse.d2 { animation-delay: 0.6s; }
+.promo-pulse.d3 { animation-delay: 1.2s; }
+@keyframes promoPulseRing { 0% { transform: scale(0.72); opacity: 0.9; } 100% { transform: scale(1.15); opacity: 0; } }
+.promo-countdown-num { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 2.6rem; font-weight: 600; color: var(--paper); line-height: 1; z-index: 1; }
+.promo-countdown-caption { font-family: 'IBM Plex Mono', monospace; font-size: 0.64rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-bright); margin: 14px 0 4px; }
+.promo-s3-fine { font-size: 0.72rem; color: var(--mint); opacity: 0.85; max-width: 22ch; margin: 2px 0 0; }
+
+.promo-s4-head { font-family: 'Fraunces', serif; font-size: clamp(1.5rem, 6.4vw, 1.9rem); color: var(--paper); margin: 0 0 14px; line-height: 1.16; }
+.promo-s4-head .em { color: var(--gold-bright); }
+.promo-cta-btn {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 700; font-size: 0.86rem; color: var(--ink-deep);
+  background: var(--gold); padding: 11px 20px; border-radius: 100px; overflow: hidden;
+  text-decoration: none;
+}
+.promo-cta-btn::after {
+  content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.55), transparent);
+  animation: promoSheen 2.6s ease-in-out 1.4s infinite;
+}
+@keyframes promoSheen { 0% { left: -60%; } 35%, 100% { left: 140%; } }
+.promo-s4-fine { font-size: 0.72rem; color: var(--mint); opacity: 0.85; margin: 12px 0 0; }
+
+.promo-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity 0.4s; }
+.promo-confetti.is-on { opacity: 1; }
+.promo-speck { position: absolute; bottom: -6%; width: 5px; height: 8px; border-radius: 1px; animation: promoSpeckRise 4.5s linear infinite; }
+@keyframes promoSpeckRise {
+  0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+  8% { opacity: 1; }
+  100% { transform: translateY(-360px) rotate(340deg); opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stub, html { transition: none; scroll-behavior: auto; }
   .skeleton-block, .skeleton-line { animation: none; }
   .confetti-piece { display: none; }
+  .promo-ambient, .promo-pulse, .promo-cta-btn::after, .promo-speck, .promo-ticket { animation: none !important; }
+  .promo-scene { transition: opacity 0.2s; }
 }
