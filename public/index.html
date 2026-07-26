@@ -42,12 +42,12 @@
 
 <section class="hero" id="hero">
   <div class="wrap">
-    <span class="eyebrow">No purchase necessary</span>
-    <h1>Every ticket is free.<br>Every draw is real.</h1>
-    <p class="lede">Naseeb hosts giveaways funded by the people running them, not by entry fees. Enter with one tap, no card required, and see exactly how the winner is picked.</p>
+    <span class="eyebrow" data-i18n="hero.eyebrow">No purchase necessary</span>
+    <h1 data-i18n-html="hero.headline">Every ticket is free.<br>Every draw is real.</h1>
+    <p class="lede" data-i18n="hero.lede">Naseeb hosts giveaways funded by the people running them, not by entry fees. Enter with one tap, no card required, and see exactly how the winner is picked.</p>
     <div class="hero-actions">
-      <a href="#listings" class="btn primary">Browse giveaways</a>
-      <a href="/create.html" class="btn ghost">Host your own</a>
+      <a href="#listings" class="btn primary" data-i18n="hero.browseBtn">Browse giveaways</a>
+      <a href="/create.html" class="btn ghost" data-i18n="hero.hostBtn">Host your own</a>
     </div>
   </div>
   <div class="hero-promo-frame" id="promo-frame">
@@ -107,25 +107,25 @@
   <div class="wrap">
     <div class="section-head">
       <div>
-        <h2>How it works</h2>
-        <p>Three steps, no payment screen, ever.</p>
+        <h2 data-i18n="howItWorks.title">How it works</h2>
+        <p data-i18n="howItWorks.sub">Three steps, no payment screen, ever.</p>
       </div>
     </div>
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
-        <h3>Browse for free</h3>
-        <p>Every giveaway on Naseeb discloses who's funding the prize. No entry fee exists anywhere in the flow.</p>
+        <h3 data-i18n="howItWorks.step1Title">Browse for free</h3>
+        <p data-i18n="howItWorks.step1Body">Every giveaway on Naseeb discloses who's funding the prize. No entry fee exists anywhere in the flow.</p>
       </div>
       <div class="step">
         <div class="step-num">2</div>
-        <h3>Enter with one tap</h3>
-        <p>Sign in and enter — one ticket per person, so nobody can pay or game their way to better odds.</p>
+        <h3 data-i18n="howItWorks.step2Title">Enter with one tap</h3>
+        <p data-i18n="howItWorks.step2Body">Sign in and enter — one ticket per person, so nobody can pay or game their way to better odds.</p>
       </div>
       <div class="step">
         <div class="step-num">3</div>
-        <h3>Winner drawn at random</h3>
-        <p>After the deadline passes, a winner is drawn uniformly at random from every eligible entry.</p>
+        <h3 data-i18n="howItWorks.step3Title">Winner drawn at random</h3>
+        <p data-i18n="howItWorks.step3Body">After the deadline passes, a winner is drawn uniformly at random from every eligible entry.</p>
       </div>
     </div>
 
@@ -133,19 +133,20 @@
 
     <div class="section-head" id="listings">
       <div>
-        <h2>Open giveaways</h2>
-        <p>Free to enter. One entry per person, so every ticket carries the same odds.</p>
+        <h2 data-i18n="listings.title">Open giveaways</h2>
+        <p data-i18n="listings.sub">Free to enter. One entry per person, so every ticket carries the same odds.</p>
       </div>
     </div>
     <div class="grid" id="grid"></div>
     <div style="text-align:center;">
-      <button class="btn ghost" id="load-more-btn" style="display:none; border-color:var(--ink); color:var(--ink); margin-top:28px;">Load more</button>
+      <button class="btn ghost" id="load-more-btn" data-i18n="loadMore" style="display:none; border-color:var(--ink); color:var(--ink); margin-top:28px;">Load more</button>
     </div>
   </div>
 </main>
 
 <div id="site-footer"></div>
 
+<script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('grid').innerHTML = skeletonCards(6);
@@ -247,10 +248,10 @@
       if (page === 1 && items.length === 0) {
         grid.innerHTML = `
           <div class="empty launch" style="grid-column:1/-1;">
-            <span class="mono eyebrow">Launching soon</span>
-            <h3>The first giveaway hasn't gone live yet.</h3>
-            <p>Be the host that starts it — list a prize, and it's the first thing every visitor sees.</p>
-            <a class="btn primary" href="/create.html">Host the first giveaway</a>
+            <span class="mono eyebrow">${t('empty.launchEyebrow')}</span>
+            <h3>${t('empty.launchTitle')}</h3>
+            <p>${t('empty.launchBody')}</p>
+            <a class="btn primary" href="/create.html">${t('empty.launchCta')}</a>
           </div>`;
         loadMoreBtn.style.display = 'none';
         return;

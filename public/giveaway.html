@@ -32,31 +32,31 @@
     <div class="detail-grid">
       <div>
         <img class="detail-img" id="image" alt="" />
-        <h3 style="margin-top:28px;">About this giveaway</h3>
+        <h3 style="margin-top:28px;" data-i18n="detail.aboutGiveaway">About this giveaway</h3>
         <p id="description" style="color:var(--text-soft);"></p>
-        <h3 style="margin-top:24px;">The prize</h3>
+        <h3 style="margin-top:24px;" data-i18n="detail.thePrize">The prize</h3>
         <p id="prize" style="color:var(--text-soft);"></p>
       </div>
 
       <div>
         <div class="side-card">
-          <div class="row"><span>Status</span><span id="row-status">—</span></div>
-          <div class="row"><span>Entries so far</span><span id="row-entries">—</span></div>
-          <div class="row"><span>Estimated value</span><span id="row-value">—</span></div>
-          <div class="row"><span>Entry deadline</span><span id="row-deadline">—</span></div>
-          <div class="row"><span>Funded by</span><span id="row-funded">—</span></div>
+          <div class="row"><span data-i18n="detail.status">Status</span><span id="row-status">—</span></div>
+          <div class="row"><span data-i18n="detail.entriesSoFar">Entries so far</span><span id="row-entries">—</span></div>
+          <div class="row"><span data-i18n="detail.estimatedValue">Estimated value</span><span id="row-value">—</span></div>
+          <div class="row"><span data-i18n="detail.entryDeadline">Entry deadline</span><span id="row-deadline">—</span></div>
+          <div class="row"><span data-i18n="detail.fundedBy">Funded by</span><span id="row-funded">—</span></div>
 
           <div id="winner-box" style="display:none; margin-top:18px; background:var(--mint); border-radius:10px; padding:14px 16px;">
-            <strong>Winner:</strong> <span id="winner-text"></span>
+            <strong data-i18n="detail.winnerLabel">Winner:</strong> <span id="winner-text"></span>
             <div id="delivery-status" style="margin-top:8px;"></div>
           </div>
 
-          <button class="btn primary" id="enter-btn" style="width:100%; margin-top:22px; justify-content:center;">Enter for free</button>
-          <button class="btn ghost" id="draw-btn" style="width:100%; margin-top:12px; justify-content:center; display:none;">Draw winner now</button>
-          <button class="btn primary" id="confirm-delivery-btn" style="width:100%; margin-top:12px; justify-content:center; display:none;">Confirm prize delivered</button>
+          <button class="btn primary" id="enter-btn" data-i18n="detail.enterFree" style="width:100%; margin-top:22px; justify-content:center;">Enter for free</button>
+          <button class="btn ghost" id="draw-btn" data-i18n="detail.drawWinner" style="width:100%; margin-top:12px; justify-content:center; display:none;">Draw winner now</button>
+          <button class="btn primary" id="confirm-delivery-btn" data-i18n="detail.confirmDelivery" style="width:100%; margin-top:12px; justify-content:center; display:none;">Confirm prize delivered</button>
           <p class="form-error" id="action-error"></p>
           <p class="form-success" id="action-success"></p>
-          <p class="hint" style="margin-top:14px;">No payment is ever requested to enter or to improve your odds. One entry per person.</p>
+          <p class="hint" style="margin-top:14px;" data-i18n="detail.hint">No payment is ever requested to enter or to improve your odds. One entry per person.</p>
         </div>
       </div>
     </div>
@@ -65,6 +65,7 @@
 
 <div id="site-footer"></div>
 
+<script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
 <script>
   const id = new URLSearchParams(window.location.search).get('id');
@@ -78,19 +79,19 @@
 
       document.title = `${g.title} — Naseeb`;
       document.getElementById('title').textContent = g.title;
-      document.getElementById('hosted-by').innerHTML = `Hosted by ${escapeHtml(g.host_name)}${g.host_verified ? verifiedBadge() : ''}`;
+      document.getElementById('hosted-by').innerHTML = t('detail.hostedBy', { name: escapeHtml(g.host_name) }) + (g.host_verified ? verifiedBadge() : '');
       document.getElementById('description').textContent = g.description;
       document.getElementById('prize').textContent = g.prize_description;
       document.getElementById('image').src = g.image_url || 'https://images.unsplash.com/photo-1513151233558-d860c5398176?w=1200&q=60';
 
-      document.getElementById('row-status').textContent = g.status === 'drawn' ? 'Winner drawn' : 'Open';
+      document.getElementById('row-status').textContent = g.status === 'drawn' ? t('detail.winnerDrawn') : t('detail.open');
       document.getElementById('row-entries').textContent = g.entry_count;
-      document.getElementById('row-value').textContent = g.estimated_value_aed ? `AED ${g.estimated_value_aed.toLocaleString()}` : 'Not disclosed';
+      document.getElementById('row-value').textContent = g.estimated_value_aed ? `AED ${g.estimated_value_aed.toLocaleString()}` : t('detail.notDisclosed');
       document.getElementById('row-deadline').textContent = new Date(g.entry_deadline).toLocaleString();
       document.getElementById('row-funded').textContent = g.funded_by;
 
       const eyebrow = document.getElementById('status-eyebrow');
-      eyebrow.textContent = g.status === 'drawn' ? 'WINNER DRAWN' : timeLeft(g.entry_deadline).toUpperCase();
+      eyebrow.textContent = g.status === 'drawn' ? t('detail.winnerDrawn').toUpperCase() : timeLeft(g.entry_deadline).toUpperCase();
 
       const enterBtn = document.getElementById('enter-btn');
       const drawBtn = document.getElementById('draw-btn');
@@ -112,13 +113,13 @@
       if (g.status === 'drawn') {
         enterBtn.style.display = 'none';
       } else if (!user) {
-        enterBtn.textContent = 'Sign in to enter';
+        enterBtn.textContent = t('detail.signInToEnter');
         enterBtn.onclick = () => (window.location.href = '/login.html');
       } else if (g.already_entered) {
-        enterBtn.textContent = "You're entered ✓";
+        enterBtn.textContent = t('detail.alreadyEntered');
         enterBtn.disabled = true;
       } else if (deadlinePassed) {
-        enterBtn.textContent = 'Entries closed';
+        enterBtn.textContent = t('detail.entriesClosed');
         enterBtn.disabled = true;
       } else {
         enterBtn.onclick = enterGiveaway;
@@ -127,7 +128,7 @@
       if (isHost && g.status === 'active') {
         drawBtn.style.display = 'block';
         drawBtn.disabled = !deadlinePassed;
-        drawBtn.textContent = deadlinePassed ? 'Draw winner now' : 'Draw available after deadline';
+        drawBtn.textContent = deadlinePassed ? t('detail.drawWinner') : t('detail.drawAvailable');
         drawBtn.onclick = drawWinner;
       }
 
@@ -140,7 +141,7 @@
         confirmBtn.style.display = 'none';
       }
     } catch (err) {
-      document.getElementById('title').textContent = 'Not found';
+      document.getElementById('title').textContent = t('detail.notFound');
       document.getElementById('description').textContent = err.message;
     }
   }
@@ -154,7 +155,7 @@
     enterBtn.disabled = true;
     try {
       const { ticket_number } = await api(`/giveaways/${id}/enter`, { method: 'POST' });
-      successEl.textContent = `You're in! Your ticket number is #${ticket_number}.`;
+      successEl.textContent = t('detail.enteredSuccess', { n: ticket_number });
       successEl.classList.add('show');
       load();
     } catch (err) {
