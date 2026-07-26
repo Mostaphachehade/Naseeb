@@ -5,6 +5,7 @@ const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { enterLimiter } = require('../middleware/rateLimit');
 const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
+const { winnerEmailHtml } = require('../lib/emailTemplates');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
@@ -382,7 +383,15 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
     sendEmail({
       to: winnerUser.email,
       subject: `You won: ${giveaway.title}`,
-      html: `<p>Hi ${escapeHtmlForEmail(winnerUser.name)},</p><p>Congratulations — you won <strong>${escapeHtmlForEmail(giveaway.title)}</strong> with ticket #${winner.ticket_number}!</p><p>The host, funded by ${escapeHtmlForEmail(giveaway.funded_by)}, will be in touch to arrange your prize.</p><p><a href="${giveawayUrl}">${giveawayUrl}</a></p>`,
+      html: winnerEmailHtml({
+        winnerName: winnerUser.name,
+        giveawayTitle: giveaway.title,
+        prizeDescription: giveaway.prize_description,
+        imageUrl: giveaway.image_url,
+        ticketNumber: winner.ticket_number,
+        fundedBy: giveaway.funded_by,
+        giveawayUrl,
+      }),
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
