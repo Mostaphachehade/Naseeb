@@ -245,7 +245,13 @@
     try {
       const { items, total } = await api(`/giveaways?page=${page}&pageSize=${PAGE_SIZE}`);
       if (page === 1 && items.length === 0) {
-        grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">No giveaways yet. <a href="/create.html">Be the first to host one</a>.</div>`;
+        grid.innerHTML = `
+          <div class="empty launch" style="grid-column:1/-1;">
+            <span class="mono eyebrow">Launching soon</span>
+            <h3>The first giveaway hasn't gone live yet.</h3>
+            <p>Be the host that starts it — list a prize, and it's the first thing every visitor sees.</p>
+            <a class="btn primary" href="/create.html">Host the first giveaway</a>
+          </div>`;
         loadMoreBtn.style.display = 'none';
         return;
       }
@@ -264,6 +270,12 @@
   async function loadStats() {
     try {
       const stats = await api('/giveaways/stats/summary');
+      // A trust bar reading "0 / 0 / 0" undermines the exact trust it's meant
+      // to build, so it only appears once there's a real number to show.
+      if (!stats.giveaways_hosted) {
+        document.querySelector('.stats-bar').style.display = 'none';
+        return;
+      }
       document.getElementById('stat-giveaways').textContent = stats.giveaways_hosted.toLocaleString();
       document.getElementById('stat-entries').textContent = stats.entries_submitted.toLocaleString();
       document.getElementById('stat-value').textContent = stats.value_listed_aed.toLocaleString();

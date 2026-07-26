@@ -469,6 +469,19 @@ form .btn { margin-top: 24px; width: 100%; justify-content: center; }
   border-radius: var(--radius);
 }
 .empty a { color: var(--ink); font-weight: 600; }
+.empty.launch { padding: 56px 24px; }
+.empty.launch .eyebrow {
+  display: block;
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.empty.launch h3 { color: var(--ink-deep); margin-bottom: 8px; }
+.empty.launch p { max-width: 42ch; margin: 0 auto 22px; }
+.empty.launch .btn { display: inline-flex; }
 
 footer.site {
   background: var(--ink-deep);
