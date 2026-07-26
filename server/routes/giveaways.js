@@ -91,7 +91,8 @@ router.get('/winners/all', async (req, res) => {
     const result = await pool.query(
       `SELECT
          giveaways.id, giveaways.title, giveaways.image_url, giveaways.prize_description,
-         giveaways.estimated_value_aed, giveaways.entry_deadline,
+         giveaways.estimated_value_aed, giveaways.entry_deadline, giveaways.status,
+         giveaways.prize_delivered, giveaways.prize_delivered_at,
          hostuser.name AS host_name, hostuser.is_verified_business AS host_verified,
          winneruser.name AS winner_name, entries.ticket_number AS winner_ticket_number,
          (SELECT COUNT(*)::int FROM entries e2 WHERE e2.giveaway_id = giveaways.id) AS entry_count
@@ -407,6 +408,38 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   } finally {
     client.release();
+  }
+});
+
+// Host confirms the prize was actually sent to the winner. Purely a public
+// trust signal — there's no escrow or enforcement behind it — but it's
+// visible on the giveaway page and the public Winners page either way, so
+// an unconfirmed delivery is something anyone can see, not just claim.
+router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM giveaways WHERE id = $1', [req.params.id]);
+    const giveaway = result.rows[0];
+    if (!giveaway) {
+      return res.status(404).json({ error: 'This giveaway does not exist.' });
+    }
+    if (giveaway.host_id !== req.userId) {
+      return res.status(403).json({ error: 'Only the host of this giveaway can confirm delivery.' });
+    }
+    if (giveaway.status !== 'drawn') {
+      return res.status(400).json({ error: 'A winner has to be drawn before delivery can be confirmed.' });
+    }
+    if (giveaway.prize_delivered) {
+      return res.json({ prize_delivered: true, prize_delivered_at: giveaway.prize_delivered_at });
+    }
+    const updated = await pool.query(
+      `UPDATE giveaways SET prize_delivered = TRUE, prize_delivered_at = NOW()
+       WHERE id = $1 RETURNING prize_delivered, prize_delivered_at`,
+      [req.params.id]
+    );
+    res.json(updated.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 

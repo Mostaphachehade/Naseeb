@@ -163,6 +163,16 @@ function verifiedBadge() {
   return `<svg class="verified-badge" viewBox="0 0 20 20" width="14" height="14" role="img"><title>Verified business</title><circle cx="10" cy="10" r="9" fill="#C9A15A"/><path d="M6 10.3l2.6 2.6L14 7.3" stroke="#072925" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
+// Purely a trust signal (see server/db.js) — visible wherever a drawn
+// giveaway is shown, not just on the giveaway's own page, so it can't be
+// quietly ignored.
+function deliveryPill(g) {
+  if (g.status !== 'drawn') return '';
+  return g.prize_delivered
+    ? `<span class="delivery-pill delivered">&check; Prize delivered</span>`
+    : `<span class="delivery-pill pending">Delivery pending</span>`;
+}
+
 function giveawayCard(g) {
   const img = g.image_url || '';
   const statusLabel = g.status === 'drawn' ? 'Winner drawn' : timeLeft(g.entry_deadline);
@@ -179,6 +189,7 @@ function giveawayCard(g) {
           <span class="num">${g.entry_count} entered</span>
           <span>by ${escapeHtml(g.host_name)}${g.host_verified ? verifiedBadge() : ''}</span>
         </div>
+        ${deliveryPill(g)}
       </div>
     </a>
   `;

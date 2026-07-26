@@ -62,6 +62,7 @@
             <span class="num">Won by ${escapeHtml(g.winner_name)}</span>
             <span>by ${escapeHtml(g.host_name)}${g.host_verified ? verifiedBadge() : ''}</span>
           </div>
+          ${deliveryPill(g)}
         </div>
       </a>
     `;
