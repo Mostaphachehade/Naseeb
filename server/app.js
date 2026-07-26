@@ -64,7 +64,12 @@ app.get('/giveaway.html', async (req, res, next) => {
 
   try {
     const result = await pool.query(
-      'SELECT title, description, prize_description, image_url FROM giveaways WHERE id = $1',
+      `SELECT giveaways.title, giveaways.description, giveaways.prize_description,
+              giveaways.image_url, giveaways.status, giveaways.entry_deadline,
+              giveaways.created_at, users.name AS host_name
+       FROM giveaways
+       JOIN users ON users.id = giveaways.host_id
+       WHERE giveaways.id = $1`,
       [id]
     );
     const giveaway = result.rows[0];
@@ -95,7 +100,43 @@ app.get('/giveaway.html', async (req, res, next) => {
       `<meta name="twitter:card" content="${giveaway.image_url ? 'summary_large_image' : 'summary'}" />`,
     ].filter(Boolean).join('\n');
 
-    html = html.replace('</head>', `${ogTags}\n</head>`);
+    // Mapped to Event rather than Product: schema.org has no dedicated
+    // "giveaway" type, and Event's start/end dates plus a zero-price Offer
+    // capture the two things that actually matter here — when entries close,
+    // and that entering is genuinely free — better than any alternative type.
+    const eventJsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'Event',
+      name: giveaway.title,
+      description,
+      startDate: new Date(giveaway.created_at).toISOString(),
+      endDate: new Date(giveaway.entry_deadline).toISOString(),
+      eventStatus: `https://schema.org/Event${giveaway.status === 'drawn' ? 'Completed' : 'Scheduled'}`,
+      eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',
+      location: { '@type': 'VirtualLocation', url },
+      organizer: { '@type': 'Organization', name: giveaway.host_name },
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'AED',
+        availability:
+          giveaway.status === 'active'
+            ? 'https://schema.org/InStock'
+            : 'https://schema.org/SoldOut',
+        url,
+      },
+      ...(giveaway.image_url ? { image: giveaway.image_url } : {}),
+    };
+
+    // JSON.stringify has no notion of HTML context — a title containing
+    // "</script>" would otherwise close this tag early and let arbitrary
+    // markup from a host-controlled field run on the page.
+    const eventJsonLdSafe = JSON.stringify(eventJsonLd).replace(/</g, '\\u003c');
+
+    html = html.replace(
+      '</head>',
+      `${ogTags}\n<script type="application/ld+json">${eventJsonLdSafe}</script>\n</head>`
+    );
 
     res.set('Content-Type', 'text/html');
     res.send(html);
