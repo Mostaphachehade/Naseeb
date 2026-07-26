@@ -31,18 +31,49 @@
       <a href="/create.html" class="btn ghost">Host your own</a>
     </div>
   </div>
-  <a class="hero-featured" id="hero-featured">
-    <div class="hero-featured-inner">
-      <div class="img" id="hero-featured-img"></div>
-      <div class="body">
-        <span class="tag" id="hero-featured-tag">Open now</span>
-        <h4 id="hero-featured-title"></h4>
-        <p id="hero-featured-prize"></p>
-      </div>
+  <div class="hero-promo-frame" id="promo-frame">
+    <div class="promo-ambient"></div>
+    <div class="promo-confetti" id="promo-confetti"></div>
+
+    <div class="promo-scene" data-pscene="1">
+      <span class="promo-eyebrow">Live now</span>
+      <h3 class="promo-s1-head">Zero cost.<br><span class="em">Real prize.</span></h3>
+      <p class="promo-s1-sub">No card. No catch. Ever.</p>
     </div>
-    <span class="notch left"></span>
-    <span class="notch right"></span>
-  </a>
+
+    <div class="promo-scene" data-pscene="2">
+      <span class="promo-eyebrow">This week's giveaway</span>
+      <div class="promo-ticket">
+        <div class="promo-ticket-art" id="promo-ticket-img" style="background-size:cover; background-position:center;"></div>
+        <div class="promo-notch l"></div>
+        <div class="promo-notch r"></div>
+        <div class="promo-perf"></div>
+        <div class="promo-ticket-body">
+          <span class="promo-ticket-label" id="promo-ticket-label">Open now</span>
+          <h4 class="promo-ticket-title" id="promo-ticket-title"></h4>
+          <span class="promo-ticket-value" id="promo-ticket-value"></span>
+        </div>
+      </div>
+      <p class="promo-s2-caption">Funded by the host. Free for you to enter.</p>
+    </div>
+
+    <div class="promo-scene" data-pscene="3">
+      <div class="promo-countdown-wrap">
+        <span class="promo-pulse"></span>
+        <span class="promo-pulse d2"></span>
+        <span class="promo-pulse d3"></span>
+        <span class="promo-countdown-num" id="promo-countdown-num"></span>
+      </div>
+      <p class="promo-countdown-caption">Days left to enter</p>
+      <p class="promo-s3-fine">One entry per person. Winner picked at random.</p>
+    </div>
+
+    <div class="promo-scene" data-pscene="4">
+      <h3 class="promo-s4-head">Enter free.<br><span class="em">Win real.</span></h3>
+      <a class="promo-cta-btn" id="promo-cta-inner">See the giveaway</a>
+      <p class="promo-s4-fine">No purchase. No catch. Just enter.</p>
+    </div>
+  </div>
 </section>
 
 <section class="stats-bar">
@@ -94,60 +125,6 @@
   </div>
 </main>
 
-<section class="promo-showcase" id="promo-showcase">
-  <div class="wrap promo-grid">
-    <div class="promo-copy">
-      <span class="eyebrow mono">Spotlight</span>
-      <h2>Don't miss this one.</h2>
-      <p>Every giveaway on Naseeb is free to enter, funded by the host, and drawn at random the moment the clock hits zero. Here's what's live right now.</p>
-      <a class="btn primary" id="promo-cta-outer">Enter free</a>
-    </div>
-    <div class="promo-frame" id="promo-frame">
-      <div class="promo-ambient"></div>
-      <div class="promo-confetti" id="promo-confetti"></div>
-
-      <div class="promo-scene" data-pscene="1">
-        <span class="promo-eyebrow">No purchase necessary</span>
-        <h3 class="promo-s1-head">Every ticket<br><span class="em">is free.</span></h3>
-        <p class="promo-s1-sub">No entry fee. No card. No catch.</p>
-      </div>
-
-      <div class="promo-scene" data-pscene="2">
-        <span class="promo-eyebrow">This week's giveaway</span>
-        <div class="promo-ticket">
-          <div class="promo-ticket-art" id="promo-ticket-img" style="background-size:cover; background-position:center;"></div>
-          <div class="promo-notch l"></div>
-          <div class="promo-notch r"></div>
-          <div class="promo-perf"></div>
-          <div class="promo-ticket-body">
-            <span class="promo-ticket-label" id="promo-ticket-label">Open now</span>
-            <h4 class="promo-ticket-title" id="promo-ticket-title"></h4>
-            <span class="promo-ticket-value" id="promo-ticket-value"></span>
-          </div>
-        </div>
-        <p class="promo-s2-caption">Funded by the host. Free for you to enter.</p>
-      </div>
-
-      <div class="promo-scene" data-pscene="3">
-        <div class="promo-countdown-wrap">
-          <span class="promo-pulse"></span>
-          <span class="promo-pulse d2"></span>
-          <span class="promo-pulse d3"></span>
-          <span class="promo-countdown-num" id="promo-countdown-num"></span>
-        </div>
-        <p class="promo-countdown-caption">Days left to enter</p>
-        <p class="promo-s3-fine">One entry per person. Winner picked at random.</p>
-      </div>
-
-      <div class="promo-scene" data-pscene="4">
-        <h3 class="promo-s4-head">Enter free.<br><span class="em">Win real.</span></h3>
-        <a class="promo-cta-btn" id="promo-cta-inner">See the giveaway</a>
-        <p class="promo-s4-fine">No purchase. No catch. Just enter.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <div id="site-footer"></div>
 
 <script src="/js/app.js"></script>
@@ -156,38 +133,17 @@
   const PAGE_SIZE = 12;
   let currentPage = 1;
 
-  // Fills the empty ticket-stub outline in the hero with a real, clickable
-  // giveaway — falls back to the plain dashed outline (default CSS) if
-  // there's no active giveaway to show yet.
-  async function loadFeaturedHero() {
-    try {
-      const { items } = await api('/giveaways?page=1&pageSize=1');
-      const g = items[0];
-      if (!g || g.status !== 'active') return;
-      document.getElementById('hero-featured').href = `/giveaway.html?id=${g.id}`;
-      document.getElementById('hero-featured-img').style.backgroundImage = g.image_url ? `url('${escapeAttr(g.image_url)}')` : '';
-      document.getElementById('hero-featured-tag').textContent = `${g.entry_count} entered · open now`;
-      document.getElementById('hero-featured-title').textContent = g.title;
-      document.getElementById('hero-featured-prize').textContent = g.prize_description;
-      document.getElementById('hero').classList.add('has-featured');
-    } catch (err) {
-      // Non-critical — the hero's decorative dashed outline stays as-is.
-    }
-  }
-
-  // Animated spotlight on the top live giveaway — same idea as the hero
-  // card, but a richer looping sequence (hook, prize, countdown, CTA).
-  // Stays hidden entirely if there's no active giveaway; nothing to be
-  // urgent about otherwise.
-  async function loadPromoShowcase() {
+  // Fills the empty ticket-stub outline in the hero with a real, animated
+  // spotlight on the top live giveaway (hook, prize, countdown, CTA) —
+  // falls back to the plain dashed outline (default CSS) if there's no
+  // active giveaway to show yet.
+  async function loadHeroPromo() {
     try {
       const { items } = await api('/giveaways?page=1&pageSize=1');
       const g = items[0];
       if (!g || g.status !== 'active') return;
 
-      const url = `/giveaway.html?id=${g.id}`;
-      document.getElementById('promo-cta-outer').href = url;
-      document.getElementById('promo-cta-inner').href = url;
+      document.getElementById('promo-cta-inner').href = `/giveaway.html?id=${g.id}`;
       if (g.image_url) {
         document.getElementById('promo-ticket-img').style.backgroundImage = `url('${escapeAttr(g.image_url)}')`;
       }
@@ -203,10 +159,10 @@
       const days = Math.max(1, Math.ceil((deadline - Date.now()) / 86400000));
       document.getElementById('promo-countdown-num').textContent = days;
 
-      document.getElementById('promo-showcase').classList.add('is-visible');
+      document.getElementById('hero').classList.add('has-featured');
       runPromoLoop();
     } catch (err) {
-      // Non-critical — the section just stays hidden.
+      // Non-critical — the hero's decorative dashed outline stays as-is.
     }
   }
 
@@ -320,8 +276,7 @@
   load();
   loadStats();
   loadAdBanner();
-  loadFeaturedHero();
-  loadPromoShowcase();
+  loadHeroPromo();
 </script>
 </body>
 </html>
