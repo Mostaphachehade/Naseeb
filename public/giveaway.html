@@ -48,10 +48,12 @@
 
           <div id="winner-box" style="display:none; margin-top:18px; background:var(--mint); border-radius:10px; padding:14px 16px;">
             <strong>Winner:</strong> <span id="winner-text"></span>
+            <div id="delivery-status" style="margin-top:8px;"></div>
           </div>
 
           <button class="btn primary" id="enter-btn" style="width:100%; margin-top:22px; justify-content:center;">Enter for free</button>
           <button class="btn ghost" id="draw-btn" style="width:100%; margin-top:12px; justify-content:center; display:none;">Draw winner now</button>
+          <button class="btn primary" id="confirm-delivery-btn" style="width:100%; margin-top:12px; justify-content:center; display:none;">Confirm prize delivered</button>
           <p class="form-error" id="action-error"></p>
           <p class="form-success" id="action-success"></p>
           <p class="hint" style="margin-top:14px;">No payment is ever requested to enter or to improve your odds. One entry per person.</p>
@@ -98,6 +100,7 @@
       if (g.winner) {
         document.getElementById('winner-box').style.display = 'block';
         document.getElementById('winner-text').textContent = `${g.winner.name} (ticket #${g.winner.ticket_number})`;
+        document.getElementById('delivery-status').innerHTML = deliveryPill(g);
 
         const celebratedKey = `naseeb_celebrated_${id}`;
         if (!sessionStorage.getItem(celebratedKey)) {
@@ -126,6 +129,15 @@
         drawBtn.disabled = !deadlinePassed;
         drawBtn.textContent = deadlinePassed ? 'Draw winner now' : 'Draw available after deadline';
         drawBtn.onclick = drawWinner;
+      }
+
+      const confirmBtn = document.getElementById('confirm-delivery-btn');
+      if (isHost && g.status === 'drawn' && !g.prize_delivered) {
+        confirmBtn.style.display = 'block';
+        confirmBtn.disabled = false;
+        confirmBtn.onclick = confirmDelivery;
+      } else {
+        confirmBtn.style.display = 'none';
       }
     } catch (err) {
       document.getElementById('title').textContent = 'Not found';
@@ -164,6 +176,21 @@
       errorEl.textContent = err.message;
       errorEl.classList.add('show');
       drawBtn.disabled = false;
+    }
+  }
+
+  async function confirmDelivery() {
+    const errorEl = document.getElementById('action-error');
+    const confirmBtn = document.getElementById('confirm-delivery-btn');
+    errorEl.classList.remove('show');
+    confirmBtn.disabled = true;
+    try {
+      await api(`/giveaways/${id}/confirm-delivery`, { method: 'POST' });
+      load();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+      confirmBtn.disabled = false;
     }
   }
 

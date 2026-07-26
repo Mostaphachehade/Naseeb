@@ -57,6 +57,13 @@ async function init() {
       winner_entry_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- Public accountability signal: the host explicitly confirms the prize
+    -- was sent, shown on the giveaway page and the public Winners page.
+    -- There's no escrow or enforcement behind it — it's a trust signal, not
+    -- a guarantee — but an unconfirmed delivery is visible to everyone,
+    -- which is the whole point.
+    ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS prize_delivered BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS prize_delivered_at TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS entries (
       id TEXT PRIMARY KEY,
