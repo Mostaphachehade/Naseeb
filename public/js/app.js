@@ -59,6 +59,22 @@ async function api(path, options = {}) {
   return data;
 }
 
+function langSwitcherHtml() {
+  const lang = getLang();
+  return `
+    <span class="lang-switch" role="group" aria-label="Language">
+      <button type="button" class="lang-btn ${lang === 'en' ? 'active' : ''}" data-lang="en">EN</button>
+      <button type="button" class="lang-btn ${lang === 'ar' ? 'active' : ''}" data-lang="ar">عربي</button>
+    </span>
+  `;
+}
+
+function wireLangSwitcher() {
+  document.querySelectorAll('.lang-btn').forEach((btn) => {
+    btn.addEventListener('click', () => setLang(btn.dataset.lang));
+  });
+}
+
 function renderHeader() {
   const nav = document.getElementById('site-nav');
   if (!nav) return;
@@ -66,15 +82,16 @@ function renderHeader() {
 
   if (user) {
     nav.innerHTML = `
-      <a href="/index.html">Browse</a>
-      <a href="/winners.html">Winners</a>
-      <a href="/about.html">About</a>
-      <a href="/dashboard.html">My giveaways</a>
-      <a href="/pricing.html">Pricing</a>
-      ${user.is_admin ? '<a href="/admin.html">Admin</a>' : ''}
-      <a href="/create.html" class="btn-gold" style="border-radius:100px;">Host a giveaway</a>
-      <span style="opacity:0.7;">Hi, ${escapeHtml(user.name)}</span>
-      <button id="logout-btn">Sign out</button>
+      <a href="/index.html">${t('nav.browse')}</a>
+      <a href="/winners.html">${t('nav.winners')}</a>
+      <a href="/about.html">${t('nav.about')}</a>
+      <a href="/dashboard.html">${t('nav.myGiveaways')}</a>
+      <a href="/pricing.html">${t('nav.pricing')}</a>
+      ${user.is_admin ? `<a href="/admin.html">${t('nav.admin')}</a>` : ''}
+      <a href="/create.html" class="btn-gold" style="border-radius:100px;">${t('nav.hostGiveaway')}</a>
+      <span style="opacity:0.7;">${t('nav.hi', { name: escapeHtml(user.name) })}</span>
+      <button id="logout-btn">${t('nav.signOut')}</button>
+      ${langSwitcherHtml()}
     `;
     document.getElementById('logout-btn').addEventListener('click', () => {
       clearSession();
@@ -82,14 +99,16 @@ function renderHeader() {
     });
   } else {
     nav.innerHTML = `
-      <a href="/index.html">Browse</a>
-      <a href="/winners.html">Winners</a>
-      <a href="/about.html">About</a>
-      <a href="/pricing.html">Pricing</a>
-      <a href="/login.html">Sign in</a>
-      <a href="/signup.html" class="btn-gold" style="border-radius:100px;">Join free</a>
+      <a href="/index.html">${t('nav.browse')}</a>
+      <a href="/winners.html">${t('nav.winners')}</a>
+      <a href="/about.html">${t('nav.about')}</a>
+      <a href="/pricing.html">${t('nav.pricing')}</a>
+      <a href="/login.html">${t('nav.signIn')}</a>
+      <a href="/signup.html" class="btn-gold" style="border-radius:100px;">${t('nav.joinFree')}</a>
+      ${langSwitcherHtml()}
     `;
   }
+  wireLangSwitcher();
 }
 
 function renderFooter() {
@@ -101,25 +120,25 @@ function renderFooter() {
       <div class="wrap footer-grid">
         <div class="footer-brand">
           <a href="/index.html" class="brand" style="font-size:1.2rem;">Naseeb<span class="dot">.</span></a>
-          <p>Free-entry giveaways, always. No purchase is ever required or accepted to enter or to improve your odds.</p>
+          <p>${t('footer.tagline')}</p>
         </div>
         <div class="footer-links">
-          <span class="footer-heading">Explore</span>
-          <a href="/index.html">Browse giveaways</a>
-          <a href="/winners.html">Past winners</a>
-          <a href="/create.html">Host a giveaway</a>
-          <a href="/pricing.html">Pricing</a>
-          <a href="/about.html">About Naseeb</a>
-          <a href="/advertise.html">Advertise with us</a>
-          <a href="/partners.html">Partners</a>
+          <span class="footer-heading">${t('footer.explore')}</span>
+          <a href="/index.html">${t('footer.browseGiveaways')}</a>
+          <a href="/winners.html">${t('footer.pastWinners')}</a>
+          <a href="/create.html">${t('nav.hostGiveaway')}</a>
+          <a href="/pricing.html">${t('nav.pricing')}</a>
+          <a href="/about.html">${t('footer.aboutNaseeb')}</a>
+          <a href="/advertise.html">${t('footer.advertise')}</a>
+          <a href="/partners.html">${t('footer.partners')}</a>
         </div>
         <div class="footer-links">
-          <span class="footer-heading">Legal</span>
-          <a href="/terms.html">Terms of Service</a>
-          <a href="/privacy.html">Privacy Policy</a>
+          <span class="footer-heading">${t('footer.legal')}</span>
+          <a href="/terms.html">${t('footer.terms')}</a>
+          <a href="/privacy.html">${t('footer.privacy')}</a>
         </div>
       </div>
-      <div class="wrap footer-bottom">© ${year} Naseeb. Every ticket is free.</div>
+      <div class="wrap footer-bottom">${t('footer.bottom', { year })}</div>
     </footer>
   `;
 }
@@ -151,12 +170,12 @@ function escapeAttr(str) {
 
 function timeLeft(deadlineIso) {
   const ms = new Date(deadlineIso).getTime() - Date.now();
-  if (ms <= 0) return 'Entries closed';
+  if (ms <= 0) return t('time.closed');
   const days = Math.floor(ms / 86400000);
   const hours = Math.floor((ms % 86400000) / 3600000);
-  if (days > 0) return `${days}d ${hours}h left`;
+  if (days > 0) return t('time.daysHoursLeft', { d: days, h: hours });
   const mins = Math.floor((ms % 3600000) / 60000);
-  return `${hours}h ${mins}m left`;
+  return t('time.hoursMinsLeft', { h: hours, m: mins });
 }
 
 function verifiedBadge() {
@@ -169,13 +188,13 @@ function verifiedBadge() {
 function deliveryPill(g) {
   if (g.status !== 'drawn') return '';
   return g.prize_delivered
-    ? `<span class="delivery-pill delivered">&check; Prize delivered</span>`
-    : `<span class="delivery-pill pending">Delivery pending</span>`;
+    ? `<span class="delivery-pill delivered">&check; ${t('delivery.delivered')}</span>`
+    : `<span class="delivery-pill pending">${t('delivery.pending')}</span>`;
 }
 
 function giveawayCard(g) {
   const img = g.image_url || '';
-  const statusLabel = g.status === 'drawn' ? 'Winner drawn' : timeLeft(g.entry_deadline);
+  const statusLabel = g.status === 'drawn' ? t('detail.winnerDrawn') : timeLeft(g.entry_deadline);
   const statusClass = g.status === 'drawn' ? 'drawn' : '';
   return `
     <a class="stub" href="/giveaway.html?id=${g.id}">
@@ -186,8 +205,8 @@ function giveawayCard(g) {
         <h3>${escapeHtml(g.title)}</h3>
         <p class="prize">${escapeHtml(g.prize_description)}</p>
         <div class="meta">
-          <span class="num">${g.entry_count} entered</span>
-          <span>by ${escapeHtml(g.host_name)}${g.host_verified ? verifiedBadge() : ''}</span>
+          <span class="num">${t('detail.enteredCount', { n: g.entry_count })}</span>
+          <span>${t('winners.by', { name: escapeHtml(g.host_name) })}${g.host_verified ? verifiedBadge() : ''}</span>
         </div>
         ${deliveryPill(g)}
       </div>

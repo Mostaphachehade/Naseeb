@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Markazi+Text:wght@500;600;700&family=Tajawal:wght@400;500;700;800&display=swap');
 
 :root {
   --ink: #0B3B36;
@@ -107,6 +107,26 @@ nav.site-nav a, nav.site-nav button {
   font-family: inherit;
 }
 nav.site-nav a:hover, nav.site-nav button:hover { border-color: rgba(220,238,231,0.35); }
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid rgba(220,238,231,0.25);
+  border-radius: 100px;
+}
+.lang-btn {
+  border: none;
+  background: transparent;
+  color: var(--mint);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 100px;
+  cursor: pointer;
+}
+.lang-btn.active { background: var(--gold); color: var(--ink-deep); }
 .btn-gold {
   background: var(--gold) !important;
   color: var(--ink-deep) !important;
@@ -852,3 +872,24 @@ footer.site a:hover { color: var(--gold-bright); }
   .promo-ambient, .promo-pulse, .promo-cta-btn::after, .promo-speck, .promo-ticket { animation: none !important; }
   .promo-scene { transition: opacity 0.2s; }
 }
+
+/* ---------- Arabic / RTL ----------
+   Flexbox and grid layouts mirror automatically under dir="rtl" — only the
+   handful of rules using literal left/right positioning (rather than
+   logical start/end) need explicit overrides here. */
+:lang(ar), [dir="rtl"] {
+  font-family: 'Tajawal', 'Inter', sans-serif;
+}
+[dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3, [dir="rtl"] .display {
+  font-family: 'Markazi Text', 'Fraunces', serif;
+}
+/* Markazi Text is a lighter face than Fraunces at the same weight — a
+   touch heavier here keeps Arabic headings feeling as solid as the
+   Latin ones instead of reading thin by comparison. */
+[dir="rtl"] h1 { font-weight: 700; }
+[dir="rtl"] h2, [dir="rtl"] h3 { font-weight: 600; }
+
+[dir="rtl"] .skip-link { left: auto; right: 12px; }
+[dir="rtl"] .hero::after { right: auto; left: -60px; transform: translateY(-50%) rotate(-8deg); }
+[dir="rtl"] .hero-promo-frame { right: auto; left: 20px; }
+[dir="rtl"] .verified-badge { margin-left: 0; margin-right: 4px; }
