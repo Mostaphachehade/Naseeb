@@ -4,8 +4,8 @@ const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { enterLimiter } = require('../middleware/rateLimit');
-const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
-const { winnerEmailHtml } = require('../lib/emailTemplates');
+const { sendEmail } = require('../lib/email');
+const { winnerEmailHtml, entryEmailHtml } = require('../lib/emailTemplates');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
@@ -307,7 +307,15 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
     sendEmail({
       to: enteringUser.email,
       subject: `You're entered: ${giveaway.title}`,
-      html: `<p>Hi ${escapeHtmlForEmail(enteringUser.name)},</p><p>You're entered in <strong>${escapeHtmlForEmail(giveaway.title)}</strong> — ticket #${ticketNumber}.</p><p>The winner is drawn at random once entries close on ${new Date(giveaway.entry_deadline).toLocaleDateString()}. Good luck!</p><p><a href="${giveawayUrl}">${giveawayUrl}</a></p>`,
+      html: entryEmailHtml({
+        entrantName: enteringUser.name,
+        giveawayTitle: giveaway.title,
+        prizeDescription: giveaway.prize_description,
+        imageUrl: giveaway.image_url,
+        ticketNumber,
+        entryDeadline: giveaway.entry_deadline,
+        giveawayUrl,
+      }),
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
