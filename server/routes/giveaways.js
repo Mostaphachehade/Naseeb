@@ -73,6 +73,43 @@ router.get('/stats/summary', async (req, res) => {
   }
 });
 
+// Public winners directory. Winner name + ticket number are already shown
+// on the individual giveaway page with no auth check — this just collects
+// the same already-public info in one place, newest draw first.
+router.get('/winners/all', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(48, Math.max(1, parseInt(req.query.pageSize, 10) || 12));
+    const offset = (page - 1) * pageSize;
+
+    const countRes = await pool.query(
+      "SELECT COUNT(*)::int AS c FROM giveaways WHERE status = 'drawn' AND winner_entry_id IS NOT NULL"
+    );
+    const total = countRes.rows[0].c;
+
+    const result = await pool.query(
+      `SELECT
+         giveaways.id, giveaways.title, giveaways.image_url, giveaways.prize_description,
+         giveaways.estimated_value_aed, giveaways.entry_deadline,
+         hostuser.name AS host_name, hostuser.is_verified_business AS host_verified,
+         winneruser.name AS winner_name, entries.ticket_number AS winner_ticket_number,
+         (SELECT COUNT(*)::int FROM entries e2 WHERE e2.giveaway_id = giveaways.id) AS entry_count
+       FROM giveaways
+       JOIN users hostuser ON hostuser.id = giveaways.host_id
+       JOIN entries ON entries.id = giveaways.winner_entry_id
+       JOIN users winneruser ON winneruser.id = entries.user_id
+       WHERE giveaways.status = 'drawn' AND giveaways.winner_entry_id IS NOT NULL
+       ORDER BY giveaways.entry_deadline DESC
+       LIMIT $1 OFFSET $2`,
+      [pageSize, offset]
+    );
+    res.json({ items: result.rows, total, page, pageSize });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
 // Single giveaway detail, plus whether the current viewer has already entered.
 router.get('/:id', optionalAuth, async (req, res) => {
   try {
