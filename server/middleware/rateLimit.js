@@ -42,4 +42,15 @@ const adInquiryLimiter = rateLimit({
   message: { error: 'Too many inquiries submitted. Please try again in a few minutes.' },
 });
 
-module.exports = { authLimiter, enterLimiter, applicationLimiter, adInquiryLimiter };
+// Creates a real Stripe Checkout Session per request (and a pending DB row)
+// — tighter than the plain inquiry form since each hit has a small real
+// cost, not just a database insert.
+const adCheckoutLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many checkout attempts. Please try again in a few minutes.' },
+});
+
+module.exports = { authLimiter, enterLimiter, applicationLimiter, adInquiryLimiter, adCheckoutLimiter };

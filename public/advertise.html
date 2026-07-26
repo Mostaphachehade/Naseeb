@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Advertise with us — Naseeb</title>
-<meta name="description" content="Put your business in front of Naseeb's audience with a homepage ad placement." />
+<meta name="description" content="Book the Naseeb homepage banner slot — a flat weekly rate, paid online, live on your chosen date." />
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
@@ -21,38 +21,93 @@
 
 <main id="main">
   <div class="wrap" style="max-width:640px;">
-    <div class="section-head" id="form-head">
-      <div>
-        <h2>Advertise with us</h2>
-        <p>A single banner placement on the Naseeb homepage. Tell us about your business and we'll follow up with pricing and availability.</p>
-      </div>
+
+    <div id="processing-panel" class="card narrow" style="display:none; text-align:center;">
+      <p style="color:var(--text-soft);">Confirming your payment…</p>
     </div>
 
-    <form class="card narrow" id="ad-form" style="max-width:none;">
-      <label for="business_name">Business name</label>
-      <input id="business_name" placeholder="e.g. Al Fahim Marketing LLC" required />
+    <div id="success-panel" class="card narrow" style="display:none; text-align:center;">
+      <h2>You're booked.</h2>
+      <p style="color:var(--text-soft); margin-bottom:18px;" id="success-details"></p>
+      <p class="hint">A receipt was sent to your email. Your banner goes live automatically on the start date — no further action needed.</p>
+      <a href="/index.html" class="btn primary" style="margin-top:16px;">Back to Naseeb</a>
+    </div>
 
-      <label for="contact_email">Email</label>
-      <input id="contact_email" type="email" required />
-
-      <label for="contact_phone">Phone (optional)</label>
-      <input id="contact_phone" type="tel" placeholder="e.g. +971 50 123 4567" />
-
-      <label for="message">Anything else? (optional)</label>
-      <textarea id="message" placeholder="What are you advertising, and when would you want it live?"></textarea>
-
-      <div class="compliance-box">
-        Submitting this doesn't charge you anything — it's how we get in touch to arrange pricing and get your banner live.
+    <div id="booking-flow">
+      <div class="section-head" id="form-head">
+        <div>
+          <h2>Advertise with us</h2>
+          <p>The homepage banner slot — one advertiser at a time, so your business isn't sharing the spot.</p>
+        </div>
       </div>
 
-      <button class="btn primary" type="submit">Submit inquiry</button>
-      <p class="form-error" id="error"></p>
-    </form>
+      <div class="card narrow" id="pricing-card" style="max-width:none; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
+        <div>
+          <div style="font-family:'Fraunces',serif; font-size:1.6rem; color:var(--ink-deep);">AED 500<span style="font-size:0.95rem; color:var(--text-soft); font-weight:400;"> / week</span></div>
+          <p class="hint" style="margin-top:2px;">Next available: <strong id="next-available">—</strong></p>
+        </div>
+        <span class="pill-badge company">Pay online, live automatically</span>
+      </div>
 
-    <div class="card narrow" id="confirmation" style="display:none; text-align:center;">
-      <h2>Got it.</h2>
-      <p style="color:var(--text-soft);">Thanks — we've got your inquiry and will reach out with pricing and availability.</p>
-      <a href="/index.html" class="btn primary" style="margin-top:16px;">Back to Naseeb</a>
+      <div id="cancelled-notice" class="form-error show" style="display:none; margin-bottom:16px;">Checkout was cancelled — you weren't charged. Ready when you are.</div>
+
+      <form class="card narrow" id="ad-form" style="max-width:none;">
+        <label for="business_name">Business name</label>
+        <input id="business_name" placeholder="e.g. Al Fahim Marketing LLC" required />
+
+        <label for="contact_email">Email</label>
+        <input id="contact_email" type="email" required />
+        <p class="hint">Your receipt and booking confirmation go here.</p>
+
+        <label for="image_file">Banner image</label>
+        <div id="image-upload-row" style="display:none; margin-bottom:10px;">
+          <input type="file" id="image_file" accept="image/*" />
+          <span class="hint" id="upload-status"></span>
+          <img id="image-preview" alt="" style="display:none; max-width:240px; border-radius:8px; margin-top:8px;" />
+        </div>
+        <input id="image_url" type="url" placeholder="https://…" required />
+        <p class="hint" id="image-url-hint">Paste an image URL, or upload one above. Wide banner shape works best (e.g. 1200×240).</p>
+
+        <label for="target_url">Destination link</label>
+        <input id="target_url" type="url" placeholder="https://your-business-site.com" required />
+
+        <label for="weeks">How many weeks?</label>
+        <select id="weeks">
+          <option value="1">1 week — AED 500</option>
+          <option value="2" selected>2 weeks — AED 1,000</option>
+          <option value="4">4 weeks — AED 2,000</option>
+          <option value="8">8 weeks — AED 4,000</option>
+        </select>
+
+        <div class="compliance-box">
+          You'll pay <strong id="total-price">AED 1,000</strong> now via Stripe. Your banner is scheduled starting <strong id="form-start-date">—</strong> and runs automatically — no manual follow-up needed.
+        </div>
+
+        <button class="btn primary" type="submit" id="checkout-btn">Continue to payment</button>
+        <p class="form-error" id="error"></p>
+      </form>
+
+      <div class="section-head" style="margin-top:40px;">
+        <div>
+          <h3>Want something custom?</h3>
+          <p>Video ads, a longer campaign, or a different placement — tell us what you have in mind and we'll follow up directly.</p>
+        </div>
+      </div>
+
+      <form class="card narrow" id="inquiry-form" style="max-width:none;">
+        <label for="inq_business_name">Business name</label>
+        <input id="inq_business_name" required />
+
+        <label for="inq_contact_email">Email</label>
+        <input id="inq_contact_email" type="email" required />
+
+        <label for="inq_message">What did you have in mind?</label>
+        <textarea id="inq_message" placeholder="e.g. a video ad, a 3-month campaign, something else"></textarea>
+
+        <button class="btn ghost" type="submit">Send inquiry</button>
+        <p class="form-error" id="inquiry-error"></p>
+        <p class="form-success" id="inquiry-success"></p>
+      </form>
     </div>
   </div>
 </main>
@@ -62,28 +117,140 @@
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
 <script>
+  const WEEK_PRICE_AED = 500;
+  let nextAvailableDate = null;
+
+  async function loadAvailability() {
+    try {
+      const { nextAvailableDate: date } = await api('/ads/availability');
+      nextAvailableDate = date;
+      const formatted = new Date(date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      document.getElementById('next-available').textContent = formatted;
+      document.getElementById('form-start-date').textContent = formatted;
+    } catch (err) {
+      document.getElementById('next-available').textContent = 'now';
+    }
+  }
+
+  document.getElementById('weeks').addEventListener('change', (e) => {
+    const total = Number(e.target.value) * WEEK_PRICE_AED;
+    document.getElementById('total-price').textContent = `AED ${total.toLocaleString()}`;
+  });
+
+  let cloudinaryConfig = null;
+  fetch('/api/config').then((r) => r.json()).then((config) => {
+    if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
+      cloudinaryConfig = config;
+      document.getElementById('image-upload-row').style.display = 'block';
+      document.getElementById('image-url-hint').textContent = 'Upload a file above, or paste an image URL.';
+    }
+  }).catch(() => {});
+
+  document.getElementById('image_file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file || !cloudinaryConfig) return;
+    const statusEl = document.getElementById('upload-status');
+    statusEl.textContent = 'Uploading…';
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
+    try {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudinary_cloud_name}/image/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
+      document.getElementById('image_url').value = data.secure_url;
+      const preview = document.getElementById('image-preview');
+      preview.src = data.secure_url;
+      preview.style.display = 'block';
+      statusEl.textContent = 'Uploaded.';
+    } catch (err) {
+      statusEl.textContent = err.message;
+    }
+  });
+
   document.getElementById('ad-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorEl = document.getElementById('error');
+    const btn = document.getElementById('checkout-btn');
+    errorEl.classList.remove('show');
+    btn.disabled = true;
+    btn.textContent = 'Starting checkout…';
+    try {
+      const { checkoutUrl } = await api('/ads/checkout', {
+        method: 'POST',
+        body: JSON.stringify({
+          business_name: document.getElementById('business_name').value,
+          contact_email: document.getElementById('contact_email').value,
+          image_url: document.getElementById('image_url').value,
+          target_url: document.getElementById('target_url').value,
+          weeks: Number(document.getElementById('weeks').value),
+        }),
+      });
+      window.location.href = checkoutUrl;
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = 'Continue to payment';
+    }
+  });
+
+  document.getElementById('inquiry-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('inquiry-error');
     errorEl.classList.remove('show');
     try {
       await api('/ad-inquiries', {
         method: 'POST',
         body: JSON.stringify({
-          business_name: document.getElementById('business_name').value,
-          contact_email: document.getElementById('contact_email').value,
-          contact_phone: document.getElementById('contact_phone').value || null,
-          message: document.getElementById('message').value || null,
+          business_name: document.getElementById('inq_business_name').value,
+          contact_email: document.getElementById('inq_contact_email').value,
+          message: document.getElementById('inq_message').value || null,
         }),
       });
-      document.getElementById('form-head').style.display = 'none';
-      document.getElementById('ad-form').style.display = 'none';
-      document.getElementById('confirmation').style.display = 'block';
+      document.getElementById('inquiry-form').style.display = 'none';
+      document.getElementById('inquiry-success').textContent = "Got it — we'll be in touch.";
+      document.getElementById('inquiry-success').classList.add('show');
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.add('show');
     }
   });
+
+  async function init() {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('status');
+    const sessionId = params.get('session_id');
+
+    if (status === 'success' && sessionId) {
+      document.getElementById('booking-flow').style.display = 'none';
+      document.getElementById('processing-panel').style.display = 'block';
+      try {
+        const booking = await api(`/ads/checkout/confirm?session_id=${encodeURIComponent(sessionId)}`);
+        document.getElementById('processing-panel').style.display = 'none';
+        document.getElementById('success-panel').style.display = 'block';
+        document.getElementById('success-details').textContent =
+          `${booking.business_name}'s banner runs ${new Date(booking.starts_at + 'T00:00:00').toLocaleDateString()} – ${new Date(booking.ends_at + 'T00:00:00').toLocaleDateString()} (AED ${Number(booking.amount_aed).toLocaleString()} paid).`;
+      } catch (err) {
+        document.getElementById('processing-panel').style.display = 'none';
+        document.getElementById('booking-flow').style.display = 'block';
+        document.getElementById('error').textContent = err.message;
+        document.getElementById('error').classList.add('show');
+      }
+      return;
+    }
+
+    if (status === 'cancelled') {
+      document.getElementById('cancelled-notice').style.display = 'block';
+    }
+
+    loadAvailability();
+  }
+
+  init();
 </script>
 </body>
 </html>
