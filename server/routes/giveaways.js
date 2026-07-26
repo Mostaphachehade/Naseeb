@@ -246,9 +246,16 @@ router.post('/', requireAuth, async (req, res) => {
 
 // Enter a giveaway. Always free — there is no amount, no payment reference,
 // nothing to charge. One entry per person per giveaway.
+//
+// Runs inside a transaction with the giveaway row locked (SELECT ... FOR
+// UPDATE) so two near-simultaneous entries (or one impatient double-click)
+// can't both read the same entry count and get issued the same ticket
+// number — the second request blocks until the first commits, then sees
+// the incremented count.
 router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const userRes = await pool.query('SELECT name, email, email_verified FROM users WHERE id = $1', [
+    const userRes = await client.query('SELECT name, email, email_verified FROM users WHERE id = $1', [
       req.userId,
     ]);
     const enteringUser = userRes.rows[0];
@@ -256,33 +263,42 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Please verify your email before entering a giveaway.' });
     }
 
-    const result = await pool.query('SELECT * FROM giveaways WHERE id = $1', [req.params.id]);
+    await client.query('BEGIN');
+
+    const result = await client.query('SELECT * FROM giveaways WHERE id = $1 FOR UPDATE', [req.params.id]);
     const giveaway = result.rows[0];
-    if (!giveaway) return res.status(404).json({ error: 'This giveaway does not exist.' });
+    if (!giveaway) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'This giveaway does not exist.' });
+    }
     if (giveaway.status !== 'active') {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This giveaway is no longer accepting entries.' });
     }
     if (new Date(giveaway.entry_deadline) <= new Date()) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'The entry deadline for this giveaway has passed.' });
     }
 
-    const existingRes = await pool.query(
+    const existingRes = await client.query(
       'SELECT id FROM entries WHERE giveaway_id = $1 AND user_id = $2',
       [req.params.id, req.userId]
     );
     if (existingRes.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(409).json({ error: "You're already entered in this giveaway. Good luck!" });
     }
 
-    const countRes = await pool.query('SELECT COUNT(*)::int AS c FROM entries WHERE giveaway_id = $1', [
+    const countRes = await client.query('SELECT COUNT(*)::int AS c FROM entries WHERE giveaway_id = $1', [
       req.params.id,
     ]);
     const ticketNumber = countRes.rows[0].c + 1;
     const id = uuid();
-    await pool.query(
+    await client.query(
       'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, $4)',
       [id, req.params.id, req.userId, ticketNumber]
     );
+    await client.query('COMMIT');
 
     res.status(201).json({ id, ticket_number: ticketNumber });
 
@@ -293,49 +309,70 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
       html: `<p>Hi ${escapeHtmlForEmail(enteringUser.name)},</p><p>You're entered in <strong>${escapeHtmlForEmail(giveaway.title)}</strong> — ticket #${ticketNumber}.</p><p>The winner is drawn at random once entries close on ${new Date(giveaway.entry_deadline).toLocaleDateString()}. Good luck!</p><p><a href="${giveawayUrl}">${giveawayUrl}</a></p>`,
     });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
   }
 });
 
 // Draw a winner. Only the host can trigger this, and only after the entry
 // deadline has passed, so the pool of tickets is fixed and final before the
 // random draw runs.
+//
+// Runs inside a transaction with the giveaway row locked (SELECT ... FOR
+// UPDATE) so a double-clicked or double-submitted draw can't run twice
+// concurrently, compute two different random winners, and have the second
+// write silently overwrite the first — which would leave one "You won"
+// email pointing at someone who, per the database, didn't actually win.
 router.post('/:id/draw', requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const result = await pool.query('SELECT * FROM giveaways WHERE id = $1', [req.params.id]);
+    await client.query('BEGIN');
+
+    const result = await client.query('SELECT * FROM giveaways WHERE id = $1 FOR UPDATE', [req.params.id]);
     const giveaway = result.rows[0];
-    if (!giveaway) return res.status(404).json({ error: 'This giveaway does not exist.' });
+    if (!giveaway) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'This giveaway does not exist.' });
+    }
     if (giveaway.host_id !== req.userId) {
+      await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Only the host of this giveaway can draw a winner.' });
     }
     if (giveaway.status !== 'active') {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This giveaway has already been drawn or cancelled.' });
     }
     if (new Date(giveaway.entry_deadline) > new Date()) {
+      await client.query('ROLLBACK');
       return res
         .status(400)
         .json({ error: 'You can draw a winner once the entry deadline has passed.' });
     }
 
-    const entriesRes = await pool.query('SELECT * FROM entries WHERE giveaway_id = $1', [
+    const entriesRes = await client.query('SELECT * FROM entries WHERE giveaway_id = $1', [
       req.params.id,
     ]);
     const entries = entriesRes.rows;
     if (entries.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'No one has entered yet, so there is no one to draw.' });
     }
 
     const winner = entries[crypto.randomInt(entries.length)];
-    await pool.query("UPDATE giveaways SET status = 'drawn', winner_entry_id = $1 WHERE id = $2", [
+    await client.query("UPDATE giveaways SET status = 'drawn', winner_entry_id = $1 WHERE id = $2", [
       winner.id,
       req.params.id,
     ]);
 
-    const winnerUserRes = await pool.query('SELECT name, email FROM users WHERE id = $1', [
+    const winnerUserRes = await client.query('SELECT name, email FROM users WHERE id = $1', [
       winner.user_id,
     ]);
     const winnerUser = winnerUserRes.rows[0];
+    await client.query('COMMIT');
+
     res.json({
       winner_name: winnerUser.name,
       winner_ticket_number: winner.ticket_number,
@@ -348,8 +385,11 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
       html: `<p>Hi ${escapeHtmlForEmail(winnerUser.name)},</p><p>Congratulations — you won <strong>${escapeHtmlForEmail(giveaway.title)}</strong> with ticket #${winner.ticket_number}!</p><p>The host, funded by ${escapeHtmlForEmail(giveaway.funded_by)}, will be in touch to arrange your prize.</p><p><a href="${giveawayUrl}">${giveawayUrl}</a></p>`,
     });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
   }
 });
 
