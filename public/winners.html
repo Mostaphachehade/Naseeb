@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Winners — Naseeb</title>
+<meta name="description" content="Real people, real prizes, drawn at random. See who's won on Naseeb so far." />
+<meta property="og:title" content="Winners — Naseeb" />
+<meta property="og:description" content="Real people, real prizes, drawn at random." />
+<meta property="og:type" content="website" />
+<meta name="theme-color" content="#0B3B36" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<section class="detail-hero">
+  <div class="wrap" style="max-width:720px;">
+    <span class="eyebrow mono">Winners</span>
+    <h1 style="color:var(--paper);">Real people. Real prizes. Drawn at random.</h1>
+    <p class="lede">Every giveaway here is drawn the same way — uniformly at random, after the deadline, from everyone who entered. Here's who's won so far.</p>
+  </div>
+</section>
+
+<main>
+  <div class="wrap">
+    <div class="grid" id="winners-grid"></div>
+    <div style="text-align:center;">
+      <button class="btn ghost" id="load-more-btn" style="display:none; border-color:var(--ink); color:var(--ink); margin-top:28px;">Load more</button>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="/js/app.js"></script>
+<script>
+  document.getElementById('winners-grid').innerHTML = skeletonCards(6);
+  const PAGE_SIZE = 12;
+  let currentPage = 1;
+
+  function winnerCard(g) {
+    const img = g.image_url || '';
+    const value = g.estimated_value_aed ? `AED ${Number(g.estimated_value_aed).toLocaleString()}` : null;
+    return `
+      <a class="stub" href="/giveaway.html?id=${g.id}">
+        <div class="img" style="${img ? `background-image:url('${escapeAttr(img)}')` : ''}">
+          <span class="status-pill drawn">Winner drawn</span>
+        </div>
+        <div class="body">
+          <h3>${escapeHtml(g.title)}</h3>
+          <p class="prize">${escapeHtml(g.prize_description)}${value ? ` · ${value}` : ''}</p>
+          <div class="meta">
+            <span class="num">Won by ${escapeHtml(g.winner_name)}</span>
+            <span>by ${escapeHtml(g.host_name)}${g.host_verified ? verifiedBadge() : ''}</span>
+          </div>
+        </div>
+      </a>
+    `;
+  }
+
+  async function load(page = 1) {
+    const grid = document.getElementById('winners-grid');
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    try {
+      const { items, total } = await api(`/giveaways/winners/all?page=${page}&pageSize=${PAGE_SIZE}`);
+      if (page === 1 && items.length === 0) {
+        grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">No winners drawn yet — check back once the first giveaway closes, or <a href="/index.html">browse what's open now</a>.</div>`;
+        loadMoreBtn.style.display = 'none';
+        return;
+      }
+      if (page === 1) grid.innerHTML = '';
+      grid.insertAdjacentHTML('beforeend', items.map(winnerCard).join(''));
+      currentPage = page;
+      loadMoreBtn.style.display = page * PAGE_SIZE < total ? 'inline-flex' : 'none';
+    } catch (err) {
+      grid.innerHTML = `<p class="form-error show">${err.message}</p>`;
+      loadMoreBtn.style.display = 'none';
+    }
+  }
+
+  document.getElementById('load-more-btn').addEventListener('click', () => load(currentPage + 1));
+
+  load();
+</script>
+</body>
+</html>

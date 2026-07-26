@@ -59,6 +59,7 @@ function renderHeader() {
   if (user) {
     nav.innerHTML = `
       <a href="/index.html">Browse</a>
+      <a href="/winners.html">Winners</a>
       <a href="/about.html">About</a>
       <a href="/dashboard.html">My giveaways</a>
       <a href="/pricing.html">Pricing</a>
@@ -74,6 +75,7 @@ function renderHeader() {
   } else {
     nav.innerHTML = `
       <a href="/index.html">Browse</a>
+      <a href="/winners.html">Winners</a>
       <a href="/about.html">About</a>
       <a href="/pricing.html">Pricing</a>
       <a href="/login.html">Sign in</a>
@@ -96,6 +98,7 @@ function renderFooter() {
         <div class="footer-links">
           <span class="footer-heading">Explore</span>
           <a href="/index.html">Browse giveaways</a>
+          <a href="/winners.html">Past winners</a>
           <a href="/create.html">Host a giveaway</a>
           <a href="/pricing.html">Pricing</a>
           <a href="/about.html">About Naseeb</a>
