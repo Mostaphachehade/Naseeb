@@ -31,4 +31,15 @@ const applicationLimiter = rateLimit({
   message: { error: 'Too many applications submitted. Please try again in a few minutes.' },
 });
 
-module.exports = { authLimiter, enterLimiter, applicationLimiter };
+// Same shape as applicationLimiter, but a separate instance/store — ad
+// inquiries and host applications are unrelated forms and shouldn't share
+// one rate-limit bucket per IP.
+const adInquiryLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many inquiries submitted. Please try again in a few minutes.' },
+});
+
+module.exports = { authLimiter, enterLimiter, applicationLimiter, adInquiryLimiter };

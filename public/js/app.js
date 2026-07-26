@@ -29,7 +29,15 @@ const API = '/api';
 function getToken() { return localStorage.getItem('naseeb_token'); }
 function getUser() {
   const raw = localStorage.getItem('naseeb_user');
-  return raw ? JSON.parse(raw) : null;
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    // Corrupted session data (e.g. a browser extension mangled localStorage)
+    // — treat it as signed out rather than crashing every page's header.
+    clearSession();
+    return null;
+  }
 }
 function setSession(token, user) {
   localStorage.setItem('naseeb_token', token);
