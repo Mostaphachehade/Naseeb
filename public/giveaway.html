@@ -135,8 +135,10 @@
   async function enterGiveaway() {
     const errorEl = document.getElementById('action-error');
     const successEl = document.getElementById('action-success');
+    const enterBtn = document.getElementById('enter-btn');
     errorEl.classList.remove('show');
     successEl.classList.remove('show');
+    enterBtn.disabled = true;
     try {
       const { ticket_number } = await api(`/giveaways/${id}/enter`, { method: 'POST' });
       successEl.textContent = `You're in! Your ticket number is #${ticket_number}.`;
@@ -145,18 +147,22 @@
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.add('show');
+      enterBtn.disabled = false;
     }
   }
 
   async function drawWinner() {
     const errorEl = document.getElementById('action-error');
+    const drawBtn = document.getElementById('draw-btn');
     errorEl.classList.remove('show');
+    drawBtn.disabled = true;
     try {
       await api(`/giveaways/${id}/draw`, { method: 'POST' });
       load();
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.add('show');
+      drawBtn.disabled = false;
     }
   }
 
