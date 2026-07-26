@@ -21,7 +21,7 @@
   </div>
 </header>
 
-<section class="hero">
+<section class="hero" id="hero">
   <div class="wrap">
     <span class="eyebrow">No purchase necessary</span>
     <h1>Every ticket is free.<br>Every draw is real.</h1>
@@ -31,6 +31,18 @@
       <a href="/create.html" class="btn ghost">Host your own</a>
     </div>
   </div>
+  <a class="hero-featured" id="hero-featured">
+    <div class="hero-featured-inner">
+      <div class="img" id="hero-featured-img"></div>
+      <div class="body">
+        <span class="tag" id="hero-featured-tag">Open now</span>
+        <h4 id="hero-featured-title"></h4>
+        <p id="hero-featured-prize"></p>
+      </div>
+    </div>
+    <span class="notch left"></span>
+    <span class="notch right"></span>
+  </a>
 </section>
 
 <section class="stats-bar">
@@ -90,6 +102,25 @@
   const PAGE_SIZE = 12;
   let currentPage = 1;
 
+  // Fills the empty ticket-stub outline in the hero with a real, clickable
+  // giveaway — falls back to the plain dashed outline (default CSS) if
+  // there's no active giveaway to show yet.
+  async function loadFeaturedHero() {
+    try {
+      const { items } = await api('/giveaways?page=1&pageSize=1');
+      const g = items[0];
+      if (!g || g.status !== 'active') return;
+      document.getElementById('hero-featured').href = `/giveaway.html?id=${g.id}`;
+      document.getElementById('hero-featured-img').style.backgroundImage = g.image_url ? `url('${escapeAttr(g.image_url)}')` : '';
+      document.getElementById('hero-featured-tag').textContent = `${g.entry_count} entered · open now`;
+      document.getElementById('hero-featured-title').textContent = g.title;
+      document.getElementById('hero-featured-prize').textContent = g.prize_description;
+      document.getElementById('hero').classList.add('has-featured');
+    } catch (err) {
+      // Non-critical — the hero's decorative dashed outline stays as-is.
+    }
+  }
+
   async function load(page = 1) {
     const grid = document.getElementById('grid');
     const loadMoreBtn = document.getElementById('load-more-btn');
@@ -146,6 +177,7 @@
   load();
   loadStats();
   loadAdBanner();
+  loadFeaturedHero();
 </script>
 </body>
 </html>
