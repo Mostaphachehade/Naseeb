@@ -296,19 +296,40 @@
     }
   }
 
+  function adStatusCell(a) {
+    if (a.paid) {
+      // starts_at/ends_at arrive as full ISO datetime strings (Postgres
+      // DATE values serialize with a time component in JSON) — slice to
+      // the date portion before comparing or displaying.
+      const startsAt = a.starts_at.slice(0, 10);
+      const endsAt = a.ends_at.slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      const isLive = startsAt <= today && endsAt >= today;
+      const label = isLive ? 'live' : (startsAt > today ? 'upcoming' : 'finished');
+      return `<span class="pill-badge company">paid · ${label}</span><br><span class="hint" style="margin-top:2px; display:inline-block;">${startsAt} – ${endsAt} · AED ${Number(a.amount_aed).toLocaleString()}</span>`;
+    }
+    if (a.stripe_session_id) {
+      return `<span class="pill-badge">checkout pending</span>`;
+    }
+    return a.active ? '<span class="pill-badge company">active</span>' : '<span class="pill-badge">inactive</span>';
+  }
+
   function adRow(a) {
     const thumb = a.media_type === 'video'
       ? `<video src="${escapeHtml(a.image_url)}" muted style="width:100px; height:40px; object-fit:cover; border-radius:6px; display:block;"></video>`
       : `<img src="${escapeHtml(a.image_url)}" alt="" style="width:100px; height:40px; object-fit:cover; border-radius:6px; display:block;" />`;
+    // Self-serve paid bookings are scheduled by date, not hand-toggled —
+    // only manually-created admin ads get the activate/deactivate button.
+    const isManual = !a.paid && !a.stripe_session_id;
     return `
       <tr data-id="${a.id}">
         <td>${thumb}</td>
         <td>${escapeHtml(a.business_name)} ${a.media_type === 'video' ? '<span class="pill-badge">video</span>' : ''}</td>
         <td style="max-width:200px; word-break:break-all;"><a href="${escapeHtml(a.target_url)}" target="_blank" rel="noopener">${escapeHtml(a.target_url)}</a></td>
         <td class="mono">${a.click_count}</td>
-        <td>${a.active ? '<span class="pill-badge company">active</span>' : '<span class="pill-badge">inactive</span>'}</td>
+        <td>${adStatusCell(a)}</td>
         <td>
-          <button class="btn ghost ad-toggle-btn" style="padding:6px 12px; font-size:0.8rem;" data-active="${a.active}">${a.active ? 'Deactivate' : 'Activate'}</button>
+          ${isManual ? `<button class="btn ghost ad-toggle-btn" style="padding:6px 12px; font-size:0.8rem;" data-active="${a.active}">${a.active ? 'Deactivate' : 'Activate'}</button>` : ''}
           <button class="btn ghost ad-delete-btn" style="padding:6px 12px; font-size:0.8rem; border-color:var(--danger); color:var(--danger);">Delete</button>
         </td>
       </tr>

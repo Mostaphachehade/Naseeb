@@ -22,7 +22,13 @@ router.get('/stats', requireAdmin, async (req, res) => {
       pool.query(
         "SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE is_verified_business) ::int AS verified FROM users"
       ),
-      pool.query('SELECT business_name, click_count FROM ads WHERE active = TRUE LIMIT 1'),
+      pool.query(
+        `SELECT business_name, click_count FROM ads
+         WHERE (paid = TRUE AND starts_at <= CURRENT_DATE AND ends_at >= CURRENT_DATE)
+            OR (paid = FALSE AND active = TRUE)
+         ORDER BY paid DESC
+         LIMIT 1`
+      ),
     ]);
 
     res.json({

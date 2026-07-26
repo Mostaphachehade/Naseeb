@@ -1,4 +1,13 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// node-postgres parses DATE columns (OID 1082) into a JS Date at local
+// midnight, then anything that later serializes it (JSON.stringify, our own
+// .toISOString() calls) renders in UTC — on a server whose local timezone
+// isn't UTC, that silently shifts the date by a day. Returning the raw
+// 'YYYY-MM-DD' string instead sidesteps the whole class of bug; every DATE
+// value in this app (ads.starts_at/ends_at) is meant to be a calendar day,
+// never a specific instant, so there's no timezone to lose here.
+types.setTypeParser(1082, (val) => val);
 
 // Postgres connection. Works with any hosted Postgres (Neon, Supabase, Render
 // Postgres, etc). Most hosted providers require SSL but use certificates that
@@ -123,6 +132,19 @@ async function init() {
     -- <img> or a muted autoplay <video>. image_url holds the asset URL
     -- either way (Cloudinary serves both from the same kind of secure_url).
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'image';
+
+    -- Self-serve paid bookings (Stripe Checkout) alongside the original
+    -- manually-toggled admin ads. A paid booking is scheduled for a fixed
+    -- date range rather than switched on/off by hand; GET /api/ads/active
+    -- prefers a currently-in-window paid booking and falls back to the old
+    -- active flag so manual admin ads keep working unchanged.
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS contact_email TEXT;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS starts_at DATE;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS ends_at DATE;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS paid BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS amount_aed NUMERIC;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_ads_stripe_session_id ON ads(stripe_session_id) WHERE stripe_session_id IS NOT NULL;
 
     -- entries(giveaway_id) doesn't need its own index — it's already the
     -- leading column of the UNIQUE(giveaway_id, user_id) constraint above,
