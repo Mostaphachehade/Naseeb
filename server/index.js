@@ -4,6 +4,7 @@ const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const Sentry = require('@sentry/node');
 const { init, pool } = require('./db');
 
@@ -40,6 +41,7 @@ app.set('trust proxy', 1);
 // default-restrictive CSP would break the app rather than harden it. The
 // other headers (HSTS, no-sniff, frame-deny, etc.) still apply.
 app.use(helmet({ contentSecurityPolicy: false }));
+app.use(compression());
 app.use(cors({ origin: process.env.APP_URL || 'http://localhost:3000' }));
 app.use(express.json());
 

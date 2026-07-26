@@ -116,6 +116,16 @@ async function init() {
     -- <img> or a muted autoplay <video>. image_url holds the asset URL
     -- either way (Cloudinary serves both from the same kind of secure_url).
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'image';
+
+    -- entries(giveaway_id) doesn't need its own index — it's already the
+    -- leading column of the UNIQUE(giveaway_id, user_id) constraint above,
+    -- which Postgres can use directly for single-column lookups on it.
+    CREATE INDEX IF NOT EXISTS idx_entries_user_id ON entries(user_id);
+    CREATE INDEX IF NOT EXISTS idx_giveaways_host_id ON giveaways(host_id);
+    CREATE INDEX IF NOT EXISTS idx_giveaways_status_deadline ON giveaways(status, entry_deadline);
+    CREATE INDEX IF NOT EXISTS idx_host_applications_user_id ON host_applications(user_id);
+    CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users(verification_token) WHERE verification_token IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token) WHERE reset_token IS NOT NULL;
   `);
 }
 
