@@ -1,0 +1,51 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Ephemeral, disposable — never the real Neon database. No production
+    # credentials are ever given to CI.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: naseeb
+          POSTGRES_PASSWORD: naseeb
+          POSTGRES_DB: naseeb_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://naseeb:naseeb@localhost:5432/naseeb_test
+      JWT_SECRET: ci-test-secret-not-used-anywhere-real
+      APP_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Creates the schema once, sequentially, before the test files run in
+      # parallel. Without this, two test files can both run CREATE TABLE IF
+      # NOT EXISTS against the same brand-new database at the same instant —
+      # that check isn't safe against concurrent first-creation in Postgres,
+      # and the second writer loses with a duplicate-key error on pg_type.
+      - run: npm run db:init
+
+      - run: npm test

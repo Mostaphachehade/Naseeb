@@ -6,7 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "test": "node --test",
+    "db:init": "node -e \"require('./server/db').init().then(() => process.exit(0))\""
   },
   "dependencies": {
     "@sentry/node": "^10.68.0",
@@ -20,5 +22,8 @@
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.11.5",
     "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
   }
 }
