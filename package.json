@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "db:init": "node -e \"require('./server/db').init().then(() => process.exit(0))\""
   },
   "dependencies": {
     "@sentry/node": "^10.68.0",

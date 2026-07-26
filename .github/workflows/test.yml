@@ -41,4 +41,11 @@ jobs:
 
       - run: npm ci
 
+      # Creates the schema once, sequentially, before the test files run in
+      # parallel. Without this, two test files can both run CREATE TABLE IF
+      # NOT EXISTS against the same brand-new database at the same instant —
+      # that check isn't safe against concurrent first-creation in Postgres,
+      # and the second writer loses with a duplicate-key error on pg_type.
+      - run: npm run db:init
+
       - run: npm test
