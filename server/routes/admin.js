@@ -145,13 +145,14 @@ router.get('/ads', requireAdmin, async (req, res) => {
 
 router.post('/ads', requireAdmin, async (req, res) => {
   try {
-    const { business_name, image_url, target_url } = req.body;
+    const { business_name, image_url, target_url, media_type } = req.body;
     if (!business_name || !business_name.trim()) {
       return res.status(400).json({ error: 'Business name is required.' });
     }
     if (!image_url || !image_url.trim()) {
-      return res.status(400).json({ error: 'Image URL is required.' });
+      return res.status(400).json({ error: 'Media URL is required.' });
     }
+    const normalizedMediaType = media_type === 'video' ? 'video' : 'image';
 
     let normalizedTargetUrl;
     try {
@@ -164,8 +165,8 @@ router.post('/ads', requireAdmin, async (req, res) => {
 
     const id = uuid();
     await pool.query(
-      'INSERT INTO ads (id, business_name, image_url, target_url) VALUES ($1, $2, $3, $4)',
-      [id, business_name.trim(), image_url.trim(), normalizedTargetUrl]
+      'INSERT INTO ads (id, business_name, image_url, target_url, media_type) VALUES ($1, $2, $3, $4, $5)',
+      [id, business_name.trim(), image_url.trim(), normalizedTargetUrl, normalizedMediaType]
     );
     const result = await pool.query('SELECT * FROM ads WHERE id = $1', [id]);
     res.status(201).json(result.rows[0]);

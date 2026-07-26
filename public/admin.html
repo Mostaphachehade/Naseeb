@@ -65,14 +65,21 @@
       <label for="ad_business_name">Business name</label>
       <input id="ad_business_name" required />
 
-      <label for="ad_image_file">Banner image</label>
+      <label>Media type</label>
+      <div class="segmented" id="ad-media-type-toggle">
+        <button type="button" class="segmented-option active" data-value="image" aria-pressed="true">Image</button>
+        <button type="button" class="segmented-option" data-value="video" aria-pressed="false">Video</button>
+      </div>
+
+      <label for="ad_image_file" id="ad-file-label">Banner image</label>
       <div id="ad-image-upload-row" style="display:none; margin-bottom:10px;">
         <input type="file" id="ad_image_file" accept="image/*" />
         <span class="hint" id="ad-upload-status"></span>
         <img id="ad-image-preview" alt="" style="display:none; max-width:240px; border-radius:8px; margin-top:8px;" />
+        <video id="ad-video-preview" style="display:none; max-width:240px; border-radius:8px; margin-top:8px;" controls muted></video>
       </div>
       <input id="ad_image_url" type="url" placeholder="https://…" required />
-      <p class="hint" id="ad-image-url-hint">Paste an image URL. Wide banner shape works best (e.g. 1200×240).</p>
+      <p class="hint" id="ad-image-url-hint">Paste an image URL, or upload one above. Wide banner shape works best (e.g. 1200×240).</p>
 
       <label for="ad_target_url">Destination link</label>
       <input id="ad_target_url" type="url" placeholder="https://the-advertiser's-site.com" required />
@@ -288,10 +295,13 @@
   }
 
   function adRow(a) {
+    const thumb = a.media_type === 'video'
+      ? `<video src="${escapeHtml(a.image_url)}" muted style="width:100px; height:40px; object-fit:cover; border-radius:6px; display:block;"></video>`
+      : `<img src="${escapeHtml(a.image_url)}" alt="" style="width:100px; height:40px; object-fit:cover; border-radius:6px; display:block;" />`;
     return `
       <tr data-id="${a.id}">
-        <td><img src="${escapeHtml(a.image_url)}" alt="" style="width:100px; height:40px; object-fit:cover; border-radius:6px; display:block;" /></td>
-        <td>${escapeHtml(a.business_name)}</td>
+        <td>${thumb}</td>
+        <td>${escapeHtml(a.business_name)} ${a.media_type === 'video' ? '<span class="pill-badge">video</span>' : ''}</td>
         <td style="max-width:200px; word-break:break-all;"><a href="${escapeHtml(a.target_url)}" target="_blank" rel="noopener">${escapeHtml(a.target_url)}</a></td>
         <td class="mono">${a.click_count}</td>
         <td>${a.active ? '<span class="pill-badge company">active</span>' : '<span class="pill-badge">inactive</span>'}</td>
@@ -500,13 +510,33 @@
   }
 
   let cloudinaryConfig = null;
+  let adMediaType = 'image';
+
   fetch('/api/config').then((r) => r.json()).then((config) => {
     if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
       cloudinaryConfig = config;
       document.getElementById('ad-image-upload-row').style.display = 'block';
-      document.getElementById('ad-image-url-hint').textContent = 'Upload a file above, or paste an image URL.';
+      document.getElementById('ad-image-url-hint').textContent = 'Upload a file above, or paste a media URL.';
     }
   }).catch(() => {});
+
+  document.querySelectorAll('#ad-media-type-toggle .segmented-option').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      adMediaType = btn.dataset.value;
+      document.querySelectorAll('#ad-media-type-toggle .segmented-option').forEach((b) => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+      });
+      const isVideo = adMediaType === 'video';
+      document.getElementById('ad-file-label').textContent = isVideo ? 'Banner video' : 'Banner image';
+      document.getElementById('ad_image_file').accept = isVideo ? 'video/*' : 'image/*';
+      document.getElementById('ad_image_file').value = '';
+      document.getElementById('ad_image_url').value = '';
+      document.getElementById('ad-image-preview').style.display = 'none';
+      document.getElementById('ad-video-preview').style.display = 'none';
+      document.getElementById('ad-upload-status').textContent = '';
+    });
+  });
 
   document.getElementById('ad_image_file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -516,17 +546,26 @@
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
+    const resourceType = adMediaType === 'video' ? 'video' : 'image';
     try {
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudinary_cloud_name}/image/upload`, {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudinary_cloud_name}/${resourceType}/upload`, {
         method: 'POST',
         body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
       document.getElementById('ad_image_url').value = data.secure_url;
-      const preview = document.getElementById('ad-image-preview');
-      preview.src = data.secure_url;
-      preview.style.display = 'block';
+      const imgPreview = document.getElementById('ad-image-preview');
+      const videoPreview = document.getElementById('ad-video-preview');
+      if (adMediaType === 'video') {
+        videoPreview.src = data.secure_url;
+        videoPreview.style.display = 'block';
+        imgPreview.style.display = 'none';
+      } else {
+        imgPreview.src = data.secure_url;
+        imgPreview.style.display = 'block';
+        videoPreview.style.display = 'none';
+      }
       statusEl.textContent = 'Uploaded.';
     } catch (err) {
       statusEl.textContent = err.message;
@@ -544,10 +583,12 @@
           business_name: document.getElementById('ad_business_name').value,
           image_url: document.getElementById('ad_image_url').value,
           target_url: document.getElementById('ad_target_url').value,
+          media_type: adMediaType,
         }),
       });
       e.target.reset();
       document.getElementById('ad-image-preview').style.display = 'none';
+      document.getElementById('ad-video-preview').style.display = 'none';
       loadAds();
     } catch (err) {
       errorEl.textContent = err.message;
