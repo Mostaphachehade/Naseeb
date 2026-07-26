@@ -1,6 +1,6 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { api, pool, ensureInit, uniqueEmail } = require('./helpers');
+const { api, pool, ensureInit, uniqueEmail } = require('../testHelpers');
 
 const createdUserIds = [];
 

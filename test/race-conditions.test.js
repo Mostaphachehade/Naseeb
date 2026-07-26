@@ -8,7 +8,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit } = require('./helpers');
+const { api, pool, ensureInit } = require('../testHelpers');
 
 const createdUserIds = [];
 const createdGiveawayIds = [];

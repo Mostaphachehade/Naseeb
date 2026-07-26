@@ -1,7 +1,7 @@
 require('dotenv').config();
 const request = require('supertest');
-const app = require('../server/app');
-const { pool, init } = require('../server/db');
+const app = require('./server/app');
+const { pool, init } = require('./server/db');
 
 let initialized = false;
 async function ensureInit() {

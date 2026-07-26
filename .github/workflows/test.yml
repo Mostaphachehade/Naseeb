@@ -1,0 +1,44 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Ephemeral, disposable — never the real Neon database. No production
+    # credentials are ever given to CI.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: naseeb
+          POSTGRES_PASSWORD: naseeb
+          POSTGRES_DB: naseeb_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://naseeb:naseeb@localhost:5432/naseeb_test
+      JWT_SECRET: ci-test-secret-not-used-anywhere-real
+      APP_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
