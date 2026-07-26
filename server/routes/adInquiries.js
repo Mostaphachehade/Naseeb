@@ -1,7 +1,7 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
-const { applicationLimiter } = require('../middleware/rateLimit');
+const { adInquiryLimiter } = require('../middleware/rateLimit');
 const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
 
 const router = express.Router();
@@ -11,7 +11,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Ad placement inquiries. Advertising is a separate product from hosting
 // giveaways — sold to anyone, billed manually, tracked via click_count on
 // the ads table so pricing conversations have real numbers behind them.
-router.post('/', applicationLimiter, async (req, res) => {
+router.post('/', adInquiryLimiter, async (req, res) => {
   try {
     const { business_name, contact_email, contact_phone, message } = req.body;
 
