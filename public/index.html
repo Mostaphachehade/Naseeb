@@ -127,11 +127,14 @@
     try {
       const ad = await api('/ads/active');
       if (!ad) return;
+      const media = ad.media_type === 'video'
+        ? `<video src="${escapeHtml(ad.image_url)}" autoplay muted loop playsinline></video>`
+        : `<img src="${escapeHtml(ad.image_url)}" alt="${escapeHtml(ad.business_name)}" />`;
       document.getElementById('ad-banner-slot').innerHTML = `
         <div class="ad-banner-wrap">
           <span class="ad-banner-label">Advertisement</span>
           <a class="ad-banner" href="/api/ads/${ad.id}/click" target="_blank" rel="noopener sponsored">
-            <img src="${escapeHtml(ad.image_url)}" alt="${escapeHtml(ad.business_name)}" />
+            ${media}
           </a>
         </div>
       `;

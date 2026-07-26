@@ -8,7 +8,7 @@ const router = express.Router();
 router.get('/active', async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, business_name, image_url, target_url FROM ads WHERE active = TRUE LIMIT 1'
+      'SELECT id, business_name, image_url, target_url, media_type FROM ads WHERE active = TRUE LIMIT 1'
     );
     res.json(result.rows[0] || null);
   } catch (err) {

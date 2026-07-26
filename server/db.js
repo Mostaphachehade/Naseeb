@@ -112,6 +112,10 @@ async function init() {
       click_count INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- 'image' or 'video' — tells the homepage banner whether to render an
+    -- <img> or a muted autoplay <video>. image_url holds the asset URL
+    -- either way (Cloudinary serves both from the same kind of secure_url).
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'image';
   `);
 }
 
