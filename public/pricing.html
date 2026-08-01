@@ -62,7 +62,7 @@
 
       <div class="plan featured">
         <h3>Standard listing</h3>
-        <div class="price">AED 250<span> / 3 giveaways</span></div>
+        <div class="price"><span id="standard-price">AED 250</span><span> / 3 giveaways</span></div>
         <p style="color:var(--text-soft); font-size:0.9rem;">One payment covers three giveaway listings — no ongoing commitment.</p>
         <ul>
           <li>3 giveaway listings, live for your chosen deadlines</li>
@@ -75,7 +75,7 @@
 
       <div class="plan">
         <h3>Partner plan</h3>
-        <div class="price">AED 900<span> / month</span></div>
+        <div class="price"><span id="partner-price">AED 900</span><span> / month</span></div>
         <p style="color:var(--text-soft); font-size:0.9rem;">For businesses that want to run giveaways regularly.</p>
         <ul>
           <li>Unlimited giveaway listings</li>
@@ -118,5 +118,11 @@
 
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
+<script>
+  fetch('/api/config').then((r) => r.json()).then((s) => {
+    document.getElementById('standard-price').textContent = `AED ${Number(s.hosting_plan_standard_price_aed).toLocaleString()}`;
+    document.getElementById('partner-price').textContent = `AED ${Number(s.hosting_plan_partner_price_aed).toLocaleString()}`;
+  }).catch(() => {});
+</script>
 </body>
 </html>

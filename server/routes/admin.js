@@ -2,8 +2,17 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
+const { getAllSettings, setSetting } = require('../lib/settings');
 
 const router = express.Router();
+
+const SETTINGS_VALIDATORS = {
+  ad_price_per_week_aed: (v) => typeof v === 'string' && Number.isFinite(Number(v)) && Number(v) > 0,
+  hosting_plan_standard_price_aed: (v) => typeof v === 'string' && Number.isFinite(Number(v)) && Number(v) >= 0,
+  hosting_plan_partner_price_aed: (v) => typeof v === 'string' && Number.isFinite(Number(v)) && Number(v) >= 0,
+  maintenance_mode: (v) => v === 'true' || v === 'false',
+  maintenance_message: (v) => typeof v === 'string' && v.trim().length > 0 && v.trim().length <= 500,
+};
 
 // Single at-a-glance summary so an admin doesn't have to scroll every
 // section just to see what needs attention.
@@ -326,6 +335,81 @@ router.delete('/users/:id', requireAdmin, async (req, res) => {
         error: 'This host still has giveaways, entries, or applications on record — cancel or remove those first.',
       });
     }
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// Owner-editable values that would otherwise need a code deploy — see
+// server/lib/settings.js for the full list and defaults.
+router.get('/settings', requireAdmin, async (req, res) => {
+  try {
+    const settings = await getAllSettings();
+    res.json(settings);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+router.patch('/settings', requireAdmin, async (req, res) => {
+  try {
+    const updates = req.body;
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+      return res.status(400).json({ error: 'Expected an object of settings to update.' });
+    }
+    for (const [key, value] of Object.entries(updates)) {
+      const validate = SETTINGS_VALIDATORS[key];
+      if (!validate) {
+        return res.status(400).json({ error: `Unknown setting: ${key}` });
+      }
+      if (!validate(String(value))) {
+        return res.status(400).json({ error: `Invalid value for ${key}.` });
+      }
+    }
+    for (const [key, value] of Object.entries(updates)) {
+      await setSetting(key, String(value).trim());
+    }
+    const settings = await getAllSettings();
+    res.json(settings);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// Ad revenue only — hosting plans aren't wired to real billing yet (see
+// server/routes/giveaways.js), so there's nothing else to report on.
+router.get('/revenue', requireAdmin, async (req, res) => {
+  try {
+    const [totals, last30, byMonth, recentBookings] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*)::int AS bookings, COALESCE(SUM(amount_aed), 0)::numeric AS total FROM ads WHERE paid = TRUE`
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS bookings, COALESCE(SUM(amount_aed), 0)::numeric AS total FROM ads
+         WHERE paid = TRUE AND created_at >= NOW() - INTERVAL '30 days'`
+      ),
+      pool.query(
+        `SELECT to_char(created_at, 'YYYY-MM') AS month, COUNT(*)::int AS bookings, COALESCE(SUM(amount_aed), 0)::numeric AS revenue
+         FROM ads WHERE paid = TRUE
+         GROUP BY month ORDER BY month DESC LIMIT 6`
+      ),
+      pool.query(
+        `SELECT business_name, amount_aed, starts_at, ends_at, created_at FROM ads
+         WHERE paid = TRUE ORDER BY created_at DESC LIMIT 10`
+      ),
+    ]);
+
+    res.json({
+      total_revenue_aed: Number(totals.rows[0].total),
+      total_bookings: totals.rows[0].bookings,
+      revenue_last_30_days_aed: Number(last30.rows[0].total),
+      bookings_last_30_days: last30.rows[0].bookings,
+      by_month: byMonth.rows.map((r) => ({ month: r.month, bookings: r.bookings, revenue_aed: Number(r.revenue) })),
+      recent_bookings: recentBookings.rows,
+    });
+  } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }

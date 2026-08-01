@@ -3,12 +3,12 @@ const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { adCheckoutLimiter } = require('../middleware/rateLimit');
 const { createCheckoutSession, retrieveCheckoutSession } = require('../lib/stripe');
+const { getSetting } = require('../lib/settings');
 
 const router = express.Router();
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const AD_PRICE_PER_WEEK_AED = 500;
 const MAX_WEEKS = 8;
 
 function addDays(date, days) {
@@ -51,8 +51,11 @@ router.get('/active', async (req, res) => {
 
 router.get('/availability', async (req, res) => {
   try {
-    const nextAvailableDate = await computeNextAvailableDate();
-    res.json({ nextAvailableDate, pricePerWeekAed: AD_PRICE_PER_WEEK_AED, maxWeeks: MAX_WEEKS });
+    const [nextAvailableDate, pricePerWeekAed] = await Promise.all([
+      computeNextAvailableDate(),
+      getSetting('ad_price_per_week_aed'),
+    ]);
+    res.json({ nextAvailableDate, pricePerWeekAed: Number(pricePerWeekAed), maxWeeks: MAX_WEEKS });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -89,9 +92,12 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
       return res.status(400).json({ error: `Choose between 1 and ${MAX_WEEKS} weeks.` });
     }
 
-    const startsAtStr = await computeNextAvailableDate();
+    const [startsAtStr, pricePerWeekAed] = await Promise.all([
+      computeNextAvailableDate(),
+      getSetting('ad_price_per_week_aed'),
+    ]);
     const endsAtStr = toDateStr(addDays(startsAtStr, weeksNum * 7 - 1));
-    const amountAed = weeksNum * AD_PRICE_PER_WEEK_AED;
+    const amountAed = weeksNum * Number(pricePerWeekAed);
 
     const id = uuid();
     await pool.query(
