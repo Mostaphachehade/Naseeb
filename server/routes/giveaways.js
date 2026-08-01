@@ -152,9 +152,18 @@ router.get('/:id', optionalAuth, async (req, res) => {
 // Create a giveaway. Requires an explicit funding disclosure so every listing
 // states, in the host's own words, that the prize is a marketing cost rather
 // than something paid for by entrants.
+// No hosting quota is enforced here today — every verified account can
+// create unlimited giveaways. The Free/AED 250/AED 900 plans on
+// pricing.html are lead-capture copy only, not wired to a real limit or to
+// billing (unlike the ad-checkout self-serve flow, which is). If a real
+// quota is ever added, admin accounts (the site owner) must stay exempt —
+// see the "admin accounts can host without limit" test, which fails loudly
+// if that guarantee is ever broken.
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const verifiedRes = await pool.query('SELECT email_verified FROM users WHERE id = $1', [req.userId]);
+    const verifiedRes = await pool.query('SELECT email_verified, is_admin FROM users WHERE id = $1', [
+      req.userId,
+    ]);
     if (!verifiedRes.rows[0] || !verifiedRes.rows[0].email_verified) {
       return res.status(403).json({ error: 'Please verify your email before hosting a giveaway.' });
     }
