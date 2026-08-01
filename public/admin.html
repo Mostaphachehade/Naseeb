@@ -28,6 +28,7 @@
       <a href="#ads-section">Ads</a>
       <a href="#giveaways">Giveaways</a>
       <a href="#hosts">Hosts</a>
+      <a href="#owner">Owner</a>
     </nav>
 
     <div class="section-head" id="overview">
@@ -106,7 +107,85 @@
       </div>
     </div>
     <input class="admin-search" type="search" id="hosts-search" placeholder="Search by name or email…" />
-    <div id="users-content"><p>Loading…</p></div>
+    <div id="users-content" style="margin-bottom:56px;"><p>Loading…</p></div>
+
+    <div class="section-head" id="owner">
+      <div>
+        <h2>Owner</h2>
+        <p>Site settings, ad revenue, and a fast way to publish a giveaway yourself.</p>
+      </div>
+    </div>
+
+    <div class="card narrow" style="max-width:none; margin-bottom:24px;">
+      <h3 style="margin-top:0;">Quick-host a giveaway</h3>
+      <p class="hint" style="margin-top:-8px; margin-bottom:18px;">Publishes immediately under your own account — same as create.html, just faster.</p>
+      <form id="quick-host-form">
+        <label for="qh_title">Title</label>
+        <input id="qh_title" required maxlength="200" />
+
+        <label for="qh_description">Description</label>
+        <textarea id="qh_description" required maxlength="5000" rows="3"></textarea>
+
+        <label for="qh_prize_description">Prize</label>
+        <input id="qh_prize_description" required maxlength="2000" />
+
+        <label for="qh_estimated_value_aed">Estimated value (AED, optional)</label>
+        <input id="qh_estimated_value_aed" type="number" min="0" step="1" />
+
+        <label for="qh_image_file">Image (optional)</label>
+        <div id="qh-image-upload-row" style="display:none; margin-bottom:10px;">
+          <input type="file" id="qh_image_file" accept="image/*" />
+          <span class="hint" id="qh-upload-status"></span>
+          <img id="qh-image-preview" alt="" style="display:none; max-width:160px; border-radius:8px; margin-top:8px;" />
+        </div>
+        <input id="qh_image_url" type="url" placeholder="https://…" />
+
+        <label for="qh_funded_by">Funded by</label>
+        <input id="qh_funded_by" required maxlength="300" value="Naseeb marketing budget" />
+
+        <label for="qh_entry_deadline">Entry deadline</label>
+        <input id="qh_entry_deadline" type="date" required />
+
+        <button class="btn primary" type="submit">Publish giveaway</button>
+        <p class="form-error" id="qh-error"></p>
+        <p class="form-success" id="qh-success"></p>
+      </form>
+    </div>
+
+    <div class="card narrow" style="max-width:none; margin-bottom:24px;">
+      <h3 style="margin-top:0;">Ad revenue</h3>
+      <p class="hint" style="margin-top:-8px; margin-bottom:18px;">Real Stripe collections only — hosting plans aren't wired to billing yet, so there's nothing to show there.</p>
+      <div id="revenue-content"><p>Loading…</p></div>
+    </div>
+
+    <div class="card narrow" style="max-width:none; margin-bottom:24px;">
+      <h3 style="margin-top:0;">Site settings</h3>
+      <p class="hint" style="margin-top:-8px; margin-bottom:18px;">Values used sitewide — changes take effect immediately, no deploy needed.</p>
+      <form id="settings-form">
+        <label for="s_ad_price">Ad banner price (AED / week)</label>
+        <input id="s_ad_price" type="number" min="1" step="1" required />
+
+        <label for="s_standard_price">Standard hosting plan price (AED / 3 giveaways)</label>
+        <input id="s_standard_price" type="number" min="0" step="1" required />
+
+        <label for="s_partner_price">Partner hosting plan price (AED / month)</label>
+        <input id="s_partner_price" type="number" min="0" step="1" required />
+
+        <label for="s_maintenance_mode" style="margin-top:20px;">Maintenance banner</label>
+        <div class="segmented" id="maintenance-toggle">
+          <button type="button" class="segmented-option" data-value="false" aria-pressed="true">Off</button>
+          <button type="button" class="segmented-option" data-value="true" aria-pressed="false">On</button>
+        </div>
+        <p class="hint">Shows a dismissible banner sitewide. Informational only — doesn't block anything.</p>
+
+        <label for="s_maintenance_message">Maintenance message</label>
+        <input id="s_maintenance_message" maxlength="500" />
+
+        <button class="btn primary" type="submit" style="margin-top:20px;">Save settings</button>
+        <p class="form-error" id="settings-error"></p>
+        <p class="form-success" id="settings-success"></p>
+      </form>
+    </div>
   </div>
 </main>
 
@@ -619,6 +698,181 @@
     }
   });
 
+  // ---- Owner: quick-host ----
+  let qhCloudinaryConfig = null;
+  fetch('/api/config').then((r) => r.json()).then((config) => {
+    if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
+      qhCloudinaryConfig = config;
+      document.getElementById('qh-image-upload-row').style.display = 'block';
+    }
+  }).catch(() => {});
+
+  document.getElementById('qh_image_file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file || !qhCloudinaryConfig) return;
+    const statusEl = document.getElementById('qh-upload-status');
+    statusEl.textContent = 'Uploading…';
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', qhCloudinaryConfig.cloudinary_upload_preset);
+    try {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${qhCloudinaryConfig.cloudinary_cloud_name}/image/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
+      document.getElementById('qh_image_url').value = data.secure_url;
+      const preview = document.getElementById('qh-image-preview');
+      preview.src = data.secure_url;
+      preview.style.display = 'block';
+      statusEl.textContent = 'Uploaded.';
+    } catch (err) {
+      statusEl.textContent = err.message;
+    }
+  });
+
+  // Default the deadline to a week out so the field isn't left empty.
+  (function () {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    document.getElementById('qh_entry_deadline').value = d.toISOString().slice(0, 10);
+  })();
+
+  document.getElementById('quick-host-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('qh-error');
+    const successEl = document.getElementById('qh-success');
+    errorEl.classList.remove('show');
+    successEl.classList.remove('show');
+    const deadline = document.getElementById('qh_entry_deadline').value;
+    try {
+      await api('/giveaways', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: document.getElementById('qh_title').value,
+          description: document.getElementById('qh_description').value,
+          prize_description: document.getElementById('qh_prize_description').value,
+          estimated_value_aed: document.getElementById('qh_estimated_value_aed').value || null,
+          image_url: document.getElementById('qh_image_url').value || null,
+          funded_by: document.getElementById('qh_funded_by').value,
+          entry_deadline: new Date(`${deadline}T23:59:59`).toISOString(),
+        }),
+      });
+      e.target.reset();
+      document.getElementById('qh-image-preview').style.display = 'none';
+      document.getElementById('qh_funded_by').value = 'Naseeb marketing budget';
+      successEl.textContent = 'Published — live on the homepage now.';
+      successEl.classList.add('show');
+      loadStats();
+      loadGiveaways();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+    }
+  });
+
+  // ---- Owner: ad revenue ----
+  async function loadRevenue() {
+    const content = document.getElementById('revenue-content');
+    try {
+      const r = await api('/admin/revenue');
+      const monthRows = r.by_month.length
+        ? r.by_month.map((m) => `<tr><td>${m.month}</td><td class="mono">${m.bookings}</td><td class="mono">AED ${m.revenue_aed.toLocaleString()}</td></tr>`).join('')
+        : '<tr><td colspan="3" style="color:var(--text-soft);">No revenue yet.</td></tr>';
+      const bookingRows = r.recent_bookings.length
+        ? r.recent_bookings.map((b) => `<tr><td>${escapeHtml(b.business_name)}</td><td class="mono">AED ${Number(b.amount_aed).toLocaleString()}</td><td>${b.starts_at} – ${b.ends_at}</td></tr>`).join('')
+        : '<tr><td colspan="3" style="color:var(--text-soft);">No bookings yet.</td></tr>';
+      content.innerHTML = `
+        <div class="admin-dashboard" style="margin-bottom:24px;">
+          <div class="admin-stat">
+            <div class="admin-stat-num">AED ${r.total_revenue_aed.toLocaleString()}</div>
+            <div class="admin-stat-label">Total ad revenue</div>
+          </div>
+          <div class="admin-stat">
+            <div class="admin-stat-num">${r.total_bookings}</div>
+            <div class="admin-stat-label">Paid bookings</div>
+          </div>
+          <div class="admin-stat">
+            <div class="admin-stat-num">AED ${r.revenue_last_30_days_aed.toLocaleString()}</div>
+            <div class="admin-stat-label">Last 30 days</div>
+          </div>
+        </div>
+        <div class="table-wrap" style="margin-bottom:20px;">
+          <table class="admin-table">
+            <thead><tr><th>Month</th><th>Bookings</th><th>Revenue</th></tr></thead>
+            <tbody>${monthRows}</tbody>
+          </table>
+        </div>
+        <p style="font-weight:600; margin-bottom:8px;">Recent bookings</p>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Business</th><th>Amount</th><th>Dates</th></tr></thead>
+            <tbody>${bookingRows}</tbody>
+          </table>
+        </div>
+      `;
+    } catch (err) {
+      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  // ---- Owner: site settings ----
+  let maintenanceModeValue = 'false';
+  document.querySelectorAll('#maintenance-toggle .segmented-option').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      maintenanceModeValue = btn.dataset.value;
+      document.querySelectorAll('#maintenance-toggle .segmented-option').forEach((b) => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+      });
+    });
+  });
+
+  async function loadSettings() {
+    try {
+      const s = await api('/admin/settings');
+      document.getElementById('s_ad_price').value = s.ad_price_per_week_aed;
+      document.getElementById('s_standard_price').value = s.hosting_plan_standard_price_aed;
+      document.getElementById('s_partner_price').value = s.hosting_plan_partner_price_aed;
+      document.getElementById('s_maintenance_message').value = s.maintenance_message;
+      maintenanceModeValue = s.maintenance_mode;
+      document.querySelectorAll('#maintenance-toggle .segmented-option').forEach((b) => {
+        const isActive = b.dataset.value === maintenanceModeValue;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+    } catch (err) {
+      document.getElementById('settings-error').textContent = err.message;
+      document.getElementById('settings-error').classList.add('show');
+    }
+  }
+
+  document.getElementById('settings-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('settings-error');
+    const successEl = document.getElementById('settings-success');
+    errorEl.classList.remove('show');
+    successEl.classList.remove('show');
+    try {
+      await api('/admin/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ad_price_per_week_aed: document.getElementById('s_ad_price').value,
+          hosting_plan_standard_price_aed: document.getElementById('s_standard_price').value,
+          hosting_plan_partner_price_aed: document.getElementById('s_partner_price').value,
+          maintenance_mode: maintenanceModeValue,
+          maintenance_message: document.getElementById('s_maintenance_message').value,
+        }),
+      });
+      successEl.textContent = 'Saved.';
+      successEl.classList.add('show');
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+    }
+  });
+
   function wireSearch(inputId, containerId) {
     document.getElementById(inputId).addEventListener('input', (e) => {
       const term = e.target.value.trim().toLowerCase();
@@ -637,6 +891,8 @@
     loadAds();
     loadGiveaways();
     loadUsers();
+    loadRevenue();
+    loadSettings();
   }
 </script>
 </body>

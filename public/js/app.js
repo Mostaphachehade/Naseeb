@@ -245,6 +245,36 @@ function renderVerificationBanner() {
   });
 }
 
+// Owner-toggled, informational only — doesn't block any functionality,
+// just tells visitors something might be flaky right now. Dismissible per
+// browser tab (sessionStorage) so it doesn't nag on every page nav.
+async function renderMaintenanceBanner() {
+  if (sessionStorage.getItem('naseeb_maintenance_dismissed') === 'true') return;
+  try {
+    const config = await fetch('/api/config').then((r) => r.json());
+    if (!config.maintenance_mode) return;
+    const header = document.querySelector('header.site');
+    if (!header || document.querySelector('.maintenance-banner')) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'maintenance-banner';
+    banner.innerHTML = `
+      <div class="wrap">
+        <span>${escapeHtml(config.maintenance_message)}</span>
+        <button id="dismiss-maintenance-btn" aria-label="Dismiss">&times;</button>
+      </div>
+    `;
+    header.insertAdjacentElement('afterend', banner);
+
+    document.getElementById('dismiss-maintenance-btn').addEventListener('click', () => {
+      sessionStorage.setItem('naseeb_maintenance_dismissed', 'true');
+      banner.remove();
+    });
+  } catch (err) {
+    // Non-critical — no banner is better than a broken page over this.
+  }
+}
+
 // A brief confetti burst for celebratory moments (e.g. a winner being drawn).
 function celebrate() {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -291,4 +321,5 @@ document.addEventListener('DOMContentLoaded', () => {
   renderHeader();
   renderFooter();
   renderVerificationBanner();
+  renderMaintenanceBanner();
 });

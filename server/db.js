@@ -155,6 +155,16 @@ async function init() {
     CREATE INDEX IF NOT EXISTS idx_host_applications_user_id ON host_applications(user_id);
     CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users(verification_token) WHERE verification_token IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token) WHERE reset_token IS NOT NULL;
+
+    -- Owner-editable values that would otherwise be hard-coded — ad price,
+    -- hosting plan prices shown on pricing.html, the maintenance banner.
+    -- Plain key/value rather than dedicated columns since these are simple
+    -- scalars with no relations of their own; see server/lib/settings.js.
+    CREATE TABLE IF NOT EXISTS site_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 }
 

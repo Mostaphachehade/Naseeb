@@ -169,6 +169,34 @@ nav.site-nav a:hover, nav.site-nav button:hover { border-color: rgba(220,238,231
 }
 .verify-banner button:disabled { opacity: 0.6; cursor: default; }
 
+.maintenance-banner {
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.85rem;
+  position: sticky;
+  top: 62px;
+  z-index: 9;
+}
+.maintenance-banner .wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 24px;
+  flex-wrap: wrap;
+}
+.maintenance-banner button {
+  background: none;
+  border: none;
+  color: var(--paper);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  opacity: 0.7;
+}
+.maintenance-banner button:hover { opacity: 1; }
+
 /* ---------- Hero ---------- */
 .hero {
   background: var(--ink);
