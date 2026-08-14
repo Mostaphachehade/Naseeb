@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 Disallow: /admin.html
+Disallow: /owner.html
 Disallow: /dashboard.html
 
 Sitemap: https://www.mynaseeb.ae/sitemap.xml

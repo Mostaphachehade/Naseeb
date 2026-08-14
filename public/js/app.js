@@ -87,7 +87,7 @@ function renderHeader() {
       <a href="/about.html">${t('nav.about')}</a>
       <a href="/dashboard.html">${t('nav.myGiveaways')}</a>
       <a href="/pricing.html">${t('nav.pricing')}</a>
-      ${user.is_admin ? `<a href="/admin.html">${t('nav.admin')}</a>` : ''}
+      ${user.is_admin ? `<a href="/admin.html">${t('nav.admin')}</a><a href="/owner.html">${t('nav.owner')}</a>` : ''}
       <a href="/create.html" class="btn-gold" style="border-radius:100px;">${t('nav.hostGiveaway')}</a>
       <span style="opacity:0.7;">${t('nav.hi', { name: escapeHtml(user.name) })}</span>
       <button id="logout-btn">${t('nav.signOut')}</button>
