@@ -24,8 +24,9 @@
   <div class="wrap">
     <div class="section-head">
       <div><h2>Giveaways you're hosting</h2><p>Manage your listings and draw winners once entries close.</p></div>
-      <a href="/create.html" class="btn primary">Host a giveaway</a>
+      <span id="host-action"></span>
     </div>
+    <div id="host-status-note"></div>
     <div class="grid" id="hosted-grid" style="margin-bottom:56px;"><p>Loading…</p></div>
 
     <div class="section-head">
@@ -45,17 +46,67 @@
   document.getElementById('hosted-grid').innerHTML = skeletonCards(3);
   document.getElementById('entered-grid').innerHTML = skeletonCards(3);
 
-  async function load() {
+  // What the host half of this page says depends on host access, which is read
+  // from the server. The hosted-giveaways endpoint enforces the same thing
+  // independently — this only decides which explanation to show instead of a
+  // bare error.
+  const HOST_STATE_NOTES = {
+    not_requested: {
+      note: 'Hosting is a closed beta. Apply and an administrator will review your request.',
+      action: '<a href="/host-apply.html" class="btn primary">Apply to host</a>',
+    },
+    pending: {
+      note: 'Your application to host is with an administrator. It grants no access on its own, and we have not set a review deadline.',
+      action: '',
+    },
+    rejected: {
+      note: 'This account has not been approved to host giveaways.',
+      action: '<a href="/host-apply.html" class="btn ghost" style="border-color:var(--ink); color:var(--ink);">Apply again</a>',
+    },
+    suspended: {
+      note: 'Hosting access for this account is suspended. Nothing has been deleted — your giveaways, entries and records are all still on file — but new listings and draws are stopped, and any open prize claim is now handled by an administrator.',
+      action: '',
+    },
+  };
+
+  async function loadHosted() {
     const hostedGrid = document.getElementById('hosted-grid');
-    const enteredGrid = document.getElementById('entered-grid');
+    const noteEl = document.getElementById('host-status-note');
+    const actionEl = document.getElementById('host-action');
+
+    let state = null;
+    try {
+      state = await api('/host-applications/me');
+    } catch (err) {
+      // Non-fatal: fall through and let the hosted endpoint speak for itself.
+    }
+
+    if (state && !state.can_host) {
+      const info = HOST_STATE_NOTES[state.host_status] || HOST_STATE_NOTES.not_requested;
+      noteEl.innerHTML = `
+        <div class="card narrow" style="max-width:none; border-left:4px solid var(--gold); margin-bottom:20px;">
+          <p style="margin:0; color:var(--text-soft);">${info.note}</p>
+          ${state.status_reason ? `<p style="margin:8px 0 0; color:var(--text-soft); font-style:italic;">Reason given: ${escapeHtml(state.status_reason)}</p>` : ''}
+        </div>`;
+      actionEl.innerHTML = info.action;
+      hostedGrid.innerHTML = '';
+      return;
+    }
+
+    actionEl.innerHTML = '<a href="/create.html" class="btn primary">Host a giveaway</a>';
     try {
       const hosted = await api('/giveaways/mine/hosted');
       hostedGrid.innerHTML = hosted.length
         ? hosted.map(giveawayCard).join('')
         : `<div class="empty" style="grid-column:1/-1;">You haven't hosted a giveaway yet. <a href="/create.html">Start one</a>.</div>`;
     } catch (err) {
-      hostedGrid.innerHTML = `<p class="form-error show">${err.message}</p>`;
+      hostedGrid.innerHTML = `<p class="form-error show">${escapeHtml(err.message)}</p>`;
     }
+  }
+
+  async function load() {
+    const enteredGrid = document.getElementById('entered-grid');
+    await loadHosted();
 
     try {
       const entered = await api('/giveaways/mine/entered');

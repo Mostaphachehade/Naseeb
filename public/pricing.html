@@ -3,24 +3,23 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Pricing for hosts — Naseeb</title>
-<meta name="description" content="Entering giveaways on Naseeb is always free. These plans are only for businesses and individuals who want to host one." />
-<meta property="og:title" content="Pricing for hosts — Naseeb" />
-<meta property="og:description" content="Entering is always free for everyone. See plans for hosting a giveaway." />
+<title>What things cost — Naseeb</title>
+<meta name="description" content="Entering a giveaway on Naseeb is free. Hosting is a closed beta you apply for, and it is free while the beta lasts. Advertising is the only thing you can pay for." />
+<meta property="og:title" content="What things cost — Naseeb" />
+<meta property="og:description" content="Entering is free. Hosting is an application-only beta, free for now. Advertising is the only paid product." />
 <meta property="og:type" content="website" />
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
 <style>
-  .plans { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:22px; margin-top:32px; }
-  .plan { background:#fff; border:1px solid rgba(11,59,54,0.12); border-radius:var(--radius); padding:28px; display:flex; flex-direction:column; }
-  .plan.featured { border:2px solid var(--gold); position:relative; }
-  .plan.featured::before { content:"Most popular"; position:absolute; top:-12px; left:24px; background:var(--gold); color:var(--ink-deep); font-size:0.72rem; font-weight:700; padding:4px 12px; border-radius:100px; text-transform:uppercase; letter-spacing:0.06em; }
-  .plan .price { font-family:'Fraunces',serif; font-size:2.2rem; color:var(--ink-deep); margin:10px 0 4px; }
-  .plan .price span { font-size:1rem; font-weight:400; color:var(--text-soft); }
-  .plan ul { list-style:none; padding:0; margin:18px 0 24px; flex:1; }
-  .plan li { padding:8px 0; border-bottom:1px dashed rgba(11,59,54,0.15); font-size:0.92rem; color:var(--text-soft); }
-  .plan li:last-child { border-bottom:none; }
+  .cost-list { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap:22px; margin-top:32px; }
+  .cost { background:#fff; border:1px solid rgba(11,59,54,0.12); border-radius:var(--radius); padding:28px; display:flex; flex-direction:column; }
+  .cost h3 { margin-top:0; }
+  .cost .amount { font-family:'Fraunces',serif; font-size:1.9rem; color:var(--ink-deep); margin:6px 0 10px; }
+  .cost p { color:var(--text-soft); font-size:0.92rem; }
+  .cost ul { list-style:none; padding:0; margin:14px 0 22px; flex:1; }
+  .cost li { padding:8px 0; border-bottom:1px dashed rgba(11,59,54,0.15); font-size:0.92rem; color:var(--text-soft); }
+  .cost li:last-child { border-bottom:none; }
   .faq { max-width:720px; margin:64px auto 0; }
   .faq details { background:#fff; border:1px solid rgba(11,59,54,0.12); border-radius:10px; padding:16px 20px; margin-bottom:12px; }
   .faq summary { font-weight:600; cursor:pointer; color:var(--ink-deep); }
@@ -41,74 +40,75 @@
   <div class="wrap">
     <div class="section-head">
       <div>
-        <h2>Pricing for hosts</h2>
-        <p>Entering is always free for everyone. These plans are only for businesses and individuals who want to host a giveaway.</p>
+        <h2>What things cost</h2>
+        <p>Three different people can pay us nothing, nothing, and something. This page says which is which, and it only lists things that actually exist.</p>
       </div>
     </div>
 
-    <div class="plans">
-      <div class="plan">
-        <h3>Pilot listing</h3>
-        <div class="price">Free<span> / first giveaway</span></div>
-        <p style="color:var(--text-soft); font-size:0.9rem;">For first-time hosts, to see real entries before paying anything.</p>
-        <ul>
-          <li>One giveaway listing</li>
-          <li>Standard placement in Browse</li>
-          <li>Full entry &amp; draw tools</li>
-          <li>Public funding disclosure</li>
-        </ul>
-        <a class="btn primary" style="justify-content:center;" href="/host-apply.html?plan=pilot">Apply free</a>
-      </div>
-
-      <div class="plan featured">
-        <h3>Standard listing</h3>
-        <div class="price"><span id="standard-price">AED 250</span><span> / 3 giveaways</span></div>
-        <p style="color:var(--text-soft); font-size:0.9rem;">One payment covers three giveaway listings — no ongoing commitment.</p>
-        <ul>
-          <li>3 giveaway listings, live for your chosen deadlines</li>
-          <li>Standard placement in Browse</li>
-          <li>Full entry &amp; draw tools</li>
-          <li>Winner announcement page</li>
-        </ul>
-        <a class="btn primary" style="justify-content:center;" href="/host-apply.html?plan=standard">Get started</a>
-      </div>
-
-      <div class="plan">
-        <h3>Partner plan</h3>
-        <div class="price"><span id="partner-price">AED 900</span><span> / month</span></div>
-        <p style="color:var(--text-soft); font-size:0.9rem;">For businesses that want to run giveaways regularly.</p>
-        <ul>
-          <li>Unlimited giveaway listings</li>
-          <li>Featured placement on the homepage</li>
-          <li>Full entry &amp; draw tools</li>
-          <li>Winner announcement page</li>
-          <li>Discounted ad placement rates</li>
-          <li>Verified business badge</li>
-          <li>Priority support <a href="/about.html#get-in-touch" style="font-size:0.82rem; color:var(--text-soft); text-decoration:underline;">(WhatsApp us)</a></li>
-        </ul>
-        <a class="btn primary" style="justify-content:center;" href="/host-apply.html?plan=partner">Talk to us</a>
-      </div>
+    <div class="compliance-box" style="margin-top:8px;">
+      This page used to advertise three hosting plans — a free pilot, AED 250 for three listings, and AED 900 a month for unlimited hosting with featured placement and a verified badge. None of them was ever built. There was no checkout, no listing limit, no featured placement and no entitlement behind any of it, and hosting was open to anyone with a verified email regardless of which plan they picked. They have been removed rather than repriced, and nothing has been invented to replace them.
     </div>
 
-    <p style="text-align:center; color:var(--text-soft); margin-top:32px;">Not hosting a giveaway but want your business in front of our audience? <a href="/advertise.html" style="font-weight:600; color:var(--ink);">Advertise with us</a>.</p>
+    <div class="cost-list">
+      <div class="cost">
+        <h3>Entering a giveaway</h3>
+        <div class="amount">Free</div>
+        <p>For everyone, every giveaway, with no exceptions.</p>
+        <ul>
+          <li>No entry fee, ticket or paid odds</li>
+          <li>No upgrade that improves your chances</li>
+          <li>There is no payment path anywhere on the entry journey</li>
+        </ul>
+        <a class="btn primary" style="justify-content:center;" href="/index.html">Browse open giveaways</a>
+      </div>
+
+      <div class="cost">
+        <h3>Hosting a giveaway</h3>
+        <div class="amount">Free — closed beta</div>
+        <p>Hosting is not open to sign up for. You apply, an administrator reviews it, and access is granted or refused by a person.</p>
+        <ul>
+          <li>Applying costs nothing and charges nothing</li>
+          <li>Applying does not grant access — a person decides</li>
+          <li>We have not set a review deadline, so we are not promising one</li>
+          <li>There is no paid hosting tier. If we ever introduce one, it will be announced before it is charged</li>
+        </ul>
+        <a class="btn primary" style="justify-content:center;" href="/host-apply.html">Apply to host</a>
+      </div>
+
+      <div class="cost">
+        <h3>Advertising with us</h3>
+        <div class="amount" id="ad-price">See the advertising page</div>
+        <p>A banner placement on the homepage, booked by the week. This is ordinary advertising: it is unconnected to any giveaway, entrant or draw.</p>
+        <ul>
+          <li>Priced per week, shown live on the advertising page</li>
+          <li>Booked for specific dates against a single homepage slot</li>
+          <li>Nothing here funds a prize</li>
+        </ul>
+        <a class="btn primary" style="justify-content:center;" href="/advertise.html">See advertising</a>
+      </div>
+    </div>
 
     <div class="faq">
-      <h2 style="margin-bottom:20px;">Questions hosts ask</h2>
+      <h2 style="margin-bottom:20px;">Questions</h2>
       <details>
         <summary>Do entrants ever pay anything?</summary>
-        <p>No. Entry is always free, for every giveaway, for every entrant, no exceptions. These plans only apply to hosts publishing a listing.</p>
+        <p>No. Entry is always free, for every giveaway, for every entrant, no exceptions. There is no field for an entry price anywhere in the code.</p>
       </details>
       <details>
-        <summary>Why do hosts pay if entrants don't?</summary>
-        <p>You're paying for the audience, the entry infrastructure, and a random draw with a public record — the same reason businesses pay for any marketing placement. It's a fee for a service we provide to you as a host: it isn't a stake, it isn't pooled, and it has no effect on any draw. Entrants still pay nothing.</p>
+        <summary>Why is hosting closed?</summary>
+        <p>Because a giveaway published here is a public promise to strangers that a real prize will reach a real winner, and we would rather know who is making that promise. Until this platform has been reviewed and is running at a size we can stand behind, host access is granted one account at a time.</p>
       </details>
       <details>
-        <summary>Can I cancel a listing early?</summary>
-        <p>Reach out to us directly and we'll help adjust or close a listing before its deadline if something comes up.</p>
+        <summary>What happens after I apply?</summary>
+        <p>Your account moves to "waiting for review" and nothing else changes — you cannot publish a giveaway while an application is open. An administrator approves or refuses it, with a recorded reason. You will see the outcome on your dashboard.</p>
       </details>
       <details>
-        <summary>Is there a contract for the Partner plan?</summary>
-        <p>No lock-in — it renews monthly and you can stop anytime.</p>
+        <summary>Will hosting stay free?</summary>
+        <p>We do not know, and we are not going to state a future price we have not decided. What we can say is what is true today: there is no paid hosting tier, no checkout for one, and nothing in the application flow charges anyone.</p>
+      </details>
+      <details>
+        <summary>Could my host access be taken away?</summary>
+        <p>Yes. An administrator can suspend hosting access, with a recorded reason. Suspension stops you publishing new giveaways or drawing winners; it does not delete your existing giveaways, entries or records, and any open prize claim moves to administrator handling so a winner is not left waiting.</p>
       </details>
     </div>
   </div>
@@ -119,10 +119,15 @@
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
 <script>
-  fetch('/api/config').then((r) => r.json()).then((s) => {
-    document.getElementById('standard-price').textContent = `AED ${Number(s.hosting_plan_standard_price_aed).toLocaleString()}`;
-    document.getElementById('partner-price').textContent = `AED ${Number(s.hosting_plan_partner_price_aed).toLocaleString()}`;
-  }).catch(() => {});
+  // The advertising price is the one real price on this page, so it is read
+  // from the server rather than typed into the markup where it can drift.
+  fetch('/api/ads/availability')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (!data || !data.pricePerWeekDisplay) return;
+      document.getElementById('ad-price').textContent = `${data.pricePerWeekDisplay} / week`;
+    })
+    .catch(() => {});
 </script>
 </body>
 </html>

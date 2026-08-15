@@ -3,10 +3,16 @@ const { pool } = require('../db');
 // Defaults double as the source of truth for which settings keys exist —
 // setSetting() rejects anything not listed here, so a typo'd key can't
 // silently create an orphaned row nobody reads.
+//
+// hosting_plan_standard_price_aed and hosting_plan_partner_price_aed used to
+// live here. They priced three host plans that were advertised on pricing.html
+// and never built: no checkout, no quota, no entitlement, no billing. An
+// owner-editable price for something nobody can buy is a number that only
+// exists to be published, so both keys are gone from the settings API and from
+// the owner panel. Any rows still in site_settings are left alone rather than
+// deleted — they are a record of what was once advertised.
 const DEFAULTS = {
   ad_price_per_week_aed: '500',
-  hosting_plan_standard_price_aed: '250',
-  hosting_plan_partner_price_aed: '900',
   maintenance_mode: 'false',
   maintenance_message: 'Naseeb is undergoing scheduled maintenance. Some features may be temporarily unavailable.',
 };

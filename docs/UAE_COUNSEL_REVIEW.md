@@ -91,6 +91,11 @@ the platform for listing and marketing services does not change the character of
 giveaway** — our position is that it is a service fee, not a stake, and that it has no
 bearing on any draw.
 
+Note as of the host-access phase: **no host currently pays us anything.** The hosting
+plans that were advertised were never built and have been removed; hosting is a free
+closed beta. The question above is therefore not live today, but it becomes live the
+moment a paid tier is introduced, so it stays open rather than being closed off.
+
 ### B7. Prize fulfilment and our role
 The Terms state Naseeb is not a party to the giveaway, holds no prize, and is not an
 escrow. An administrator resolves disputes about *the record on this platform*, which we
@@ -158,8 +163,13 @@ will not imply it.
       point forward and never backdated
 - [ ] Data access, correction and deletion workflows built (they are manual today, and
       the Privacy Policy says so)
-- [ ] A decision recorded on whether host paid plans are offered at all, given that they
-      are advertised but not enforced
+- [x] A decision recorded on whether host paid plans are offered at all, given that they
+      were advertised but not enforced — **answered for today only**: the three plans
+      (free pilot, AED 250 / 3 listings, AED 900 per month) have been removed rather than
+      repriced, no paid hosting tier exists, and no replacement price has been invented.
+      Hosting is a closed beta granted per account by an administrator. Whether a paid tier
+      is offered in future is still an open commercial decision, and B6 below (whether a
+      host fee changes the character of a giveaway) remains open regardless
 
 Until every box is ticked, this platform should not be described as compliant, approved,
 or production-ready — including internally.

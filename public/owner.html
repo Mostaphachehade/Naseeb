@@ -77,11 +77,7 @@
         <label for="s_ad_price">Ad banner price (AED / week)</label>
         <input id="s_ad_price" type="number" min="1" step="1" required />
 
-        <label for="s_standard_price">Standard hosting plan price (AED / 3 giveaways)</label>
-        <input id="s_standard_price" type="number" min="0" step="1" required />
-
-        <label for="s_partner_price">Partner hosting plan price (AED / month)</label>
-        <input id="s_partner_price" type="number" min="0" step="1" required />
+        <p class="hint">The two hosting plan prices that used to sit here are gone. They priced plans that were advertised but never built — no checkout, no listing limit, no entitlement. Hosting is a closed beta and free while it lasts; see docs/HOST_ACCESS.md.</p>
 
         <label for="s_maintenance_mode" style="margin-top:20px;">Maintenance banner</label>
         <div class="segmented" id="maintenance-toggle">
@@ -243,8 +239,6 @@
     try {
       const s = await api('/admin/settings');
       document.getElementById('s_ad_price').value = s.ad_price_per_week_aed;
-      document.getElementById('s_standard_price').value = s.hosting_plan_standard_price_aed;
-      document.getElementById('s_partner_price').value = s.hosting_plan_partner_price_aed;
       document.getElementById('s_maintenance_message').value = s.maintenance_message;
       maintenanceModeValue = s.maintenance_mode;
       document.querySelectorAll('#maintenance-toggle .segmented-option').forEach((b) => {
@@ -269,8 +263,6 @@
         method: 'PATCH',
         body: JSON.stringify({
           ad_price_per_week_aed: document.getElementById('s_ad_price').value,
-          hosting_plan_standard_price_aed: document.getElementById('s_standard_price').value,
-          hosting_plan_partner_price_aed: document.getElementById('s_partner_price').value,
           maintenance_mode: maintenanceModeValue,
           maintenance_message: document.getElementById('s_maintenance_message').value,
         }),

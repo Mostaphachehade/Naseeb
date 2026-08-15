@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
+const { requireHostAccess } = require('../lib/hostAccess');
 const { enterLimiter } = require('../middleware/rateLimit');
 const { sendEmail } = require('../lib/email');
 const { winnerEmailHtml, entryEmailHtml } = require('../lib/emailTemplates');
@@ -164,22 +165,18 @@ router.get('/:id', optionalAuth, async (req, res) => {
 // Create a giveaway. Requires an explicit funding disclosure so every listing
 // states, in the host's own words, that the prize is a marketing cost rather
 // than something paid for by entrants.
-// No hosting quota is enforced here today — every verified account can
-// create unlimited giveaways. The Free/AED 250/AED 900 plans on
-// pricing.html are lead-capture copy only, not wired to a real limit or to
-// billing (unlike the ad-checkout self-serve flow, which is). If a real
-// quota is ever added, admin accounts (the site owner) must stay exempt —
-// see the "admin accounts can host without limit" test, which fails loudly
-// if that guarantee is ever broken.
-router.post('/', requireAuth, async (req, res) => {
+//
+// Hosting is a closed beta: requireHostAccess reads users.host_status on this
+// request and only an approved account (or an administrator) gets past it. This
+// used to check email_verified alone, which meant any address that could
+// receive one email could publish unlimited prize draws. Email verification is
+// still required — it is now one of two conditions rather than the only one,
+// and both live in server/lib/hostAccess.js.
+//
+// There is still no per-plan quota, because there are no plans to buy. If one
+// is ever added, administrators must stay exempt — see test/host-access.test.js.
+router.post('/', requireAuth, requireHostAccess, async (req, res) => {
   try {
-    const verifiedRes = await pool.query('SELECT email_verified, is_admin FROM users WHERE id = $1', [
-      req.userId,
-    ]);
-    if (!verifiedRes.rows[0] || !verifiedRes.rows[0].email_verified) {
-      return res.status(403).json({ error: 'Please verify your email before hosting a giveaway.' });
-    }
-
     const {
       title,
       description,
@@ -357,7 +354,13 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
 // concurrently, compute two different random winners, and have the second
 // write silently overwrite the first — which would leave one "You won"
 // email pointing at someone who, per the database, didn't actually win.
-router.post('/:id/draw', requireAuth, async (req, res) => {
+//
+// Gated on host access as well as ownership, and the two are not the same
+// check: approval decides whether this account may operate as a host at all,
+// ownership decides whose giveaway it may operate. An approved host still
+// cannot draw somebody else's giveaway, and a suspended host cannot draw their
+// own — the ownership comparison below is unchanged and still runs.
+router.post('/:id/draw', requireAuth, requireHostAccess, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -470,7 +473,7 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
 // winner who was supposed to have received it, and not an administrator if the
 // two disagreed. prize_delivered is now set only when the winner confirms
 // receipt, so this endpoint cannot do what its name says any more.
-router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
+router.post('/:id/confirm-delivery', requireAuth, requireHostAccess, async (req, res) => {
   try {
     const result = await pool.query('SELECT host_id FROM giveaways WHERE id = $1', [req.params.id]);
     if (!result.rows[0]) {
@@ -493,8 +496,10 @@ router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
   }
 });
 
-// Giveaways hosted by the signed-in user.
-router.get('/mine/hosted', requireAuth, async (req, res) => {
+// Giveaways hosted by the signed-in user. Host-only dashboard data, so it goes
+// through the same gate as everything else host-only rather than being the one
+// place that only checks for a session.
+router.get('/mine/hosted', requireAuth, requireHostAccess, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT * FROM giveaways WHERE host_id = $1 ORDER BY created_at DESC',

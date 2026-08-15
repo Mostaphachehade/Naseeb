@@ -87,6 +87,24 @@ async function init() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMPTZ;
 
+    -- Whether this account may host a giveaway, and nothing else.
+    --
+    -- Until this existed, hosting was gated on email_verified — which answers
+    -- "can we reach this person", not "may this person publish a prize draw to
+    -- the public". Any address that could receive one email could create
+    -- unlimited giveaways.
+    --
+    -- Deliberately a status on the account rather than a boolean, because the
+    -- four ways of not being a host are not the same thing and the UI has to
+    -- say which one applies: never asked, asked and waiting, asked and turned
+    -- down, had access and lost it. Read from this table on every request that
+    -- needs it — it is never carried in the JWT, which lives for 30 days and
+    -- would keep asserting a status long after it changed.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS host_status TEXT NOT NULL DEFAULT 'not_requested';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS host_status_changed_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS host_status_reason TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS host_status_changed_by TEXT REFERENCES users(id);
+
     -- Intentionally no price/amount/payment columns on giveaways or entries.
     -- Entry into a giveaway must always be free; prizes are funded by the host
     -- as a marketing cost, never from participant payments.
@@ -122,10 +140,18 @@ async function init() {
       UNIQUE(giveaway_id, user_id)
     );
 
-    -- Host applications aren't gating anything today (no payment processor is
-    -- wired up, so anyone signed in can already create giveaways for free).
-    -- This just captures company/individual intent to host on a paid plan so
-    -- it can be followed up on manually.
+    -- Applications to host during the private beta.
+    --
+    -- This table used to be lead capture for three paid plans that were
+    -- advertised but never built: submitting it charged nothing, granted
+    -- nothing, and changed nothing, while the page told applicants we would
+    -- "set up billing for your plan". Hosting was meanwhile open to anyone with
+    -- a verified email, so the form asked people to apply for something they
+    -- already had.
+    --
+    -- It is now the actual gate. An application is a request, a decision is a
+    -- separate deliberate act by an administrator, and only that decision moves
+    -- users.host_status.
     CREATE TABLE IF NOT EXISTS host_applications (
       id TEXT PRIMARY KEY,
       user_id TEXT REFERENCES users(id),
@@ -141,6 +167,99 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     ALTER TABLE host_applications ADD COLUMN IF NOT EXISTS contacted BOOLEAN NOT NULL DEFAULT FALSE;
+
+    -- The decision, and who made it. A decision with no reason and no name
+    -- attached is not reviewable later, which is the only time anyone will
+    -- want to read it.
+    ALTER TABLE host_applications ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
+    ALTER TABLE host_applications ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ;
+    ALTER TABLE host_applications ADD COLUMN IF NOT EXISTS decided_by TEXT REFERENCES users(id);
+    ALTER TABLE host_applications ADD COLUMN IF NOT EXISTS decision_reason TEXT;
+    -- Old rows were submitted against the plan picker; new ones carry no plan
+    -- at all, because there is nothing to buy. The column stays so the legacy
+    -- rows keep saying what they actually said.
+    ALTER TABLE host_applications ALTER COLUMN plan DROP NOT NULL;
+
+    -- One open application per account, enforced by the database rather than by
+    -- a read-then-write in the route: two submissions racing each other both
+    -- pass a "do they already have one?" check and both insert.
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_host_application_open
+      ON host_applications (user_id)
+      WHERE status = 'pending' AND user_id IS NOT NULL;
+
+    -- Every change of host access, and why. users.host_status is the current
+    -- answer; this is how it got there. Nothing here is ever updated or
+    -- deleted — a suspension that can be edited afterwards is not evidence of
+    -- anything.
+    CREATE TABLE IF NOT EXISTS host_status_events (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      from_status TEXT NOT NULL,
+      to_status TEXT NOT NULL,
+      reason TEXT,
+      -- 'admin_decision', 'application', or 'migration'. Says whether a human
+      -- decided this or a migration inferred it, which is the difference
+      -- between a grant someone is answerable for and one nobody is.
+      source TEXT NOT NULL,
+      changed_by TEXT REFERENCES users(id),
+      -- SET NULL rather than CASCADE: an administrator clearing an undecided
+      -- application must not take the record of the status change with it.
+      application_id TEXT REFERENCES host_applications(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_host_status_events_user ON host_status_events(user_id, created_at);
+
+    -- Statuses are a closed set in the database as well as in the code, so a
+    -- typo in a future migration cannot invent a sixth status that the
+    -- authorization function has never heard of and therefore treats as
+    -- "not approved" — or, worse, that some other code path treats as approved.
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_host_status_valid') THEN
+        ALTER TABLE users ADD CONSTRAINT users_host_status_valid
+          CHECK (host_status IN ('not_requested', 'pending', 'approved', 'rejected', 'suspended'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'host_applications_status_valid') THEN
+        ALTER TABLE host_applications ADD CONSTRAINT host_applications_status_valid
+          CHECK (status IN ('pending', 'approved', 'rejected', 'withdrawn'));
+      END IF;
+    END $$;
+
+    -- Backfill: accounts that were already hosting when approval was introduced.
+    --
+    -- Non-destructive and narrow on purpose. The only unambiguous fact in the
+    -- old data is that an account has published at least one giveaway — those
+    -- listings are live, people have entered them, and revoking the host's
+    -- access would strand entrants over a migration rather than a decision.
+    -- Every grant is written to host_status_events with source 'migration' and
+    -- no changed_by, because no human decided it and the record should not
+    -- pretend otherwise.
+    --
+    -- What it deliberately does NOT do:
+    --   * grant anything to an account that only submitted the old paid-plan
+    --     enquiry form. That form said we would set up billing, could be
+    --     submitted by anyone signed in or not, and was never reviewed — it is
+    --     not an application to this beta and must not be recorded as one.
+    --   * touch any account whose host_status has already been set by a human
+    --     (host_status_changed_at IS NOT NULL). This is the same trap the ad
+    --     slot backfill fell into: re-deriving state on every boot silently
+    --     reverses a deliberate admin decision on the next deploy.
+    WITH granted AS (
+      UPDATE users u
+         SET host_status = 'approved',
+             host_status_changed_at = NOW(),
+             host_status_reason =
+               'Migrated on introduction of host approval: this account had already published at least one giveaway.'
+       WHERE u.host_status = 'not_requested'
+         AND u.host_status_changed_at IS NULL
+         AND EXISTS (SELECT 1 FROM giveaways g WHERE g.host_id = u.id)
+      RETURNING u.id, u.host_status_reason
+    )
+    INSERT INTO host_status_events (id, user_id, from_status, to_status, reason, source, changed_by)
+    SELECT 'migration-legacy-host-' || granted.id, granted.id, 'not_requested', 'approved',
+           granted.host_status_reason, 'migration', NULL
+      FROM granted
+    ON CONFLICT (id) DO NOTHING;
 
     -- Ad inquiries: same pattern as host_applications — captures interest,
     -- billed and followed up on manually, nothing automated.

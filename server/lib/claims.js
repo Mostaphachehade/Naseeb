@@ -9,6 +9,7 @@ const { STATES, ROLES, PUBLIC_STATUS, assertTransition, ClaimTransitionError } =
 const { issueToken, hashToken } = require('./claimTokens');
 const { encryptDeliveryDetails, decryptDeliveryDetails } = require('./claimCrypto');
 const { recordEvent } = require('./claimEvents');
+const { canHost } = require('./hostAccess');
 
 // Bumped whenever the wording a winner agrees to changes, so a consent given
 // under old wording is distinguishable from one given under new wording.
@@ -25,6 +26,16 @@ function deliveryRetentionDays() {
 // to a claim in principle (an admin who is also the host), and the most
 // specific one wins for fulfilment actions — an admin acting on their own
 // giveaway is acting as its host.
+//
+// Owning the giveaway is necessary for the host role but no longer sufficient:
+// the account must also still hold host access. A host who is suspended or
+// rejected stops being able to see the winner's delivery details or move the
+// claim along from the moment the status changes, without anything being
+// deleted. Their giveaways, claims and history are all still there.
+//
+// The consequence is deliberate and worth stating plainly: suspending a host
+// with an open claim hands that claim to administrators. The winner can raise a
+// dispute, and an administrator resolves it — see docs/HOST_ACCESS.md.
 async function resolveRole(client, claim, userId) {
   if (!userId) return null;
 
@@ -33,7 +44,10 @@ async function resolveRole(client, claim, userId) {
   const giveaway = await client.query('SELECT host_id FROM giveaways WHERE id = $1', [
     claim.giveaway_id,
   ]);
-  if (giveaway.rows[0] && giveaway.rows[0].host_id === userId) return ROLES.HOST;
+  if (giveaway.rows[0] && giveaway.rows[0].host_id === userId) {
+    if (await canHost(client, userId)) return ROLES.HOST;
+    return null;
+  }
 
   const user = await client.query('SELECT is_admin FROM users WHERE id = $1', [userId]);
   if (user.rows[0] && user.rows[0].is_admin) return ROLES.ADMIN;

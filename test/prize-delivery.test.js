@@ -37,7 +37,9 @@ async function createVerifiedUser(tag) {
   const email = `test-delivery-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   const password = 'correcthorse123';
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, email_verified) VALUES ($1, $2, $3, $4, TRUE)`,
+    // Approved to host: these tests exercise delivery, not the host-access gate.
+    `INSERT INTO users (id, name, email, password_hash, email_verified, host_status)
+     VALUES ($1, $2, $3, $4, TRUE, 'approved')`,
     [id, `Delivery Test ${tag}`, email, bcrypt.hashSync(password, 4)]
   );
   createdUserIds.push(id);

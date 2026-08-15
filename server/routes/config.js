@@ -9,11 +9,9 @@ const router = express.Router();
 // cloud name and an unsigned preset name, never an API secret.
 router.get('/', async (req, res) => {
   try {
-    const [maintenanceMode, maintenanceMessage, standardPrice, partnerPrice] = await Promise.all([
+    const [maintenanceMode, maintenanceMessage] = await Promise.all([
       getSetting('maintenance_mode'),
       getSetting('maintenance_message'),
-      getSetting('hosting_plan_standard_price_aed'),
-      getSetting('hosting_plan_partner_price_aed'),
     ]);
     res.json({
       cloudinary_cloud_name: process.env.CLOUDINARY_CLOUD_NAME || null,
@@ -21,8 +19,10 @@ router.get('/', async (req, res) => {
       ga_measurement_id: process.env.GA_MEASUREMENT_ID || null,
       maintenance_mode: maintenanceMode === 'true',
       maintenance_message: maintenanceMessage,
-      hosting_plan_standard_price_aed: Number(standardPrice),
-      hosting_plan_partner_price_aed: Number(partnerPrice),
+      // No hosting prices are published here, because hosting has no paid tier
+      // to price. It is a closed beta and it is free while it lasts.
+      hosting_is_paid: false,
+      hosting_access_model: 'private_beta_application',
       // So the host and winner UI can hide claim controls entirely rather than
       // rendering buttons that answer 503.
       claims_enabled: areClaimsEnabled(),

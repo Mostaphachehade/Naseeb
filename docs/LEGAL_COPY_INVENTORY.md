@@ -124,7 +124,20 @@ outright for anything that is not effective, so there is no path — deliberate 
 we hold no record of anyone agreeing to anything. Acceptance capture at signup is planned
 work for a later phase, and will record from that point forward, not retrospectively.
 
-## 8. Not done, on purpose
+## 8. Superseded by the host-access phase
+
+The `pricing.html` row in §1 above described a page that advertised three hosting plans.
+That page has since been rewritten: the plans are gone entirely — not repriced — because
+none of them had a checkout, a listing limit, a placement mechanism or any entitlement
+behind it, while hosting was meanwhile open to anyone with a verified email. The page now
+lists only what exists: free entry, a free closed hosting beta granted per account, and
+paid advertising. No replacement price was invented. See `docs/HOST_ACCESS.md`.
+
+The host-fee wording in §4 stays as written, because the Terms still need to distinguish
+the money flows — but note that as things stand **no host pays anything**, and the Terms
+describe a fee that may be charged rather than one that is.
+
+## 9. Not done, on purpose
 
 - No legal entity name, licence number, registered address, controller identity, contact
   email or court jurisdiction has been invented. Each is marked *to be confirmed* and

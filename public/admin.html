@@ -139,7 +139,6 @@
     window.location.href = '/login.html?redirect=%2Fadmin.html';
   }
 
-  const PLAN_LABELS = { pilot: 'Pilot', standard: 'Standard', partner: 'Partner' };
 
   async function loadStats() {
     const content = document.getElementById('stats-content');
@@ -151,6 +150,8 @@
         { num: s.live_giveaways, label: 'Live giveaways' },
         { num: s.total_hosts, label: 'Total hosts' },
         { num: s.verified_hosts, label: 'Verified hosts' },
+        { num: s.approved_hosts, label: 'Approved hosts' },
+        { num: s.suspended_hosts, label: 'Suspended hosts', attention: s.suspended_hosts > 0 },
         { num: s.active_ad ? s.active_ad.click_count : '—', label: s.active_ad ? `Clicks — ${escapeHtml(s.active_ad.business_name)}` : 'No active ad' },
       ];
       content.innerHTML = cards.map((c) => `
@@ -164,28 +165,99 @@
     }
   }
 
+  // The queue deliberately carries no email address, no phone number, no trade
+  // licence and no free-text message. A list is a screen that gets left open and
+  // scrolled past; none of those fields help decide which application to open.
+  // They arrive with the detail fetch below, when an administrator opens one.
+  const STATUS_LABELS = {
+    pending: 'Waiting for review',
+    approved: 'Approved',
+    rejected: 'Not approved',
+    withdrawn: 'Withdrawn',
+  };
+
   function appRow(a) {
-    const who = a.applicant_type === 'company'
-      ? `${escapeHtml(a.business_name || '—')}<br><span style="color:var(--text-soft); font-size:0.82rem;">${escapeHtml(a.full_name)}${a.trade_license ? ` · ${escapeHtml(a.trade_license)}` : ''}</span>`
-      : escapeHtml(a.full_name);
-    const contact = `${escapeHtml(a.contact_email)}${a.contact_phone ? `<br><span style="color:var(--text-soft); font-size:0.82rem;">${escapeHtml(a.contact_phone)}</span>` : ''}`;
-    const typeBadge = `<span class="pill-badge ${a.applicant_type === 'company' ? 'company' : ''}">${a.applicant_type}</span>`;
-    const planBadge = `<span class="pill-badge">${escapeHtml(PLAN_LABELS[a.plan] || a.plan)}</span>`;
+    const typeBadge = `<span class="pill-badge ${a.applicant_type === 'company' ? 'company' : ''}">${escapeHtml(a.applicant_type)}</span>`;
+    const statusBadge = `<span class="pill-badge">${escapeHtml(STATUS_LABELS[a.status] || a.status)}</span>`;
     const submitted = new Date(a.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const decided = a.decided_at
+      ? `${new Date(a.decided_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}${a.decided_by_name ? ` by ${escapeHtml(a.decided_by_name)}` : ''}`
+      : '<span style="color:var(--text-soft);">—</span>';
+    const legacy = a.user_id
+      ? ''
+      : '<br><span style="color:var(--text-soft); font-size:0.78rem;">Legacy enquiry — no account attached</span>';
     return `
-      <tr class="${a.contacted ? 'contacted' : ''}" data-id="${a.id}">
+      <tr class="${a.status !== 'pending' ? 'contacted' : ''}" data-id="${a.id}">
         <td>${typeBadge}</td>
-        <td>${who}</td>
-        <td>${contact}</td>
-        <td>${planBadge}</td>
-        <td style="max-width:260px;">${a.message ? escapeHtml(a.message) : '<span style="color:var(--text-soft);">—</span>'}</td>
+        <td>${escapeHtml(a.display_name || '—')}${legacy}</td>
+        <td>${statusBadge}</td>
         <td>${submitted}</td>
+        <td>${decided}</td>
         <td style="white-space:nowrap;">
-          <button class="btn ghost app-contacted-btn" style="padding:6px 10px; font-size:0.78rem;" data-contacted="${a.contacted}">${a.contacted ? 'Mark not contacted' : 'Mark contacted'}</button>
-          <button class="btn ghost app-delete-btn" style="padding:6px 10px; font-size:0.78rem; border-color:var(--danger); color:var(--danger);">Delete</button>
+          <button class="btn ghost app-open-btn" style="padding:6px 10px; font-size:0.78rem;">Review</button>
+          ${a.status === 'pending' ? '<button class="btn ghost app-delete-btn" style="padding:6px 10px; font-size:0.78rem; border-color:var(--danger); color:var(--danger);">Delete</button>' : ''}
         </td>
       </tr>
+      <tr class="app-detail-row" data-detail-for="${a.id}" style="display:none;"><td colspan="6"></td></tr>
     `;
+  }
+
+  async function openApplication(id) {
+    const cell = document.querySelector(`tr[data-detail-for="${id}"] td`);
+    const row = cell.parentElement;
+    if (row.style.display !== 'none') {
+      row.style.display = 'none';
+      return;
+    }
+    row.style.display = '';
+    cell.innerHTML = 'Loading…';
+    try {
+      const a = await api(`/admin/host-applications/${id}`);
+      const decided = a.status !== 'pending';
+      cell.innerHTML = `
+        <div style="padding:12px 4px;">
+          <p style="margin:0 0 6px;"><strong>${escapeHtml(a.business_name || a.full_name)}</strong>${a.business_name ? ` — contact: ${escapeHtml(a.full_name)}` : ''}</p>
+          <p style="margin:0 0 6px; color:var(--text-soft); font-size:0.86rem;">
+            ${escapeHtml(a.account_email || a.contact_email || '—')}${a.contact_phone ? ` · ${escapeHtml(a.contact_phone)}` : ''}${a.trade_license ? ` · licence ${escapeHtml(a.trade_license)}` : ''}
+          </p>
+          ${a.plan ? `<p style="margin:0 0 6px; color:var(--text-soft); font-size:0.82rem;">Submitted against the withdrawn "${escapeHtml(a.plan)}" plan, before hosting plans were removed.</p>` : ''}
+          ${a.message ? `<p style="margin:0 0 10px;">${escapeHtml(a.message)}</p>` : ''}
+          <p style="margin:0 0 10px; color:var(--text-soft); font-size:0.86rem;">Account host status: <strong>${escapeHtml(a.host_status || 'no account')}</strong></p>
+          ${decided
+            ? `<p style="margin:0; color:var(--text-soft); font-size:0.86rem;">${escapeHtml(STATUS_LABELS[a.status] || a.status)} on ${new Date(a.decided_at).toLocaleString()}${a.decided_by_name ? ` by ${escapeHtml(a.decided_by_name)}` : ''}${a.decision_reason ? ` — "${escapeHtml(a.decision_reason)}"` : ''}</p>`
+            : `<label for="reason-${a.id}" style="font-size:0.86rem;">Reason (recorded against this decision, and shown to the applicant)</label>
+               <input id="reason-${a.id}" class="decision-reason" maxlength="1000" placeholder="Why this decision?" />
+               <div style="margin-top:10px;">
+                 <button class="btn primary decide-btn" data-decision="approved" data-id="${a.id}" style="padding:8px 14px; font-size:0.82rem;">Approve to host</button>
+                 <button class="btn ghost decide-btn" data-decision="rejected" data-id="${a.id}" style="padding:8px 14px; font-size:0.82rem; margin-left:8px; border-color:var(--danger); color:var(--danger);">Do not approve</button>
+               </div>
+               <p class="hint" style="margin-top:8px;">Approving is the only thing that grants host access. Nothing else on this page does.</p>`}
+        </div>
+      `;
+      cell.querySelectorAll('.decide-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const reason = cell.querySelector('.decision-reason').value;
+          if (!reason.trim()) {
+            alert('A short reason is required — it is recorded against the decision.');
+            return;
+          }
+          btn.disabled = true;
+          try {
+            await api(`/admin/host-applications/${btn.dataset.id}/decision`, {
+              method: 'POST',
+              body: JSON.stringify({ decision: btn.dataset.decision, reason }),
+            });
+            load();
+            loadStats();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      cell.innerHTML = `<span class="form-error show">${escapeHtml(err.message)}</span>`;
+    }
   }
 
   async function load() {
@@ -201,37 +273,20 @@
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Type</th><th>Who</th><th>Contact</th><th>Plan</th><th>Message</th><th>Submitted</th><th>Actions</th>
+                <th>Type</th><th>Who</th><th>Status</th><th>Submitted</th><th>Decided</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>${applications.map(appRow).join('')}</tbody>
           </table>
         </div>
       `;
-      content.querySelectorAll('.app-contacted-btn').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          const row = e.target.closest('tr');
-          const id = row.dataset.id;
-          const nextContacted = btn.dataset.contacted !== 'true';
-          btn.disabled = true;
-          try {
-            await api(`/admin/host-applications/${id}`, {
-              method: 'PATCH',
-              body: JSON.stringify({ contacted: nextContacted }),
-            });
-            load();
-            loadStats();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
-        });
+      content.querySelectorAll('.app-open-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => openApplication(e.target.closest('tr').dataset.id));
       });
       content.querySelectorAll('.app-delete-btn').forEach((btn) => {
         btn.addEventListener('click', async (e) => {
-          if (!confirm('Delete this application? This cannot be undone.')) return;
-          const row = e.target.closest('tr');
-          const id = row.dataset.id;
+          if (!confirm('Delete this undecided application? The applicant returns to never having applied.')) return;
+          const id = e.target.closest('tr').dataset.id;
           btn.disabled = true;
           try {
             await api(`/admin/host-applications/${id}`, { method: 'DELETE' });
@@ -494,9 +549,41 @@
         <td class="mono">${u.giveaways_hosted}</td>
         <td>${joined}</td>
         <td><input type="checkbox" class="verified-toggle" ${u.is_verified_business ? 'checked' : ''} /></td>
-        <td>${deleteBtn}</td>
+        <td>${hostStatusCell(u)}</td>
+        <td style="white-space:nowrap;">${hostActions(u)} ${deleteBtn}</td>
       </tr>
     `;
+  }
+
+  const HOST_STATUS_LABELS = {
+    not_requested: 'Never applied',
+    pending: 'Waiting for review',
+    approved: 'Approved',
+    rejected: 'Not approved',
+    suspended: 'Suspended',
+  };
+
+  function hostStatusCell(u) {
+    const label = HOST_STATUS_LABELS[u.host_status] || u.host_status || '—';
+    const when = u.host_status_changed_at
+      ? `<br><span style="color:var(--text-soft); font-size:0.76rem;">${new Date(u.host_status_changed_at).toLocaleDateString()}</span>`
+      : '';
+    const exempt = u.is_admin
+      ? '<br><span style="color:var(--text-soft); font-size:0.76rem;">admin — this gate does not apply</span>'
+      : '';
+    return `<span class="pill-badge">${escapeHtml(label)}</span>${when}${exempt}`;
+  }
+
+  function hostActions(u) {
+    // Suspending and reinstating both need a reason, so both go through the
+    // same prompt. Neither deletes anything.
+    if (u.host_status === 'approved') {
+      return `<button class="btn ghost host-status-btn" data-status="suspended" style="padding:6px 10px; font-size:0.78rem;">Suspend hosting</button>`;
+    }
+    if (u.host_status === 'suspended') {
+      return `<button class="btn ghost host-status-btn" data-status="approved" style="padding:6px 10px; font-size:0.78rem;">Reinstate</button>`;
+    }
+    return `<button class="btn ghost host-status-btn" data-status="approved" style="padding:6px 10px; font-size:0.78rem;">Grant hosting</button>`;
   }
 
   async function loadUsers() {
@@ -510,7 +597,7 @@
       content.innerHTML = `
         <div class="table-wrap">
           <table class="admin-table">
-            <thead><tr><th>Name</th><th>Email</th><th>Hosted</th><th>Joined</th><th>Verified</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Hosted</th><th>Joined</th><th>Verified</th><th>Host access</th><th>Actions</th></tr></thead>
             <tbody>${users.map(userRow).join('')}</tbody>
           </table>
         </div>
@@ -528,6 +615,40 @@
             alert(err.message);
           } finally {
             e.target.disabled = false;
+          }
+        });
+      });
+      content.querySelectorAll('.host-status-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          const id = e.target.closest('tr').dataset.id;
+          const status = btn.dataset.status;
+          const reason = prompt(
+            status === 'suspended'
+              ? 'Why is hosting being suspended? This is recorded against the change and shown to the account.'
+              : 'Why is hosting being granted? This is recorded against the change and shown to the account.'
+          );
+          if (reason === null) return;
+          if (!reason.trim()) {
+            alert('A short reason is required.');
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const result = await api(`/admin/hosts/${id}/status`, {
+              method: 'POST',
+              body: JSON.stringify({ status, reason }),
+            });
+            if (result.open_claims_affected > 0) {
+              alert(
+                `${result.open_claims_affected} open prize claim(s) for this host are now handled by an administrator. ` +
+                'Nothing was deleted — the winner can raise a dispute and an administrator resolves it.'
+              );
+            }
+            loadUsers();
+            loadStats();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
           }
         });
       });

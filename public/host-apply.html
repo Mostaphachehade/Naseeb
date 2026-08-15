@@ -4,11 +4,17 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Apply to host — Naseeb</title>
-<meta name="description" content="Apply to host a giveaway on Naseeb as an individual or a company." />
+<meta name="description" content="Hosting on Naseeb is a closed beta. Apply as an individual or a company and an administrator will review your request." />
 <meta name="robots" content="noindex" />
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<style>
+  .status-panel { border-left:4px solid var(--gold); background:#fff; border-radius:10px; padding:20px 22px; margin-bottom:26px; }
+  .status-panel h3 { margin:0 0 8px; font-size:1.05rem; }
+  .status-panel p { color:var(--text-soft); margin:0 0 6px; font-size:0.94rem; }
+  .status-panel .reason { font-style:italic; }
+</style>
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -25,11 +31,13 @@
     <div class="section-head" id="form-head">
       <div>
         <h2>Apply to host</h2>
-        <p>Tell us a bit about you or your business. We'll follow up to set up billing for your plan — and you can start building your listing right away.</p>
+        <p>Hosting is a closed beta. Tell us who you are, and an administrator will review your request.</p>
       </div>
     </div>
 
-    <form class="card narrow" id="apply-form" style="max-width:none;">
+    <div id="status-panel"></div>
+
+    <form class="card narrow" id="apply-form" style="max-width:none; display:none;">
       <label>Who's applying?</label>
       <div class="segmented" id="applicant-type-toggle">
         <button type="button" class="segmented-option active" data-value="individual" aria-pressed="true">An individual</button>
@@ -47,44 +55,24 @@
       <label for="full_name" id="full_name-label">Full name</label>
       <input id="full_name" required />
 
-      <label for="contact_email">Email</label>
-      <input id="contact_email" type="email" required />
-
       <label for="contact_phone">Phone (optional)</label>
       <input id="contact_phone" type="tel" placeholder="e.g. +971 50 123 4567" />
+      <p class="hint">We use the email address on your account, so there is nothing to type here.</p>
 
-      <label>Plan you're interested in</label>
-      <div class="plan-cards" id="plan-cards">
-        <button type="button" class="plan-card active" data-value="pilot" aria-pressed="true">
-          <span class="plan-card-name">Pilot</span>
-          <span class="plan-card-price">Free</span>
-        </button>
-        <button type="button" class="plan-card" data-value="standard" aria-pressed="false">
-          <span class="plan-card-name">Standard</span>
-          <span class="plan-card-price">AED 250</span>
-        </button>
-        <button type="button" class="plan-card" data-value="partner" aria-pressed="false">
-          <span class="plan-card-name">Partner</span>
-          <span class="plan-card-price">AED 900/mo</span>
-        </button>
-      </div>
-
-      <label for="message">Anything else? (optional)</label>
-      <textarea id="message" placeholder="Tell us about the giveaway you're planning, or ask a question."></textarea>
+      <label for="message">What are you planning to give away? (optional)</label>
+      <textarea id="message" placeholder="Tell us about the giveaway you have in mind, or ask a question."></textarea>
 
       <div class="compliance-box">
-        Submitting this doesn't charge you anything. It's just how we get in touch to set up billing for a paid plan — and since hosting itself is already open to any signed-in account, you can start building your listing today.
+        <strong>What submitting this does, and does not do.</strong>
+        It charges you nothing — there is no payment step here and no paid hosting tier to be charged for.
+        It grants you nothing: your account moves to "waiting for review", and only an administrator's
+        decision can turn that into host access. We have not set a review deadline and are not promising one.
+        You cannot publish a giveaway while an application is open.
       </div>
 
       <button class="btn primary" type="submit">Submit application</button>
       <p class="form-error" id="error"></p>
     </form>
-
-    <div class="card narrow" id="confirmation" style="display:none; text-align:center;">
-      <h2>You're in.</h2>
-      <p style="color:var(--text-soft);">Thanks — we've got your application and will reach out to set up billing for your plan. In the meantime, hosting is already open, so go ahead and build your listing.</p>
-      <div id="confirmation-actions" style="margin-top:22px;"></div>
-    </div>
   </div>
 </main>
 
@@ -96,6 +84,8 @@
   const companyFields = document.getElementById('company-fields');
   const fullNameLabel = document.getElementById('full_name-label');
   const businessNameInput = document.getElementById('business_name');
+  const statusPanel = document.getElementById('status-panel');
+  const applyForm = document.getElementById('apply-form');
 
   let applicantType = 'individual';
   const typeButtons = document.querySelectorAll('#applicant-type-toggle .segmented-option');
@@ -119,34 +109,99 @@
   });
   syncApplicantType();
 
-  let selectedPlan = 'pilot';
-  const planButtons = document.querySelectorAll('#plan-cards .plan-card');
-
-  function syncPlan() {
-    planButtons.forEach((btn) => {
-      const active = btn.dataset.value === selectedPlan;
-      btn.classList.toggle('active', active);
-      btn.setAttribute('aria-pressed', active);
-    });
-  }
-  planButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      selectedPlan = btn.dataset.value;
-      syncPlan();
-    });
-  });
-
-  const params = new URLSearchParams(window.location.search);
-  const requestedPlan = params.get('plan');
-  if (['pilot', 'standard', 'partner'].includes(requestedPlan)) {
-    selectedPlan = requestedPlan;
-    syncPlan();
+  function panel(title, body, actionHtml) {
+    return `
+      <div class="status-panel">
+        <h3>${title}</h3>
+        ${body}
+        ${actionHtml || ''}
+      </div>
+    `;
   }
 
-  document.getElementById('apply-form').addEventListener('submit', async (e) => {
+  // Everything below decides what to SHOW. The server decides what is allowed,
+  // on every request, from users.host_status — a browser that renders the form
+  // anyway still gets a 403 from POST /api/host-applications.
+  function render(state) {
+    if (state.is_admin) {
+      statusPanel.innerHTML = panel(
+        'You are an administrator',
+        `<p>Administrator accounts can host without an approval, so there is nothing to apply for.</p>`,
+        `<a class="btn primary" href="/create.html">Host a giveaway</a>`
+      );
+      return;
+    }
+    if (!state.email_verified) {
+      statusPanel.innerHTML = panel(
+        'Verify your email first',
+        `<p>We need a working email address on your account before you can apply. Check your inbox, or resend the verification email from the banner above.</p>`
+      );
+      return;
+    }
+
+    switch (state.host_status) {
+      case 'approved':
+        statusPanel.innerHTML = panel(
+          'You are approved to host',
+          `<p>Your account has host access. There is nothing further to apply for.</p>`,
+          `<a class="btn primary" href="/create.html">Host a giveaway</a>`
+        );
+        return;
+      case 'pending':
+        statusPanel.innerHTML = panel(
+          'Your application is with an administrator',
+          `<p>Submitted ${state.application ? new Date(state.application.created_at).toLocaleDateString() : 'recently'}. It grants no hosting access on its own.</p>
+           <p>We have not set a review deadline, so we are not going to promise you one.</p>`,
+          `<a class="btn ghost" style="border-color:var(--ink); color:var(--ink);" href="/dashboard.html">Back to my giveaways</a>`
+        );
+        return;
+      case 'rejected':
+        statusPanel.innerHTML = panel(
+          'This account has not been approved to host',
+          `<p>An administrator reviewed your application and did not approve it.</p>
+           ${state.status_reason ? `<p class="reason">Reason given: ${escapeHtml(state.status_reason)}</p>` : ''}
+           <p>You can apply again if something has changed since.</p>`
+        );
+        applyForm.style.display = 'block';
+        return;
+      case 'suspended':
+        statusPanel.innerHTML = panel(
+          'Hosting access is suspended',
+          `<p>An administrator has suspended hosting for this account. Your existing giveaways, entries and records are unchanged — what has stopped is publishing new giveaways and drawing winners.</p>
+           ${state.status_reason ? `<p class="reason">Reason given: ${escapeHtml(state.status_reason)}</p>` : ''}
+           <p>Applying again will not lift a suspension. Please get in touch.</p>`,
+          `<a class="btn ghost" style="border-color:var(--ink); color:var(--ink);" href="/about.html#get-in-touch">Contact us</a>`
+        );
+        return;
+      default:
+        applyForm.style.display = 'block';
+    }
+  }
+
+  async function load() {
+    if (!getToken()) {
+      document.getElementById('form-head').style.display = 'none';
+      statusPanel.innerHTML = panel(
+        'Sign in to apply',
+        `<p>An application is attached to your account, so we need you signed in with a verified email address before you can make one.</p>`,
+        `<a class="btn primary" href="/login.html?redirect=%2Fhost-apply.html">Sign in</a>
+         <a class="btn ghost" style="border-color:var(--ink); color:var(--ink); margin-left:10px;" href="/signup.html?redirect=%2Fhost-apply.html">Create a free account</a>`
+      );
+      return;
+    }
+    try {
+      render(await api('/host-applications/me'));
+    } catch (err) {
+      statusPanel.innerHTML = `<p class="form-error show">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  applyForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorEl = document.getElementById('error');
     errorEl.classList.remove('show');
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
     try {
       await api('/host-applications', {
         method: 'POST',
@@ -155,31 +210,21 @@
           full_name: document.getElementById('full_name').value,
           business_name: businessNameInput.value || null,
           trade_license: document.getElementById('trade_license').value || null,
-          contact_email: document.getElementById('contact_email').value,
           contact_phone: document.getElementById('contact_phone').value || null,
-          plan: selectedPlan,
           message: document.getElementById('message').value || null,
         }),
       });
-
+      applyForm.style.display = 'none';
       document.getElementById('form-head').style.display = 'none';
-      document.getElementById('apply-form').style.display = 'none';
-
-      const actions = document.getElementById('confirmation-actions');
-      if (getUser()) {
-        actions.innerHTML = `<a href="/create.html" class="btn primary">Host your giveaway</a>`;
-      } else {
-        actions.innerHTML = `
-          <a href="/signup.html?redirect=%2Fcreate.html" class="btn primary">Create your free account</a>
-          <a href="/login.html?redirect=%2Fcreate.html" class="btn ghost" style="border-color:var(--ink); color:var(--ink); margin-left:10px;">Sign in instead</a>
-        `;
-      }
-      document.getElementById('confirmation').style.display = 'block';
+      await load();
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.add('show');
+      submitBtn.disabled = false;
     }
   });
+
+  load();
 </script>
 </body>
 </html>

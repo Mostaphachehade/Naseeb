@@ -94,8 +94,10 @@ async function createUser(tag, { admin = false } = {}) {
   const email = `test-claim-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   const password = 'correcthorse123';
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin)
-     VALUES ($1, $2, $3, $4, TRUE, $5)`,
+    // Approved to host: these tests exercise the claim workflow, not the
+    // host-access gate. Approval grants nothing over anyone else's giveaway.
+    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status)
+     VALUES ($1, $2, $3, $4, TRUE, $5, 'approved')`,
     [id, `Fabricated ${tag}`, email, bcrypt.hashSync(password, 4), admin]
   );
   createdUserIds.push(id);

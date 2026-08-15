@@ -9,6 +9,11 @@ There is no payment flow anywhere in this codebase, by design. Every giveaway mu
 - draw a winner only after the entry deadline, uniformly at random from all entries
 - limit each person to one entry, so no one can pay or otherwise "buy" better odds
 
+**Hosting is a closed beta.** Entering is open to anyone with a verified email; publishing a
+giveaway is not. An account must be approved by an administrator, and access can be suspended
+without deleting anything. See `docs/HOST_ACCESS.md` for the model, the routes it gates, the
+migration, and one known consequence around open prize claims.
+
 ## Why it's built this way
 
 Paid-entry raffles and lotteries are regulated in most countries. In the UAE, commercial gaming
@@ -104,19 +109,22 @@ naseeb/
     middleware/rateLimit.js   # rate limiters for auth, entry, and application endpoints
     routes/auth.js            # signup / login / email verification / password reset
     routes/giveaways.js       # browse (paginated), create, enter, draw, dashboard
-    routes/hostApplications.js # public application form -> host_applications table
-    routes/admin.js            # admin-only: list/review host applications
+    routes/hostApplications.js # private-beta host application (sign-in required) + own status
+    routes/admin.js            # admin-only: review applications, grant/suspend host access
+    lib/hostAccess.js          # THE host authorization gate — see docs/HOST_ACCESS.md
     routes/config.js           # exposes non-secret Cloudinary config to the frontend
   public/
     index.html            # browse giveaways
     giveaway.html          # single giveaway: enter, or draw if you're the host
     create.html            # host form (funding disclosure + optional image upload)
     dashboard.html          # your hosted giveaways + your entries
-    host-apply.html          # apply to host on a paid plan (individual or company)
-    admin.html                # admin-only: review host applications
+    host-apply.html          # apply to the private hosting beta (individual or company)
+    admin.html                # admin-only: review applications, grant/suspend host access
     verify.html / forgot-password.html / reset-password.html
     login.html / signup.html
     about.html / pricing.html / terms.html / privacy.html
+                          # pricing.html lists only what exists: free entry, a free
+                          # closed hosting beta, and paid advertising
     css/style.css
     js/app.js               # shared auth/session helpers + rendering
 ```

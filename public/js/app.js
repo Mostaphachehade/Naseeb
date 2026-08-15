@@ -93,7 +93,7 @@ function renderHeader() {
       <a href="/dashboard.html">${t('nav.myGiveaways')}</a>
       <a href="/pricing.html">${t('nav.pricing')}</a>
       ${user.is_admin ? `<a href="/admin.html">${t('nav.admin')}</a><a href="/owner.html">${t('nav.owner')}</a>` : ''}
-      <a href="/create.html" class="btn-gold" style="border-radius:100px;">${t('nav.hostGiveaway')}</a>
+      <a href="/host-apply.html" id="nav-host-cta" class="btn-gold" style="border-radius:100px;">${t('nav.applyToHost')}</a>
       <span style="opacity:0.7;">${t('nav.hi', { name: escapeHtml(user.name) })}</span>
       <button id="logout-btn">${t('nav.signOut')}</button>
       ${langSwitcherHtml()}
@@ -114,6 +114,30 @@ function renderHeader() {
     `;
   }
   wireLangSwitcher();
+  syncHostCta();
+}
+
+// Hosting is a closed beta, so the header cannot assume a signed-in account may
+// host. It starts as "Apply to host" — the safe, true default for a brand new
+// account — and only becomes "Host a giveaway" once the server says this
+// account is approved (or is an administrator).
+//
+// host_status is deliberately not in the session token: the JWT lives for 30
+// days and would keep asserting a status long after an administrator changed
+// it. The server re-checks on every host-only request regardless of what this
+// renders.
+async function syncHostCta() {
+  const cta = document.getElementById('nav-host-cta');
+  if (!cta || !getToken()) return;
+  try {
+    const state = await api('/host-applications/me');
+    if (state.can_host) {
+      cta.href = '/create.html';
+      cta.textContent = t('nav.hostGiveaway');
+    }
+  } catch (err) {
+    // Leave the safe default in place.
+  }
 }
 
 function renderFooter() {
@@ -131,7 +155,7 @@ function renderFooter() {
           <span class="footer-heading">${t('footer.explore')}</span>
           <a href="/index.html">${t('footer.browseGiveaways')}</a>
           <a href="/winners.html">${t('footer.pastWinners')}</a>
-          <a href="/create.html">${t('nav.hostGiveaway')}</a>
+          <a href="/host-apply.html">${t('nav.applyToHost')}</a>
           <a href="/pricing.html">${t('nav.pricing')}</a>
           <a href="/about.html">${t('footer.aboutNaseeb')}</a>
           <a href="/advertise.html">${t('footer.advertise')}</a>

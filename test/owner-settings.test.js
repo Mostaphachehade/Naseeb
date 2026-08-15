@@ -99,12 +99,35 @@ test('settings updates reject an invalid value for a known key', async () => {
   assert.equal(res.status, 400);
 });
 
-test('public /api/config exposes maintenance state and hosting plan prices with no auth', async () => {
+test('public /api/config exposes maintenance state with no auth, and no hosting price', async () => {
   const res = await api().get('/api/config');
   assert.equal(res.status, 200);
   assert.equal(typeof res.body.maintenance_mode, 'boolean');
-  assert.equal(typeof res.body.hosting_plan_standard_price_aed, 'number');
-  assert.equal(typeof res.body.hosting_plan_partner_price_aed, 'number');
+
+  // The two hosting plan prices this endpoint used to publish priced plans that
+  // were advertised and never built. Publishing a price for something nobody
+  // can buy is the marketing claim, not the number — so the keys are gone
+  // rather than zeroed, and the endpoint says what the model actually is.
+  assert.equal(res.body.hosting_plan_standard_price_aed, undefined);
+  assert.equal(res.body.hosting_plan_partner_price_aed, undefined);
+  assert.equal(res.body.hosting_is_paid, false);
+  assert.equal(res.body.hosting_access_model, 'private_beta_application');
+});
+
+test('the settings API refuses to store a hosting plan price at all', async () => {
+  const admin = await createVerifiedUser('no-host-price', { admin: true });
+
+  const res = await api()
+    .patch('/api/admin/settings')
+    .set('Authorization', `Bearer ${admin.token}`)
+    .send({ hosting_plan_standard_price_aed: '250' });
+
+  assert.equal(res.status, 400, 'a removed setting must not quietly come back');
+  assert.match(res.body.error, /Unknown setting/i);
+
+  const settings = await api().get('/api/admin/settings').set('Authorization', `Bearer ${admin.token}`);
+  assert.equal(settings.body.hosting_plan_standard_price_aed, undefined);
+  assert.equal(settings.body.hosting_plan_partner_price_aed, undefined);
 });
 
 test('a non-admin cannot read the revenue summary', async () => {

@@ -3,6 +3,7 @@ const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 const { getAllSettings, setSetting } = require('../lib/settings');
+const { HOST_STATUS, ADMIN_SETTABLE, setHostStatus } = require('../lib/hostAccess');
 const { PRICE_FORMAT } = require('../lib/adPricing');
 
 const router = express.Router();
@@ -18,8 +19,6 @@ const SETTINGS_VALIDATORS = {
   // rather than being charged the new one. Existing bookings are untouched —
   // they carry their own agreed amount.
   ad_price_per_week_aed: (v) => PRICE_FORMAT.test(String(v).trim()) && Number(v) > 0,
-  hosting_plan_standard_price_aed: (v) => typeof v === 'string' && Number.isFinite(Number(v)) && Number(v) >= 0,
-  hosting_plan_partner_price_aed: (v) => typeof v === 'string' && Number.isFinite(Number(v)) && Number(v) >= 0,
   maintenance_mode: (v) => v === 'true' || v === 'false',
   maintenance_message: (v) => typeof v === 'string' && v.trim().length > 0 && v.trim().length <= 500,
 };
@@ -35,11 +34,15 @@ router.get('/stats', requireAdmin, async (req, res) => {
       hosts,
       activeAd,
     ] = await Promise.all([
-      pool.query("SELECT COUNT(*)::int AS c FROM host_applications WHERE contacted = FALSE"),
+      pool.query("SELECT COUNT(*)::int AS c FROM host_applications WHERE status = 'pending'"),
       pool.query("SELECT COUNT(*)::int AS c FROM ad_inquiries WHERE contacted = FALSE"),
       pool.query("SELECT COUNT(*)::int AS c FROM giveaways WHERE status = 'active'"),
       pool.query(
-        "SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE is_verified_business) ::int AS verified FROM users"
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE is_verified_business)::int AS verified,
+                COUNT(*) FILTER (WHERE host_status = 'approved')::int AS approved_hosts,
+                COUNT(*) FILTER (WHERE host_status = 'suspended')::int AS suspended_hosts
+           FROM users`
       ),
       pool.query(
         `SELECT business_name, click_count FROM ads
@@ -56,6 +59,8 @@ router.get('/stats', requireAdmin, async (req, res) => {
       live_giveaways: liveGiveaways.rows[0].c,
       total_hosts: hosts.rows[0].total,
       verified_hosts: hosts.rows[0].verified,
+      approved_hosts: hosts.rows[0].approved_hosts,
+      suspended_hosts: hosts.rows[0].suspended_hosts,
       active_ad: activeAd.rows[0] || null,
     });
   } catch (err) {
@@ -64,11 +69,27 @@ router.get('/stats', requireAdmin, async (req, res) => {
   }
 });
 
+// The review queue.
+//
+// Deliberately narrow: who applied, whether they are an individual or a
+// company, when, and where the decision stands. No email address, no phone
+// number, no trade licence, no free-text message. A queue is a screen that gets
+// left open, scrolled past and screenshotted, and none of those fields help
+// anyone decide which application to open — they are on the detail endpoint
+// below, fetched when an administrator actually opens one.
 router.get('/host-applications', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT * FROM host_applications ORDER BY contacted ASC, created_at DESC'
+      `SELECT a.id, a.applicant_type, a.status, a.created_at, a.decided_at, a.plan,
+              COALESCE(a.business_name, a.full_name) AS display_name,
+              a.user_id, u.host_status,
+              decider.name AS decided_by_name
+         FROM host_applications a
+         LEFT JOIN users u ON u.id = a.user_id
+         LEFT JOIN users decider ON decider.id = a.decided_by
+        ORDER BY (a.status = 'pending') DESC, a.created_at DESC`
     );
+    res.set('Cache-Control', 'no-store');
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -76,19 +97,22 @@ router.get('/host-applications', requireAdmin, async (req, res) => {
   }
 });
 
-router.patch('/host-applications/:id', requireAdmin, async (req, res) => {
+// One application in full, including the contact details, fetched only when an
+// administrator opens it rather than rendered into a list of everyone.
+router.get('/host-applications/:id', requireAdmin, async (req, res) => {
   try {
-    const { contacted } = req.body;
-    if (typeof contacted !== 'boolean') {
-      return res.status(400).json({ error: 'contacted must be true or false.' });
-    }
     const result = await pool.query(
-      'UPDATE host_applications SET contacted = $1 WHERE id = $2 RETURNING *',
-      [contacted, req.params.id]
+      `SELECT a.*, u.host_status, u.email AS account_email, decider.name AS decided_by_name
+         FROM host_applications a
+         LEFT JOIN users u ON u.id = a.user_id
+         LEFT JOIN users decider ON decider.id = a.decided_by
+        WHERE a.id = $1`,
+      [req.params.id]
     );
     if (!result.rows[0]) {
       return res.status(404).json({ error: 'Application not found.' });
     }
+    res.set('Cache-Control', 'no-store');
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -96,18 +120,226 @@ router.patch('/host-applications/:id', requireAdmin, async (req, res) => {
   }
 });
 
-router.delete('/host-applications/:id', requireAdmin, async (req, res) => {
+// Decide an application. Approving is the only thing on this platform that
+// grants hosting access, and it takes a named administrator, a timestamp and a
+// reason — an unexplained decision is unreviewable exactly when someone asks
+// why it was made.
+router.post('/host-applications/:id/decision', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const result = await pool.query('DELETE FROM host_applications WHERE id = $1 RETURNING id', [
-      req.params.id,
-    ]);
-    if (!result.rows[0]) {
+    const { decision, reason } = req.body || {};
+    if (decision !== 'approved' && decision !== 'rejected') {
+      return res.status(400).json({ error: "decision must be 'approved' or 'rejected'." });
+    }
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({ error: 'A short reason is required.', code: 'REASON_REQUIRED' });
+    }
+    if (String(reason).trim().length > 1000) {
+      return res.status(400).json({ error: 'Reason must be 1000 characters or fewer.' });
+    }
+
+    await client.query('BEGIN');
+
+    const existing = await client.query(
+      'SELECT id, user_id, status FROM host_applications WHERE id = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    if (!existing.rows[0]) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Application not found.' });
     }
-    res.json({ ok: true });
+    const application = existing.rows[0];
+    if (application.status !== 'pending') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `This application was already ${application.status}. Change the account's host access directly instead.`,
+        code: 'ALREADY_DECIDED',
+      });
+    }
+    // A legacy row from the old lead-capture form may have no account attached.
+    // There is nothing to grant access to, so it can be closed but not approved.
+    if (!application.user_id) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error:
+          'This enquiry predates host approval and is not attached to an account, so no access can be granted from it.',
+        code: 'NO_ACCOUNT_ATTACHED',
+      });
+    }
+
+    await client.query(
+      `UPDATE host_applications
+          SET status = $1, decided_at = NOW(), decided_by = $2, decision_reason = $3, contacted = TRUE
+        WHERE id = $4`,
+      [decision, req.userId, String(reason).trim(), req.params.id]
+    );
+
+    const change = await setHostStatus(client, {
+      userId: application.user_id,
+      toStatus: decision === 'approved' ? HOST_STATUS.APPROVED : HOST_STATUS.REJECTED,
+      reason: String(reason).trim(),
+      changedBy: req.userId,
+      source: 'admin_decision',
+      applicationId: req.params.id,
+    });
+
+    await client.query('COMMIT');
+
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      id: req.params.id,
+      status: decision,
+      host_status: decision === 'approved' ? HOST_STATUS.APPROVED : HOST_STATUS.REJECTED,
+      status_changed: Boolean(change),
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Host application decision failed:', err.message);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
+  }
+});
+
+// Change an account's host access directly — suspend a host, lift a
+// suspension, or approve someone without an application on file.
+//
+// Nothing is deleted by any of these: a suspended host keeps every giveaway,
+// entry, claim and event they had. What changes is what they may do next.
+router.post('/hosts/:userId/status', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { status, reason } = req.body || {};
+    if (!ADMIN_SETTABLE.has(status)) {
+      return res.status(400).json({
+        error: `status must be one of: ${[...ADMIN_SETTABLE].join(', ')}.`,
+      });
+    }
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({ error: 'A short reason is required.', code: 'REASON_REQUIRED' });
+    }
+    if (String(reason).trim().length > 1000) {
+      return res.status(400).json({ error: 'Reason must be 1000 characters or fewer.' });
+    }
+
+    await client.query('BEGIN');
+
+    const target = await client.query('SELECT id, is_admin FROM users WHERE id = $1', [
+      req.params.userId,
+    ]);
+    if (!target.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+
+    const change = await setHostStatus(client, {
+      userId: req.params.userId,
+      toStatus: status,
+      reason: String(reason).trim(),
+      changedBy: req.userId,
+      source: 'admin_decision',
+    });
+
+    // How many claims this affects, counted before the commit so the answer
+    // matches what was changed. Suspending a host who is mid-delivery hands
+    // those claims to administrators — see docs/HOST_ACCESS.md.
+    const openClaims = await client.query(
+      `SELECT COUNT(*)::int AS c
+         FROM prize_claims c
+         JOIN giveaways g ON g.id = c.giveaway_id
+        WHERE g.host_id = $1
+          AND c.status NOT IN ('delivered', 'cancelled')`,
+      [req.params.userId]
+    );
+
+    await client.query('COMMIT');
+
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      user_id: req.params.userId,
+      host_status: status,
+      status_changed: Boolean(change),
+      // An administrator's own status is recorded, but it does not gate them:
+      // the exemption in server/lib/hostAccess.js is on is_admin.
+      admin_exempt_from_status: Boolean(target.rows[0].is_admin),
+      open_claims_affected: status === HOST_STATUS.APPROVED ? 0 : openClaims.rows[0].c,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Host status change failed:', err.message);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
+  }
+});
+
+// The history behind one account's current host access.
+router.get('/hosts/:userId/status-events', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT e.from_status, e.to_status, e.reason, e.source, e.created_at,
+              changer.name AS changed_by_name
+         FROM host_status_events e
+         LEFT JOIN users changer ON changer.id = e.changed_by
+        WHERE e.user_id = $1
+        ORDER BY e.created_at ASC`,
+      [req.params.userId]
+    );
+    res.set('Cache-Control', 'no-store');
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// Only an undecided application can be removed, and only to clear spam. A
+// decided one carries who decided it, when and why — deleting that destroys the
+// only record of a decision someone may later be asked to justify.
+router.delete('/host-applications/:id', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const existing = await client.query(
+      'SELECT id, user_id, status FROM host_applications WHERE id = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    if (!existing.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Application not found.' });
+    }
+    if (existing.rows[0].status !== 'pending') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error:
+          "A decided application is part of the audit record and cannot be deleted. Change the account's host access instead.",
+        code: 'DECIDED_APPLICATION_IMMUTABLE',
+      });
+    }
+
+    await client.query('DELETE FROM host_applications WHERE id = $1', [req.params.id]);
+
+    // Removing the application takes the account back to never having asked,
+    // rather than leaving it waiting on a review of something that no longer
+    // exists. Recorded like any other change, so the deletion is visible.
+    if (existing.rows[0].user_id) {
+      await setHostStatus(client, {
+        userId: existing.rows[0].user_id,
+        toStatus: HOST_STATUS.NOT_REQUESTED,
+        reason: 'Undecided application removed by an administrator.',
+        changedBy: req.userId,
+        source: 'admin_decision',
+      });
+    }
+
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
   }
 });
 
@@ -288,6 +520,7 @@ router.get('/users', requireAdmin, async (req, res) => {
     const result = await pool.query(`
       SELECT
         users.id, users.name, users.email, users.is_admin, users.is_verified_business, users.created_at,
+        users.host_status, users.host_status_changed_at, users.host_status_reason,
         (SELECT COUNT(*)::int FROM giveaways WHERE giveaways.host_id = users.id) AS giveaways_hosted
       FROM users
       ORDER BY users.is_verified_business ASC, users.created_at DESC
