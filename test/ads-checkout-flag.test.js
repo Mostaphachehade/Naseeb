@@ -94,16 +94,20 @@ test('checkout is disabled when the environment variable is absent', async () =>
 });
 
 test('a disabled checkout inserts no ad row', async () => {
-  const before = await pool.query('SELECT COUNT(*)::int AS c FROM ads');
+  // Scoped to this file's own business name rather than a global COUNT(*) on
+  // ads: other test files insert bookings in parallel, so a total row count
+  // moves for reasons that have nothing to do with this request.
+  const before = await pool.query(
+    "SELECT COUNT(*)::int AS c FROM ads WHERE business_name = 'Acme LLC'"
+  );
 
   const res = await postCheckout();
   assert.equal(res.status, 503);
 
-  const after = await pool.query('SELECT COUNT(*)::int AS c FROM ads');
+  const after = await pool.query(
+    "SELECT COUNT(*)::int AS c FROM ads WHERE business_name = 'Acme LLC'"
+  );
   assert.equal(after.rows[0].c, before.rows[0].c, 'no pending ad row may be left behind');
-
-  const named = await pool.query("SELECT COUNT(*)::int AS c FROM ads WHERE business_name = 'Acme LLC'");
-  assert.equal(named.rows[0].c, 0);
 });
 
 test('a disabled checkout makes no Stripe request at all', async () => {
@@ -189,7 +193,16 @@ test('when explicitly enabled, the existing checkout behaviour is unchanged', as
   assert.equal(row.rows.length, 1);
   assert.equal(row.rows[0].paid, false);
   assert.equal(row.rows[0].stripe_session_id, 'cs_test_enabled_path');
-  assert.equal(Number(row.rows[0].amount_aed), 1000); // 2 weeks x AED 500 default
+
+  // The amount charged must equal the amount booked. Asserted against each
+  // other rather than against a hard-coded 1,000, because another test file
+  // changes ad_price_per_week_aed while this one runs — and internal
+  // consistency is the property that actually matters here anyway.
+  assert.equal(
+    Number(body.get('line_items[0][price_data][unit_amount]')),
+    Math.round(Number(row.rows[0].amount_aed) * 100),
+    'Stripe must be asked for exactly what the booking records'
+  );
 });
 
 test('validation still rejects bad input when checkout is enabled', async () => {

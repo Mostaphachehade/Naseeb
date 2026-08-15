@@ -231,6 +231,39 @@ async function init() {
       processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    -- Does this booking currently occupy the banner slot?
+    --
+    -- Kept separate from payment_status, which tracks money. The two are
+    -- related but not the same question, and conflating them is how a booking
+    -- ends up either holding dates it has no claim to or losing dates it paid
+    -- for. A payment that arrives too late to reclaim its dates is
+    -- payment_status = 'requires_reconciliation' with slot_status = 'released':
+    -- real money, no slot, needs a human.
+    --
+    --   held      reserved while the customer is in Stripe Checkout
+    --   paid      confirmed booking, banner runs on these dates
+    --   released  not occupying the slot (never did, expired, or given up)
+    --
+    -- Defaults to 'released' so the manually-toggled admin ads — which have no
+    -- dates at all — never participate in slot allocation or the exclusion
+    -- constraint below.
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS slot_status TEXT NOT NULL DEFAULT 'released';
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS hold_expires_at TIMESTAMPTZ;
+    -- Why and when a booking stopped occupying the slot. Abandoned and expired
+    -- reservations stay in the table with these set rather than being deleted:
+    -- they are commercial records of who tried to buy what, and deleting them
+    -- would erase the only evidence of a disputed or lost booking.
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS slot_released_at TIMESTAMPTZ;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS slot_release_reason TEXT;
+    -- Existing paid bookings predate slot_status and would otherwise read as
+    -- released, leaving their dates open to be sold twice.
+    UPDATE ads
+       SET slot_status = 'paid'
+     WHERE paid = TRUE
+       AND slot_status = 'released'
+       AND starts_at IS NOT NULL
+       AND ends_at IS NOT NULL;
+
     -- entries(giveaway_id) doesn't need its own index — it's already the
     -- leading column of the UNIQUE(giveaway_id, user_id) constraint above,
     -- which Postgres can use directly for single-column lookups on it.
@@ -251,6 +284,99 @@ async function init() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  // Separate from the batch above because it has to inspect existing data and
+  // decide whether the constraint can be applied at all — see the function.
+  await ensureSlotExclusionConstraint(pool);
 }
 
-module.exports = { pool, init };
+const SLOT_CONSTRAINT_NAME = 'ads_no_overlapping_slots';
+
+// Pairs of bookings that both occupy the slot on overlapping dates.
+//
+// Under the current code this should always come back empty — allocation holds
+// an advisory lock and the exclusion constraint refuses overlaps outright. It
+// exists for the one moment that isn't covered by either: the migration that
+// adds the constraint, running against data written before any of this existed.
+//
+// Returns identifiers and dates only. Which company booked what is not
+// something to write into a server log.
+async function findOverlappingSlots(client = pool) {
+  const result = await client.query(
+    `SELECT a.id AS booking_a, b.id AS booking_b,
+            a.starts_at AS a_starts, a.ends_at AS a_ends,
+            b.starts_at AS b_starts, b.ends_at AS b_ends
+       FROM ads a
+       JOIN ads b ON a.id < b.id
+      WHERE a.slot_status IN ('held', 'paid')
+        AND b.slot_status IN ('held', 'paid')
+        AND a.starts_at IS NOT NULL AND a.ends_at IS NOT NULL
+        AND b.starts_at IS NOT NULL AND b.ends_at IS NOT NULL
+        AND daterange(a.starts_at, a.ends_at, '[]') && daterange(b.starts_at, b.ends_at, '[]')
+      ORDER BY a.starts_at`
+  );
+  return result.rows;
+}
+
+// Adds the exclusion constraint that makes double-selling the banner slot
+// impossible at the storage layer.
+//
+// Idempotent: checks pg_constraint first, so a redeploy against a database that
+// already has it does nothing. Uses only core PostgreSQL — a GiST exclusion
+// constraint over a daterange needs no extension and no superuser, so it
+// applies cleanly on Neon, Supabase, Render Postgres or a plain server.
+//
+// If historical overlapping bookings already exist, the ALTER would fail. That
+// data is not this function's to fix: those are real bookings that real
+// advertisers may have paid for, and picking a winner automatically would
+// destroy a commercial record and quite possibly the wrong one. It reports them
+// and leaves both the rows and the decision alone. The application still starts;
+// it is simply unprotected until someone resolves the conflict, which is a
+// better outcome than refusing to boot the whole site.
+//
+// DEFERRABLE INITIALLY IMMEDIATE: behaves immediately in normal use, but lets a
+// transaction opt into deferring it — which is how the migration's own tests
+// stage overlapping rows without dropping the constraint for everyone else.
+async function ensureSlotExclusionConstraint(client = pool) {
+  const existing = await client.query(
+    `SELECT 1 FROM pg_constraint WHERE conname = $1 AND conrelid = 'ads'::regclass`,
+    [SLOT_CONSTRAINT_NAME]
+  );
+  if (existing.rowCount > 0) {
+    return { status: 'present' };
+  }
+
+  const overlaps = await findOverlappingSlots(client);
+  if (overlaps.length > 0) {
+    console.error(
+      `Cannot add ${SLOT_CONSTRAINT_NAME}: ${overlaps.length} existing booking pair(s) already ` +
+        'overlap. These are real commercial records and have been left untouched — no booking ' +
+        'has been deleted, moved or overwritten. Resolve them by hand (cancel or reschedule one ' +
+        'side of each pair, setting slot_status to released), then restart to apply the ' +
+        'constraint. Overlapping pairs (booking ids and dates):'
+    );
+    overlaps.forEach((row) => {
+      console.error(
+        `  ${row.booking_a} [${row.a_starts} .. ${row.a_ends}] overlaps ` +
+          `${row.booking_b} [${row.b_starts} .. ${row.b_ends}]`
+      );
+    });
+    return { status: 'blocked', overlaps };
+  }
+
+  await client.query(
+    `ALTER TABLE ads ADD CONSTRAINT ${SLOT_CONSTRAINT_NAME}
+       EXCLUDE USING gist (daterange(starts_at, ends_at, '[]') WITH &&)
+       WHERE (slot_status IN ('held', 'paid') AND starts_at IS NOT NULL AND ends_at IS NOT NULL)
+       DEFERRABLE INITIALLY IMMEDIATE`
+  );
+  return { status: 'created' };
+}
+
+module.exports = {
+  pool,
+  init,
+  findOverlappingSlots,
+  ensureSlotExclusionConstraint,
+  SLOT_CONSTRAINT_NAME,
+};

@@ -5,6 +5,15 @@ const { adCheckoutLimiter } = require('../middleware/rateLimit');
 const { createCheckoutSession } = require('../lib/stripe');
 const { getSetting } = require('../lib/settings');
 const { isAdsCheckoutEnabled } = require('../lib/featureFlags');
+const {
+  addDays,
+  toDateStr,
+  lockSlotAllocation,
+  expireStaleHolds,
+  nextAvailableDate,
+  holdExpiryFrom,
+  stripeExpiryFor,
+} = require('../lib/adSlots');
 
 const router = express.Router();
 
@@ -12,35 +21,20 @@ const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_WEEKS = 8;
 
-function addDays(date, days) {
-  const d = new Date(date);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d;
-}
-function toDateStr(date) {
-  return new Date(date).toISOString().slice(0, 10);
-}
-
-// Next free date for the single homepage banner slot: the day after the
-// latest paid booking that hasn't ended yet, or today if nothing's booked.
-async function computeNextAvailableDate() {
-  const result = await pool.query(
-    "SELECT MAX(ends_at) AS last_end FROM ads WHERE paid = TRUE AND ends_at >= CURRENT_DATE"
-  );
-  const lastEnd = result.rows[0].last_end;
-  return lastEnd ? toDateStr(addDays(lastEnd, 1)) : toDateStr(new Date());
-}
-
 // The currently active homepage banner ad, if any. Prefers a paid booking
 // whose date range covers today; falls back to the original manually
 // admin-toggled ad so that workflow keeps working unchanged.
+//
+// Keyed on slot_status rather than the paid boolean: a refunded or disputed
+// booking releases its slot and must stop running, even though its row still
+// records that money once changed hands.
 router.get('/active', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, business_name, image_url, target_url, media_type FROM ads
-       WHERE (paid = TRUE AND starts_at <= CURRENT_DATE AND ends_at >= CURRENT_DATE)
-          OR (paid = FALSE AND active = TRUE)
-       ORDER BY paid DESC
+       WHERE (slot_status = 'paid' AND starts_at <= CURRENT_DATE AND ends_at >= CURRENT_DATE)
+          OR (slot_status <> 'paid' AND paid = FALSE AND active = TRUE)
+       ORDER BY (slot_status = 'paid') DESC
        LIMIT 1`
     );
     res.json(result.rows[0] || null);
@@ -55,12 +49,12 @@ router.get('/active', async (req, res) => {
 // and every Stripe/database detail behind it, stays server-side.
 router.get('/availability', async (req, res) => {
   try {
-    const [nextAvailableDate, pricePerWeekAed] = await Promise.all([
-      computeNextAvailableDate(),
+    const [nextDate, pricePerWeekAed] = await Promise.all([
+      nextAvailableDate(pool),
       getSetting('ad_price_per_week_aed'),
     ]);
     res.json({
-      nextAvailableDate,
+      nextAvailableDate: nextDate,
       pricePerWeekAed: Number(pricePerWeekAed),
       maxWeeks: MAX_WEEKS,
       checkoutEnabled: isAdsCheckoutEnabled(),
@@ -113,20 +107,57 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
       return res.status(400).json({ error: `Choose between 1 and ${MAX_WEEKS} weeks.` });
     }
 
-    const [startsAtStr, pricePerWeekAed] = await Promise.all([
-      computeNextAvailableDate(),
-      getSetting('ad_price_per_week_aed'),
-    ]);
-    const endsAtStr = toDateStr(addDays(startsAtStr, weeksNum * 7 - 1));
+    const pricePerWeekAed = await getSetting('ad_price_per_week_aed');
     const amountAed = weeksNum * Number(pricePerWeekAed);
-
     const id = uuid();
-    await pool.query(
-      `INSERT INTO ads
-         (id, business_name, image_url, target_url, media_type, contact_email, starts_at, ends_at, amount_aed, paid, active)
-       VALUES ($1, $2, $3, $4, 'image', $5, $6, $7, $8, FALSE, FALSE)`,
-      [id, business_name.trim(), image_url.trim(), normalizedTargetUrl, contact_email.trim().toLowerCase(), startsAtStr, endsAtStr, amountAed]
-    );
+    const holdExpiresAt = holdExpiryFrom();
+
+    // Reserving the dates and working out which dates they are has to be one
+    // atomic step. Splitting them — as this route used to — is what let two
+    // simultaneous customers be quoted the same range and both pay for it.
+    //
+    // The hold is committed before Stripe is contacted, not after: a session
+    // created against dates nobody is holding is a session that can be paid for
+    // dates somebody else has since bought.
+    const client = await pool.connect();
+    let startsAtStr;
+    let endsAtStr;
+    try {
+      await client.query('BEGIN');
+      await lockSlotAllocation(client);
+      // Inside the lock, so a hold that lapsed a moment ago is reclaimed here
+      // rather than blocking the sale, and no concurrent allocation can be
+      // midway through taking the dates this one is about to read as free.
+      await expireStaleHolds(client);
+
+      startsAtStr = await nextAvailableDate(client);
+      endsAtStr = toDateStr(addDays(startsAtStr, weeksNum * 7 - 1));
+
+      await client.query(
+        `INSERT INTO ads
+           (id, business_name, image_url, target_url, media_type, contact_email,
+            starts_at, ends_at, amount_aed, paid, active,
+            slot_status, hold_expires_at, payment_status)
+         VALUES ($1, $2, $3, $4, 'image', $5, $6, $7, $8, FALSE, FALSE, 'held', $9, 'pending')`,
+        [
+          id,
+          business_name.trim(),
+          image_url.trim(),
+          normalizedTargetUrl,
+          contact_email.trim().toLowerCase(),
+          startsAtStr,
+          endsAtStr,
+          amountAed,
+          holdExpiresAt,
+        ]
+      );
+      await client.query('COMMIT');
+    } catch (holdErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw holdErr;
+    } finally {
+      client.release();
+    }
 
     let session;
     try {
@@ -138,9 +169,31 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
         cancelUrl: `${APP_URL}/advertise.html?status=cancelled`,
         clientReferenceId: id,
         customerEmail: contact_email.trim(),
+        // Stripe stops accepting payment shortly before the hold lapses, so
+        // there is never a moment where the session is payable but the dates
+        // have already been released to someone else.
+        expiresAt: stripeExpiryFor(holdExpiresAt),
       });
     } catch (stripeErr) {
-      await pool.query('DELETE FROM ads WHERE id = $1', [id]);
+      // The booking row is kept and released rather than deleted: it is the
+      // record that these dates were briefly held and why they were let go.
+      // Leaving it 'held' would block the slot for an hour over a checkout that
+      // never started.
+      await pool
+        .query(
+          `UPDATE ads
+              SET slot_status = 'released',
+                  slot_released_at = NOW(),
+                  slot_release_reason = 'checkout_failed',
+                  payment_status = 'failed'
+            WHERE id = $1`,
+          [id]
+        )
+        .catch((releaseErr) => {
+          // Worth knowing about: the slot stays held until it expires on its
+          // own, which is an hour of lost availability, not a lost booking.
+          console.error('Could not release the hold after a failed checkout:', releaseErr.message);
+        });
       throw stripeErr;
     }
 

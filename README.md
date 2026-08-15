@@ -170,6 +170,40 @@ logged rather than fulfilled.
 The ledger stores an event id and type only. Webhook payloads are never persisted and never
 logged, so no customer or card data is retained here.
 
+### How the banner slot is reserved
+
+There is one banner position, sold as a date range, so two advertisers must never be able to
+buy the same days. Two independent mechanisms stop that:
+
+- **An advisory lock** serialises allocation. A checkout reserves its dates and works out what
+  those dates are inside one locked transaction, so concurrent requests take turns and each
+  sees the previous booking. Bookings come out consecutive rather than colliding.
+- **A PostgreSQL exclusion constraint** (`ads_no_overlapping_slots`) makes overlapping
+  held-or-paid ranges impossible to store at all — including via a hand-written `INSERT`, a
+  code path that forgets the lock, or a future bug. Application logic can be wrong; a
+  constraint cannot.
+
+A booking holds its dates for 60 minutes while the customer is in Stripe Checkout. The Stripe
+session is set to expire five minutes *before* that, so the session always stops being payable
+before the dates are released — never the other way round. If Stripe session creation fails,
+the hold is released immediately rather than blocking the slot for an hour.
+
+Expired and abandoned reservations are released, never deleted: `slot_status`,
+`slot_released_at` and `slot_release_reason` record what happened. An abandoned booking is
+still a commercial record of who tried to buy what and when.
+
+A payment can legitimately arrive after its hold has lapsed — a slow webhook, a retry after an
+outage. If nobody else has taken the dates, the booking simply reclaims them. If somebody has,
+it is **not** double-booked: it becomes `payment_status = 'requires_reconciliation'` and is
+logged loudly, because real money was taken for dates that cannot be delivered and someone has
+to refund or reschedule it.
+
+The migration that adds the constraint checks for pre-existing overlaps first. If it finds any,
+it reports the conflicting booking ids and dates and declines to add the constraint, leaving
+every row untouched — those are real bookings that real advertisers may have paid for, and
+picking a winner automatically would destroy a commercial record, quite possibly the wrong one.
+Resolve them by hand and restart.
+
 ## Deploying to Render
 
 This repo includes a `render.yaml` blueprint.

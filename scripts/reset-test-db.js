@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 // Drops and recreates the test schema, then rebuilds it from server/db.js.
 //
-// Runs once, sequentially, as the first half of `npm test` — deliberately not
-// per test file, because `node --test` runs files in parallel and a reset
-// racing another file's fixtures would be worse than no reset at all. Doing it
-// here means every suite starts from a known-empty schema instead of whatever
-// the last (possibly crashed) run left behind.
+// Runs once, sequentially, as the first half of `npm test`, so every suite
+// starts from a known-empty schema instead of whatever the last (possibly
+// crashed) run left behind.
+//
+// The test files themselves also run one at a time (--test-concurrency=1).
+// They share a single database, and running them in parallel made assertions
+// depend on what other files happened to be doing: global row counts moved
+// under COUNT(*) checks, one file's settings changes altered another's prices
+// mid-request, and the slot locks introduced in Phase 1.3 (an advisory lock,
+// and a brief ACCESS EXCLUSIVE while the migration tests drop and restore the
+// exclusion constraint) blocked whole files at a time. Serial execution costs a
+// couple of seconds and removes the entire class of failure.
 //
 // The same guard as the test suite applies: this cannot point at production.
 const { configureTestEnv } = require('../testEnv');

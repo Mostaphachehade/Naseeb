@@ -44,9 +44,14 @@ async function createCheckoutSession({
   cancelUrl,
   clientReferenceId,
   customerEmail,
+  expiresAt,
 }) {
   return stripeClient().checkout.sessions.create({
     mode: 'payment',
+    // Tied to the database hold on the banner dates — the session must stop
+    // being payable before those dates are released. Stripe requires this to be
+    // at least 30 minutes ahead, which the hold duration accounts for.
+    ...(expiresAt ? { expires_at: expiresAt } : {}),
     line_items: [
       {
         price_data: {

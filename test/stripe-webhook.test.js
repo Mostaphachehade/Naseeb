@@ -48,20 +48,36 @@ function unique(prefix) {
   return `${prefix}_${Date.now()}_${seq}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// Every booking gets its own two-week window, far enough out that nothing else
+// in the suite reaches it. Since Phase 1.3 the database refuses overlapping
+// held-or-paid ranges outright, so fixtures that all booked "the next fortnight"
+// (as these did) collide with each other the moment one is marked paid — which
+// is the constraint doing its job, not a test problem to work around.
+let windowOffset = 0;
+function nextWindow() {
+  windowOffset += 1;
+  const start = 1000 + windowOffset * 20;
+  return { start, end: start + 13 };
+}
+
 // A pending booking, inserted directly so tests don't depend on the checkout
 // route (which is behind ADS_CHECKOUT_ENABLED and disabled by default).
+// slot_status 'held' with a hold well into the future mirrors what the checkout
+// route produces just before it sends a customer to Stripe.
 async function createPendingBooking({ amountAed = 1000, sessionId = null, paymentIntent = null } = {}) {
   const id = uuid();
   const session = sessionId || unique('cs_test');
+  const { start, end } = nextWindow();
   await pool.query(
     `INSERT INTO ads
        (id, business_name, image_url, target_url, media_type, contact_email,
         starts_at, ends_at, amount_aed, paid, active, stripe_session_id,
-        payment_status, stripe_payment_intent)
+        payment_status, stripe_payment_intent, slot_status, hold_expires_at)
      VALUES ($1, 'Webhook Test Co', 'https://example.com/b.jpg', 'https://example.com',
-             'image', 'advertiser@example.com', CURRENT_DATE, CURRENT_DATE + 13,
-             $2, FALSE, FALSE, $3, 'pending', $4)`,
-    [id, amountAed, session, paymentIntent]
+             'image', 'advertiser@example.com',
+             CURRENT_DATE + $5::int, CURRENT_DATE + $6::int,
+             $2, FALSE, FALSE, $3, 'pending', $4, 'held', NOW() + INTERVAL '1 hour')`,
+    [id, amountAed, session, paymentIntent, start, end]
   );
   createdAdIds.push(id);
   return { id, sessionId: session, amountAed };
@@ -420,14 +436,17 @@ test('an event arriving before the session id is stored is retried, not refused'
   // moment later. A webhook that overtakes that write must not be permanently
   // refused as a mismatch.
   const id = uuid();
+  const { start, end } = nextWindow();
   await pool.query(
     `INSERT INTO ads
        (id, business_name, image_url, target_url, media_type, contact_email,
-        starts_at, ends_at, amount_aed, paid, active, stripe_session_id, payment_status)
+        starts_at, ends_at, amount_aed, paid, active, stripe_session_id, payment_status,
+        slot_status, hold_expires_at)
      VALUES ($1, 'Webhook Test Co', 'https://example.com/b.jpg', 'https://example.com',
-             'image', 'advertiser@example.com', CURRENT_DATE, CURRENT_DATE + 13,
-             1000, FALSE, FALSE, NULL, 'pending')`,
-    [id]
+             'image', 'advertiser@example.com',
+             CURRENT_DATE + $2::int, CURRENT_DATE + $3::int,
+             1000, FALSE, FALSE, NULL, 'pending', 'held', NOW() + INTERVAL '1 hour')`,
+    [id, start, end]
   );
   createdAdIds.push(id);
 

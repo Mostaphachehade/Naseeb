@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { constructWebhookEvent } = require('../lib/stripe');
+const { lockSlotAllocation, expireStaleHolds, isRangeAvailable } = require('../lib/adSlots');
 
 const router = express.Router();
 
@@ -63,7 +64,7 @@ async function fulfilSession(client, event) {
   }
 
   const adRes = await client.query(
-    `SELECT id, amount_aed, stripe_session_id, payment_status
+    `SELECT id, amount_aed, stripe_session_id, payment_status, slot_status, starts_at, ends_at
      FROM ads WHERE id = $1 FOR UPDATE`,
     [adId]
   );
@@ -113,9 +114,60 @@ async function fulfilSession(client, event) {
     return { action: 'already_paid' };
   }
 
+  // The payment is genuine. The remaining question is whether this booking
+  // still owns its dates.
+  //
+  // A webhook can legitimately arrive after the hold has lapsed — a delayed
+  // delivery, a retry after an outage, a bank taking its time. The customer
+  // paid while the session was still payable, so the payment must not be
+  // rejected just because the notification was slow. What matters is whether
+  // anyone else has taken the dates in the meantime.
+  if (ad.slot_status !== 'held' && ad.slot_status !== 'paid') {
+    // Sweep first: a neighbouring hold that has itself expired should not be
+    // what blocks this paid booking from reclaiming its dates.
+    await expireStaleHolds(client);
+
+    const stillFree = await isRangeAvailable(client, {
+      startsAt: ad.starts_at,
+      endsAt: ad.ends_at,
+      excludeAdId: ad.id,
+    });
+
+    if (!stillFree) {
+      // Somebody else holds or has bought these dates. Marking this one paid
+      // would double-book the slot — the exclusion constraint would reject it
+      // anyway, and turning a customer's payment into a 500 and an endless
+      // Stripe retry helps nobody. Record it as needing a human, and say so
+      // loudly: real money has been taken for dates that cannot be delivered,
+      // so it needs a refund or a reschedule.
+      await client.query(
+        `UPDATE ads
+            SET payment_status = 'requires_reconciliation',
+                paid = FALSE,
+                stripe_payment_intent = $2
+          WHERE id = $1`,
+        [ad.id, idOf(session.payment_intent)]
+      );
+      console.error(
+        `RECONCILIATION REQUIRED: booking ${ad.id} was paid after its dates ` +
+          `(${ad.starts_at} .. ${ad.ends_at}) were reallocated. The advertiser has been charged ` +
+          'and cannot be given the slot — refund or reschedule this booking.'
+      );
+      return { action: 'requires_reconciliation' };
+    }
+    // Nothing took the dates, so the late payment can simply be honoured.
+  }
+
   await client.query(
     `UPDATE ads
-     SET paid = TRUE, payment_status = 'paid', paid_at = NOW(), stripe_payment_intent = $2
+     SET paid = TRUE,
+         payment_status = 'paid',
+         slot_status = 'paid',
+         hold_expires_at = NULL,
+         slot_released_at = NULL,
+         slot_release_reason = NULL,
+         paid_at = NOW(),
+         stripe_payment_intent = $2
      WHERE id = $1`,
     [ad.id, idOf(session.payment_intent)]
   );
@@ -143,10 +195,20 @@ async function markSessionOutcome(client, event, { status, clearPaid }) {
     return { action: 'ignored', reason: 'booking already paid' };
   }
 
-  await client.query('UPDATE ads SET payment_status = $2, paid = FALSE WHERE id = $1', [
-    ad.id,
-    status,
-  ]);
+  // Releasing the slot is the point of these events: a session that expired or
+  // whose delayed payment failed is never going to be paid, so the dates go
+  // back on sale. The row stays, with its reason and timestamp, as the record
+  // that someone tried to buy these dates and didn't complete.
+  await client.query(
+    `UPDATE ads
+        SET payment_status = $2,
+            paid = FALSE,
+            slot_status = 'released',
+            slot_released_at = NOW(),
+            slot_release_reason = $3
+      WHERE id = $1`,
+    [ad.id, status, `session_${status}`]
+  );
   return { action: status };
 }
 
@@ -171,8 +233,15 @@ async function markChargeOutcome(client, event, { status, timestampColumn }) {
   // pending resolution. Reinstating after a won dispute is a deliberate admin
   // action, not an automatic one.
   await client.query(
-    `UPDATE ads SET payment_status = $2, paid = FALSE, ${timestampColumn} = NOW() WHERE id = $1`,
-    [ad.id, status]
+    `UPDATE ads
+        SET payment_status = $2,
+            paid = FALSE,
+            slot_status = 'released',
+            slot_released_at = NOW(),
+            slot_release_reason = $3,
+            ${timestampColumn} = NOW()
+      WHERE id = $1`,
+    [ad.id, status, status]
   );
   return { action: status };
 }
@@ -229,6 +298,12 @@ router.post('/stripe', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Taken before anything else in the transaction, and by every transaction
+    // that touches slot ownership, so allocation and fulfilment can never
+    // interleave halfway. Consistent ordering (this lock first, then rows) is
+    // also what keeps it deadlock-free against the checkout route.
+    await lockSlotAllocation(client);
 
     // Claiming the id and doing the work share this transaction. A concurrent
     // duplicate delivery blocks here until the first commits, then finds the
