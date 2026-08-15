@@ -1,6 +1,7 @@
 const express = require('express');
 const { getSetting } = require('../lib/settings');
 const { areClaimsEnabled } = require('../lib/featureFlags');
+const { currentPolicies } = require('../lib/policies');
 
 const router = express.Router();
 
@@ -25,6 +26,9 @@ router.get('/', async (req, res) => {
       // So the host and winner UI can hide claim controls entirely rather than
       // rendering buttons that answer 503.
       claims_enabled: areClaimsEnabled(),
+      // So the policy pages can show which version a reader is looking at
+      // without that version being hard-coded into the markup twice.
+      policies: currentPolicies(),
     });
   } catch (err) {
     console.error(err);

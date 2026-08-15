@@ -11,14 +11,23 @@ There is no payment flow anywhere in this codebase, by design. Every giveaway mu
 
 ## Why it's built this way
 
-In the UAE (and in most countries), a paid-entry raffle or lottery is regulated gambling —
-in the UAE specifically, the General Commercial Gaming Regulatory Authority (GCGRA) licenses
-all commercial gaming, including any arrangement where a participant pays for a chance to win
-a prize. A genuine promotional giveaway — free entry, prize funded as a marketing expense —
-sits outside that definition. This app is scoped to stay in the free/promotional lane. If you
-ever want to add paid entries, ticket tiers, or "buy more chances," you'd be moving into
-licensed commercial gaming territory and should get advice from a lawyer or the GCGRA directly
-before building or launching that.
+Paid-entry raffles and lotteries are regulated in most countries. In the UAE, commercial gaming
+is overseen by the General Commercial Gaming Regulatory Authority (GCGRA). This application does
+not implement a paid-entry model at all: there is no field for an entry price anywhere on the
+entry path, and no mechanism for buying better odds.
+
+**That is a description of the code, not a legal conclusion.** Nothing here has been reviewed by
+UAE legal counsel, and free entry does not automatically remove permit, advertising,
+consumer-protection, prize-fulfilment, trade-licensing or data-protection obligations that may
+apply to a particular campaign or operator. Do not treat this repository, its documentation or
+its public pages as advice that any campaign is lawful.
+
+`docs/UAE_COUNSEL_REVIEW.md` lists every legal question that is still open, and the facts
+(legal entity, licence, address, controller identity, jurisdiction) that are deliberately left
+blank rather than invented.
+
+If you ever add paid entries, ticket tiers or "buy more chances," that is a materially different
+product and needs advice from a qualified lawyer before it is built, let alone launched.
 
 ## Stack
 
@@ -322,6 +331,50 @@ version stamped on them, new records use the new key, and an old key can be
 dropped from the list once no record references it. Back the key up separately
 from database backups — losing it makes stored delivery details permanently
 unreadable, by design.
+
+## Standing deployment gates
+
+Recorded here because they outlive any one phase. None of them is satisfied yet, and
+none should be treated as satisfied by a passing test suite.
+
+1. **Retention must not depend on the in-process timer alone.** The scheduler in
+   `server/lib/claimScheduler.js` runs inside the web service, so it stops when that
+   service sleeps, restarts or is scaled to zero — which on a free tier is most of the
+   time. Before deployment, add a platform-scheduled job (a Render cron service, or the
+   equivalent) that invokes the same maintenance path independently of whether the web
+   service is awake. The in-process timer is a convenience, not the mechanism.
+
+2. **Unhandled rejections must not be swallowed.** `server/index.js` currently logs an
+   unhandled rejection and carries on, which leaves the process in a state nobody has
+   reasoned about. Every background task must catch and report its own failures, and a
+   rejection that still reaches the process handler should trigger a controlled shutdown
+   so the platform restarts cleanly rather than continuing in an uncertain state.
+
+3. **`CLAIM_ENCRYPTION_KEY` must be generated privately and backed up securely**, then
+   set in the deployment environment. Generate it on a trusted machine, store it
+   somewhere separate from the database backups, and never print, commit, paste or send
+   it. Losing it makes every stored delivery detail permanently unreadable — by design.
+
+4. **`ADS_CHECKOUT_ENABLED` stays `false`.** The pre-enable gates below are unchanged,
+   and the admin reconciliation queue in particular is still outstanding.
+
+5. **No production push or deployment is authorised.** Nothing in this branch has been
+   deployed, and nothing should be until the gates above and the counsel review in
+   `docs/UAE_COUNSEL_REVIEW.md` are resolved.
+
+## Legal and compliance status
+
+**This platform has not been reviewed or approved by qualified UAE legal counsel, and is
+not described anywhere as compliant or production-ready.**
+
+- `docs/UAE_COUNSEL_REVIEW.md` — every open legal question, and the facts (legal entity,
+  licence, registered address, data controller, jurisdiction) that are deliberately left
+  blank rather than invented.
+- `docs/LEGAL_COPY_INVENTORY.md` — every claim that was removed, softened or kept, and
+  why.
+- `test/legal-copy.test.js` — fails the build if a prohibited claim reappears.
+
+Retention periods in the product are **provisional** and pending that review.
 
 ## Deploying to Render
 

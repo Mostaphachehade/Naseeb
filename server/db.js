@@ -427,6 +427,23 @@ async function init() {
     CREATE INDEX IF NOT EXISTS idx_claim_notifications_due
       ON claim_notifications(next_attempt_at) WHERE status = 'pending';
     CREATE INDEX IF NOT EXISTS idx_claim_notifications_claim ON claim_notifications(claim_id);
+
+    -- Which version of which policy a person accepted, and when.
+    --
+    -- Starts empty and stays empty until signup captures acceptance, because no
+    -- account on this platform has ever been shown a versioned policy. Nothing
+    -- is backfilled: an empty table is an honest answer to "who agreed to
+    -- what", and a populated one would be a fabricated answer to the same
+    -- question — the kind that matters precisely when someone disputes it.
+    CREATE TABLE IF NOT EXISTS policy_acceptances (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      policy_id TEXT NOT NULL,
+      policy_version TEXT NOT NULL,
+      accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, policy_id, policy_version)
+    );
+    CREATE INDEX IF NOT EXISTS idx_policy_acceptances_user ON policy_acceptances(user_id);
   `);
 
   // Separate from the batch above because it has to inspect existing data and

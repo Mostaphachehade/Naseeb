@@ -24,45 +24,87 @@
     <div class="section-head">
       <div>
         <h2>Privacy Policy</h2>
-        <p>Last updated 15 August 2026. This policy is being reviewed by UAE legal counsel; some wording may change as a result.</p>
+        <p>
+          Version <strong id="policy-version">2026-08-15.1</strong> · Effective <strong id="policy-effective">15 August 2026</strong><br />
+          <span style="color:var(--text-soft);">This policy has <strong>not</strong> been reviewed or approved by qualified UAE legal counsel, and does not yet name a data controller. Review is outstanding.</span>
+        </p>
       </div>
     </div>
 
-    <h3>What we collect</h3>
-    <p style="color:var(--text-soft);">When you create an account: your name, email address, and a securely hashed password (we never store your actual password — it's hashed with bcrypt before it touches the database). When you apply to host: your name or business name, contact email and phone, and any trade license or message you choose to include. When you host or enter a giveaway: the giveaway details you submit, and a record that you entered (so we can enforce one entry per person and run the draw).</p>
+    <div class="compliance-box" style="margin-bottom:24px;">
+      <strong>Who is responsible for your data is not yet published.</strong> The legal entity acting as data controller, its registered address, and a contact point for data-protection requests are marked <em>to be confirmed</em> below. We would rather leave them blank than name something we have not verified.
+    </div>
 
-    <h3>How we use it</h3>
-    <p style="color:var(--text-soft);">To run your account (signing in, showing your listings and entries), to run giveaway draws fairly, to follow up on host applications, and to send account-related email — verifying your address, password resets, and (if you're a host) confirmations related to your application. We don't sell your data, and we don't use it for advertising.</p>
-
-    <h3>Cookies and local storage</h3>
-    <p style="color:var(--text-soft);">Your session is kept in your browser's local storage as a signed token, so you stay signed in between visits — clearing your browser's site data signs you out. We use Google Analytics to understand overall traffic (which pages get visited, roughly how many people browse or enter giveaways); it sets standard analytics cookies to do this. We don't use it for advertising, and it doesn't affect your account or entries.</p>
+    <h3>What we collect, and why</h3>
+    <p style="color:var(--text-soft);"><strong>Your account:</strong> your name, email address, and a hashed password. We never store your password itself — it is hashed with bcrypt before it reaches the database. We use this to sign you in, to show your listings and entries, and to send account email such as verification and password resets.</p>
+    <p style="color:var(--text-soft);"><strong>Entering a giveaway:</strong> a record that you entered, and your ticket number. This is what makes the draw possible and what stops the same account entering twice.</p>
+    <p style="color:var(--text-soft);"><strong>Hosting a giveaway:</strong> the listing you write, including who you say is funding the prize, which is shown publicly.</p>
+    <p style="color:var(--text-soft);"><strong>Applying to host on a paid plan:</strong> your name or business name, contact email and phone, and any trade licence number or message you choose to include.</p>
+    <p style="color:var(--text-soft);"><strong>Claiming a prize:</strong> if you win and choose to claim, the delivery details you provide — a name for delivery, a phone number, an address, and any delivery note. Nothing more: we do not ask for identity documents, dates of birth or payment details, and if a browser sends fields we did not ask for, they are discarded rather than stored.</p>
+    <p style="color:var(--text-soft);"><strong>Advertising with us:</strong> your business name, contact email, the banner and destination link you supply, and a record of the booking. Card details are handled by Stripe and never reach us.</p>
 
     <h3>What hosts see</h3>
-    <p style="color:var(--text-soft);">If you enter a giveaway, the host can see your name and ticket number. Hosts never see your email address, password, or the details of any other giveaway you've entered.</p>
-    <p style="color:var(--text-soft);">If you're drawn as the winner, nothing further is shared unless you choose to share it. You'll get a link to claim your prize, and on that page you decide whether to provide delivery details — a name, phone number and address for the courier. Only if you tick the consent box are those details passed to that one host, and only the fields needed to deliver something. We record which version of that consent wording you agreed to and when. If you don't claim, no delivery details exist and the host receives nothing.</p>
+    <p style="color:var(--text-soft);">If you enter a giveaway, the host sees your display name and ticket number. Hosts never see your email address, your password, or anything about other giveaways you have entered.</p>
+    <p style="color:var(--text-soft);">If you win, nothing further is shared unless you choose to share it. On the claim page you decide whether to provide delivery details, and only if you explicitly consent are they passed to that one host — and only the fields needed to deliver something. We record which version of the consent wording you agreed to and when. If you do not claim, no delivery details exist and the host receives nothing.</p>
 
-    <h3>Prize delivery</h3>
-    <p style="color:var(--text-soft);">Delivery details you provide are encrypted before they're stored, and can be read only by the host of that giveaway, by you, and by our administrators if you or the host raise a problem that needs looking into.</p>
-    <p style="color:var(--text-soft);">The host marks when a prize has been sent, but only you can confirm you received it — a host cannot close a delivery on your behalf. Either of you can raise a dispute, which an administrator reviews and resolves with a recorded reason.</p>
-    <p style="color:var(--text-soft);">Once a delivery is confirmed or a dispute is closed, we keep the encrypted delivery details for a limited period and then erase them. We keep a record that the prize was delivered, and the history of who moved the claim along and when, but not your address or phone number. <strong>The current retention period is provisional and is one of the things we are asking UAE legal counsel to confirm</strong> — we'll update this page when it's settled.</p>
+    <h3>How delivery details are protected</h3>
+    <p style="color:var(--text-soft);">Delivery details are encrypted with AES-256-GCM before they are written to the database, with a separate initialisation vector for each record. They are readable by that giveaway's host, by you, and by our administrators only when a dispute or an expired claim requires someone to intervene. They are never included in an email, never placed in a web address, and never shown in general administrative lists.</p>
+    <p style="color:var(--text-soft);">The claim link we email you is single-use and expires. It is deliberately carried in the fragment of the web address, which browsers do not send to servers, so it does not appear in our logs.</p>
 
-    <h3>Data retention</h3>
-    <p style="color:var(--text-soft);">We keep account and giveaway data for as long as your account is active. You can request deletion of your account and associated data by contacting us — see our <a href="/about.html" style="font-weight:600;">About page</a>.</p>
+    <h3>Prize delivery and disputes</h3>
+    <p style="color:var(--text-soft);">The host records when a prize has been sent; only you can confirm you received it. Either of you can raise a dispute, which an administrator reviews and resolves with a recorded reason. We keep a record of those steps — who did what and when — without keeping your address alongside it.</p>
 
-    <h3>Third parties</h3>
-    <p style="color:var(--text-soft);">We use third-party services to operate Naseeb: a hosted Postgres database to store data, an email provider to send verification, account and prize-claim emails, and (if you upload an image when hosting) an image hosting service to store that file. None of them receive your password, and none of them receives a delivery address or phone number — those are never put in an email, and are only visible to the host after you consent, by signing in.</p>
+    <h3>How long we keep things</h3>
+    <p style="color:var(--text-soft);"><strong>All retention periods below are provisional and pending approval by qualified UAE counsel.</strong> They reflect our current judgement, not settled legal advice, and may change.</p>
+    <ul style="color:var(--text-soft);">
+      <li><strong>Encrypted delivery details:</strong> erased on a schedule after a delivery is confirmed or a dispute is closed. The current period is 30 days (provisional).</li>
+      <li><strong>Claim records and their history:</strong> retained after the delivery details are erased, so there is a lasting record that a prize was claimed and delivered — without the address.</li>
+      <li><strong>Account, giveaway and entry data:</strong> retained while your account is active. A defined period after account closure is <em>to be confirmed</em>.</li>
+      <li><strong>Host applications and advertising enquiries:</strong> retained for follow-up; a defined period is <em>to be confirmed</em>.</li>
+      <li><strong>Payment records for advertising:</strong> retained as long as required for accounting and tax purposes — the applicable period is <em>to be confirmed</em>.</li>
+    </ul>
+
+    <h3>Who else processes your data</h3>
+    <p style="color:var(--text-soft);">We use the following providers. Where one is optional, it processes nothing unless we have configured it.</p>
+    <ul style="color:var(--text-soft);">
+      <li><strong>Render</strong> — hosts the application. Processes anything you send to the site in the course of serving requests.</li>
+      <li><strong>Hosted PostgreSQL (currently Neon)</strong> — stores account, giveaway, entry, claim and booking data, including encrypted delivery details.</li>
+      <li><strong>Resend</strong> — sends verification, password-reset, entry, winner, claim and status emails. Receives your email address and the content of those messages. Delivery addresses and phone numbers are deliberately never put in an email.</li>
+      <li><strong>Stripe</strong> — processes advertiser card payments and receives the advertiser's email and payment details directly. Naseeb never sees or stores card details. Entrants never pay anything, so no entrant's payment data exists.</li>
+      <li><strong>Cloudinary</strong> — stores images uploaded for giveaway listings and ad banners, when image upload is configured.</li>
+      <li><strong>Google Analytics</strong> — measures overall site traffic, when configured. Configured to disable Google Signals and ad personalisation, and not loaded at all on the prize-claim page.</li>
+      <li><strong>Sentry</strong> — receives application error reports, when configured. Error reports are written to carry identifiers rather than personal data; we do not put delivery details, tokens or secrets in them.</li>
+    </ul>
+    <p style="color:var(--text-soft);">Several of these providers operate outside the UAE, so data reaches other countries. The lawful basis for those transfers, and what safeguards are required, are <em>to be confirmed</em> with counsel.</p>
+    <p style="color:var(--text-soft);">We do not sell your data, and we do not use it for advertising targeting.</p>
+
+    <h3>Cookies and local storage</h3>
+    <p style="color:var(--text-soft);">Your session is kept in your browser's local storage as a signed token, so you stay signed in between visits; clearing your site data signs you out. Your language choice is stored the same way. Google Analytics, where configured, sets its own cookies.</p>
 
     <h3>Your rights</h3>
-    <p style="color:var(--text-soft);">You can review or correct your account details at any time by signing in, and you can request that we delete your account and data. Contact us through the details on our <a href="/about.html" style="font-weight:600;">About page</a> for either.</p>
+    <p style="color:var(--text-soft);">You can ask us for a copy of the data we hold about you, ask us to correct it, or ask us to delete your account and associated data.</p>
+    <p style="color:var(--text-soft);"><strong>Being straightforward about the current state:</strong> there is no self-service screen for editing your account details or downloading your data yet, and these requests are handled manually. Building them is planned work, not something we are claiming already exists. Which rights apply to you under UAE law, and the timeframes we must meet, are <em>to be confirmed</em> with counsel.</p>
 
-    <h3>Changes</h3>
-    <p style="color:var(--text-soft);">We may update this policy as the platform evolves. Material changes will be reflected here with an updated date.</p>
-  </div>
-</main>
+    <h3>Who is responsible</h3>
+    <p style="color:var(--text-soft);">The legal entity acting as data controller, its registered address, and a dedicated contact for data-protection requests are <em>to be confirmed</em>. Until they are published, use the contact details on our <a href="/about.html" style="font-weight:600;">About page</a>.</p>
+
+    <h3>Changes to this policy</h3>
+    <p style="color:var(--text-soft);">This policy carries a version and an effective date, shown at the top. Material changes get a new version and date. We do not currently record acceptance of this policy at signup, and we do not claim any existing account has accepted a particular version.</p>
 
 <div id="site-footer"></div>
 
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
+<script>
+  api('/config')
+    .then((config) => {
+      if (!config.policies || !config.policies.privacy) return;
+      document.getElementById('policy-version').textContent = config.policies.privacy.version;
+      document.getElementById('policy-effective').textContent = new Date(
+        config.policies.privacy.effectiveDate + 'T00:00:00Z'
+      ).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+    })
+    .catch(() => {});
+</script>
 </body>
 </html>
