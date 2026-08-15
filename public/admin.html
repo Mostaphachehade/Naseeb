@@ -91,6 +91,26 @@
 
     <div id="ads-content" style="margin-bottom:56px;"><p>Loading…</p></div>
 
+    <!-- Prize claims needing a person: disputes, and claim windows that ran
+         out. Deliberately shows the minimum — what it is, how old, and what
+         needs doing. Delivery details are NOT in this list; opening an
+         individual case fetches them separately. -->
+    <div class="section-head" id="claims">
+      <div>
+        <h2>Prize claims needing review</h2>
+        <p>Disputes raised by a winner or host, and claims whose window expired. An expired claim is never redrawn or cancelled automatically — someone won, and it takes a person to decide what happens next.</p>
+      </div>
+    </div>
+    <div id="claims-content" style="margin-bottom:24px;"><p>Loading…</p></div>
+
+    <div class="section-head" style="margin-top:8px;">
+      <div>
+        <h3>Drawn giveaways with no claim</h3>
+        <p>Giveaways drawn before this workflow existed, or whose claim was never created. Issuing a claim emails the winner the draw already chose — it never picks a different one.</p>
+      </div>
+    </div>
+    <div id="missing-claims-content" style="margin-bottom:56px;"><p>Loading…</p></div>
+
     <div class="section-head" id="giveaways">
       <div>
         <h2>Giveaways</h2>
@@ -630,8 +650,235 @@
   wireSearch('applications-search', 'content');
   wireSearch('hosts-search', 'users-content');
 
+  function ageLabel(since) {
+    if (!since) return '';
+    const days = Math.floor((Date.now() - new Date(since).getTime()) / 86400000);
+    if (days >= 1) return `${days} day${days === 1 ? '' : 's'} old`;
+    const hours = Math.floor((Date.now() - new Date(since).getTime()) / 3600000);
+    return `${hours} hour${hours === 1 ? '' : 's'} old`;
+  }
+
+  async function loadClaims() {
+    const box = document.getElementById('claims-content');
+    try {
+      const rows = await api('/claims/admin/review');
+      if (!rows.length) {
+        box.replaceChildren();
+        const empty = document.createElement('p');
+        empty.className = 'hint';
+        empty.textContent = 'Nothing waiting. Disputes and expired claims appear here.';
+        box.appendChild(empty);
+        return;
+      }
+
+      box.replaceChildren();
+      rows.forEach((row) => {
+        const card = document.createElement('div');
+        card.className = 'card narrow';
+        card.style.maxWidth = 'none';
+        card.style.marginBottom = '12px';
+
+        const head = document.createElement('div');
+        head.style.cssText = 'display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center;';
+        const title = document.createElement('strong');
+        title.textContent = row.title;
+        const pill = document.createElement('span');
+        pill.className = 'pill-badge';
+        pill.textContent = row.status === 'disputed' ? 'Disputed' : 'Claim expired';
+        head.append(title, pill);
+
+        const meta = document.createElement('p');
+        meta.className = 'hint';
+        meta.textContent = `Winner: ${row.winner_name} · Host: ${row.host_name} · ${ageLabel(row.disputed_at || row.expired_at)}`;
+
+        const action = document.createElement('p');
+        action.style.cssText = 'color:var(--text-soft); margin:6px 0 0;';
+        action.textContent =
+          row.status === 'disputed'
+            ? 'Needs a decision: mark delivered, send back for redelivery, or close it. A reason is required either way.'
+            : 'Needs a decision: reissue the claim link to the same winner, or close it.';
+
+        const controls = document.createElement('div');
+        controls.style.cssText = 'display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;';
+
+        const open = document.createElement('button');
+        open.className = 'btn ghost';
+        open.textContent = 'Open case';
+        // Delivery details are loaded only here, on a deliberate click by an
+        // authenticated administrator — never as part of the list above.
+        open.onclick = () => openCase(row, card);
+        controls.appendChild(open);
+
+        card.append(head, meta, action, controls);
+        box.appendChild(card);
+      });
+    } catch (err) {
+      box.textContent = err.message;
+    }
+  }
+
+  async function openCase(row, card) {
+    if (card.querySelector('.case-detail')) return;
+
+    const detail = document.createElement('div');
+    detail.className = 'case-detail';
+    detail.style.cssText = 'margin-top:12px; border-top:1px solid rgba(0,0,0,0.08); padding-top:12px;';
+    card.appendChild(detail);
+
+    let claim;
+    try {
+      claim = await api(`/claims/giveaway/${row.giveaway_id}`);
+    } catch (err) {
+      detail.textContent = err.message;
+      return;
+    }
+
+    const history = document.createElement('div');
+    history.style.cssText = 'font-size:0.9rem; color:var(--text-soft);';
+    claim.history.forEach((event) => {
+      const line = document.createElement('div');
+      line.textContent = `${new Date(event.created_at).toLocaleString()} — ${event.to_status.replace(/_/g, ' ')} by ${event.actor_role}${event.note ? `: ${event.note}` : ''}`;
+      history.appendChild(line);
+    });
+    detail.appendChild(history);
+
+    if (claim.delivery && claim.delivery.available) {
+      const d = claim.delivery.details;
+      const box = document.createElement('div');
+      box.style.cssText = 'background:var(--mint); border-radius:10px; padding:10px 12px; margin-top:10px; font-size:0.9rem;';
+      const label = document.createElement('strong');
+      label.textContent = 'Delivery details (opened deliberately, for this case)';
+      box.appendChild(label);
+      [d.recipient_name, d.phone, d.address_line1, d.address_line2, [d.city, d.emirate].filter(Boolean).join(', ')]
+        .filter(Boolean)
+        .forEach((line) => {
+          const p = document.createElement('div');
+          p.textContent = line;
+          box.appendChild(p);
+        });
+      detail.appendChild(box);
+    }
+
+    const reason = document.createElement('textarea');
+    reason.placeholder = 'Reason for your decision — recorded against this claim.';
+    reason.maxLength = 500;
+    reason.style.marginTop = '10px';
+    detail.appendChild(reason);
+
+    const error = document.createElement('p');
+    error.className = 'form-error';
+
+    const act = async (to) => {
+      error.classList.remove('show');
+      if (!reason.value.trim()) {
+        error.textContent = 'A reason is required — it is recorded against the claim.';
+        error.classList.add('show');
+        return;
+      }
+      try {
+        await api(`/claims/${claim.id}/transition`, {
+          method: 'POST',
+          body: JSON.stringify({ to, note: reason.value.trim() }),
+        });
+        loadClaims();
+      } catch (err) {
+        error.textContent = err.message;
+        error.classList.add('show');
+      }
+    };
+
+    const buttons = document.createElement('div');
+    buttons.style.cssText = 'display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;';
+
+    if (row.status === 'disputed') {
+      [['delivered', 'Mark delivered'], ['preparing_delivery', 'Send back for redelivery'], ['cancelled', 'Close claim']].forEach(
+        ([to, label]) => {
+          const b = document.createElement('button');
+          b.className = 'btn ghost';
+          b.textContent = label;
+          b.onclick = () => act(to);
+          buttons.appendChild(b);
+        }
+      );
+    } else {
+      const reissue = document.createElement('button');
+      reissue.className = 'btn primary';
+      reissue.textContent = 'Reissue claim link to the same winner';
+      reissue.onclick = async () => {
+        error.classList.remove('show');
+        try {
+          await api(`/claims/${claim.id}/admin/reissue`, {
+            method: 'POST',
+            body: JSON.stringify({ note: reason.value.trim() || 'reissued after review' }),
+          });
+          loadClaims();
+        } catch (err) {
+          error.textContent = err.message;
+          error.classList.add('show');
+        }
+      };
+      buttons.appendChild(reissue);
+
+      const close = document.createElement('button');
+      close.className = 'btn ghost';
+      close.textContent = 'Close claim';
+      close.onclick = () => act('cancelled');
+      buttons.appendChild(close);
+    }
+
+    detail.append(buttons, error);
+  }
+
+  async function loadMissingClaims() {
+    const box = document.getElementById('missing-claims-content');
+    try {
+      const rows = await api('/claims/admin/missing-claims');
+      box.replaceChildren();
+      if (!rows.length) {
+        const empty = document.createElement('p');
+        empty.className = 'hint';
+        empty.textContent = 'None — every drawn giveaway has a claim.';
+        box.appendChild(empty);
+        return;
+      }
+      rows.forEach((row) => {
+        const card = document.createElement('div');
+        card.className = 'card narrow';
+        card.style.cssText = 'max-width:none; margin-bottom:10px; display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap;';
+        const label = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = row.title;
+        const who = document.createElement('div');
+        who.className = 'hint';
+        who.textContent = `Winner already drawn: ${row.winner_name}`;
+        label.append(title, who);
+
+        const button = document.createElement('button');
+        button.className = 'btn primary';
+        button.textContent = 'Issue claim to that winner';
+        button.onclick = async () => {
+          button.disabled = true;
+          try {
+            await api(`/claims/admin/backfill/${row.giveaway_id}`, { method: 'POST' });
+            loadMissingClaims();
+            loadClaims();
+          } catch (err) {
+            who.textContent = err.message;
+            button.disabled = false;
+          }
+        };
+        card.append(label, button);
+        box.appendChild(card);
+      });
+    } catch (err) {
+      box.textContent = err.message;
+    }
+  }
+
   if (getToken()) {
     loadStats();
+    loadClaims();
+    loadMissingClaims();
     load();
     loadAdInquiries();
     loadAds();

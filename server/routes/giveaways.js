@@ -5,8 +5,10 @@ const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { enterLimiter } = require('../middleware/rateLimit');
 const { sendEmail } = require('../lib/email');
-const { winnerEmailHtml, entryEmailHtml, claimInvitationHtml } = require('../lib/emailTemplates');
+const { winnerEmailHtml, entryEmailHtml } = require('../lib/emailTemplates');
 const claims = require('../lib/claims');
+const notifications = require('../lib/claimNotifications');
+const { areClaimsEnabled } = require('../lib/featureFlags');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
@@ -401,16 +403,21 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
     ]);
     const winnerUser = winnerUserRes.rows[0];
 
-    // The claim is created in the same transaction as the draw. A winner
-    // without a claim would be a winner with no way to receive anything, and a
-    // claim without a winner would be nonsense — they exist or they don't,
-    // together. The token is returned once, for the email, and is never stored
-    // in plaintext or logged.
-    const claim = await claims.createClaimForDraw(client, {
-      giveawayId: req.params.id,
-      winnerUserId: winner.user_id,
-      entryId: winner.id,
-    });
+    // The claim, and the intent to tell the winner about it, are both created
+    // in the same transaction as the draw. A winner without a claim has no way
+    // to receive anything; a claim whose invitation was fired off as an
+    // unawaited promise can vanish into a mail outage with nothing recording
+    // that it did. The outbox row is the durable promise that they will be
+    // told, and it holds no token — the sender issues a fresh one.
+    let claim = null;
+    if (areClaimsEnabled()) {
+      claim = await claims.createClaimForDraw(client, {
+        giveawayId: req.params.id,
+        winnerUserId: winner.user_id,
+        entryId: winner.id,
+      });
+      await notifications.queueInvitation(client, claim.id);
+    }
 
     await client.query('COMMIT');
 
@@ -434,19 +441,19 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
       }),
     });
 
-    // Sent separately and marked sensitive: this is the only message that
-    // carries the single-use claim link, and its body must never reach a log.
-    sendEmail({
-      to: winnerUser.email,
-      sensitive: true,
-      subject: `Claim your prize: ${giveaway.title}`,
-      html: claimInvitationHtml({
-        winnerName: winnerUser.name,
-        giveawayTitle: giveaway.title,
-        claimUrl: `${APP_URL}/claim.html?token=${claim.token}`,
-        expiresAt: claim.expiresAt,
-      }),
-    });
+    // The claim invitation goes through the outbox rather than being fired off
+    // here. Awaited and its failure caught, so a mail outage leaves a pending
+    // row to retry instead of an unhandled rejection and a silent loss.
+    if (claim) {
+      try {
+        await notifications.processDueNotifications({ appUrl: APP_URL });
+      } catch (notifyErr) {
+        // The draw itself has already committed and been reported. A failure
+        // here means the invitation is still pending, which the scheduler and
+        // the admin review screen both pick up.
+        console.error('Claim invitation delivery attempt failed:', notifyErr.message);
+      }
+    }
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error(err);

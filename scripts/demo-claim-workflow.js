@@ -125,7 +125,9 @@ async function main() {
   detail(`stranger              : HTTP ${strangerView.status} — ${strangerView.body.error}`);
 
   say('The winner opens the link. It shows the prize without consuming the token.');
-  const lookup = await api().get(`/api/claims/lookup?token=${encodeURIComponent(claim.token)}`);
+  // POST with the token in the body — never a query string, which would write a
+  // live single-use credential into every access log on the way in.
+  const lookup = await api().post('/api/claims/lookup').send({ token: claim.token });
   detail(`prize                 : ${lookup.body.title} — ${lookup.body.prize_description}`);
   detail(`consent version       : ${lookup.body.consent_version}`);
 

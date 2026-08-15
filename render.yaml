@@ -51,6 +51,8 @@ services:
         sync: false
       - key: CLAIM_DELIVERY_RETENTION_DAYS
         sync: false
+      - key: CLAIM_MAINTENANCE_INTERVAL_MINUTES
+        sync: false
       - key: GA_MEASUREMENT_ID
         sync: false
       - key: SENTRY_DSN

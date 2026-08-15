@@ -281,6 +281,40 @@ its full transition history survive; the address does not. Cleanup is idempotent
 and safe to run concurrently or repeatedly. **The period is provisional and is
 one of the things UAE counsel needs to confirm.**
 
+**Claim links live in the URL fragment** — `/claim.html#token=…`, never a query
+string. A fragment is never sent to a server, so the token cannot reach this
+application's logs, a reverse proxy, or a `Referer` header on the way in. The
+page reads it before any other script loads, erases it from the address bar with
+`history.replaceState`, and exchanges it through a `POST`. Analytics does not
+initialise on that page at all. The link exists in the winner's email, which is
+unavoidable and is the whole mechanism — and nowhere else.
+
+**The invitation is sent through a durable outbox.** The intent to notify is
+written in the same transaction as the draw, so a mail-provider outage leaves a
+pending row to retry rather than losing the one message the workflow depends on.
+The outbox holds no token: each attempt issues a fresh one and invalidates its
+predecessor, so a leaked outbox row is not a claim link. Errors are stored as a
+coarse category, never the provider's message, which routinely quotes the
+recipient's address back at you.
+
+**Retention, expiry and retries run on a schedule**, from an in-process timer
+(`CLAIM_MAINTENANCE_INTERVAL_MINUTES`, default 15). Deliberately not an HTTP
+endpoint: there is no route to call, so there is nothing to authenticate or rate
+limit. A Postgres advisory lock means only one instance does the work per tick,
+and repeated failures escalate to an explicit alert. The admin endpoint still
+exists for running it on demand, but nothing depends on anyone visiting a page.
+
+**Recovering an old giveaway.** Giveaways drawn before this workflow existed
+appear under "Drawn giveaways with no claim" in the admin panel. Issuing a claim
+emails the winner the draw already chose — it reads `winner_entry_id` and
+refuses outright if there isn't one. Nothing here ever picks a winner.
+
+**With `CLAIMS_ENABLED=false`** the claim API returns 503, the draw creates no
+claim, and the UI renders no claim controls (the flag is exposed through
+`/api/config`). It does **not** restore the old host-only delivery confirmation —
+that path is closed permanently, so a disabled workflow means delivery simply
+isn't recorded, not that a host can declare it alone again.
+
 **Key rotation.** Move the current `CLAIM_ENCRYPTION_KEY` into
 `CLAIM_ENCRYPTION_KEYS_PREVIOUS`, generate a new key with a new version prefix,
 deploy. Nothing needs re-encrypting: existing records stay readable under the

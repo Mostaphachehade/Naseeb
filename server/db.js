@@ -393,6 +393,40 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_prize_claim_events_claim ON prize_claim_events(claim_id, created_at);
+
+    -- Whether the winner has actually been told they won.
+    --
+    -- The invitation is the one email the whole workflow depends on: a winner
+    -- who never receives it cannot claim, and a claim nobody can act on expires
+    -- into an admin queue for no reason. Sending it as an unawaited promise made
+    -- a mail outage silent — the draw succeeded, the email vanished, and nothing
+    -- recorded that it had.
+    ALTER TABLE prize_claims ADD COLUMN IF NOT EXISTS invitation_sent_at TIMESTAMPTZ;
+
+    -- Durable outbox for claim emails.
+    --
+    -- A row here is a promise that someone will be told something, kept until
+    -- it is. Deliberately holds NO token: a retry issues a fresh one and
+    -- invalidates its predecessor, so a leaked outbox row is not a claim link
+    -- and an old link cannot be resurrected from it. last_error_category is a
+    -- coarse label rather than a provider message, so a bounce reason cannot
+    -- drag an address into the table.
+    CREATE TABLE IF NOT EXISTS claim_notifications (
+      id TEXT PRIMARY KEY,
+      claim_id TEXT NOT NULL REFERENCES prize_claims(id),
+      kind TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_error_category TEXT,
+      last_attempt_at TIMESTAMPTZ,
+      delivered_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_claim_notifications_due
+      ON claim_notifications(next_attempt_at) WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS idx_claim_notifications_claim ON claim_notifications(claim_id);
   `);
 
   // Separate from the batch above because it has to inspect existing data and

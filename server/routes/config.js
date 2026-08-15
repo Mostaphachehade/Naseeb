@@ -1,5 +1,6 @@
 const express = require('express');
 const { getSetting } = require('../lib/settings');
+const { areClaimsEnabled } = require('../lib/featureFlags');
 
 const router = express.Router();
 
@@ -21,6 +22,9 @@ router.get('/', async (req, res) => {
       maintenance_message: maintenanceMessage,
       hosting_plan_standard_price_aed: Number(standardPrice),
       hosting_plan_partner_price_aed: Number(partnerPrice),
+      // So the host and winner UI can hide claim controls entirely rather than
+      // rendering buttons that answer 503.
+      claims_enabled: areClaimsEnabled(),
     });
   } catch (err) {
     console.error(err);

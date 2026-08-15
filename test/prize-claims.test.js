@@ -64,6 +64,10 @@ after(async () => {
   console.log = realLog;
   console.error = realError;
   if (createdGiveawayIds.length) {
+    await pool.query(
+      'DELETE FROM claim_notifications WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))',
+      [createdGiveawayIds]
+    );
     await pool.query('DELETE FROM prize_claim_events WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))', [createdGiveawayIds]);
     await pool.query('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
@@ -274,7 +278,10 @@ test('an expired token cannot be redeemed', async () => {
   const res = await redeem(ctx.claim.token);
   assert.equal(res.status, 410);
 
-  const lookup = await api().get(`/api/claims/lookup?token=${encodeURIComponent(ctx.claim.token)}`);
+  const lookup = await api()
+    .post('/api/claims/lookup')
+    .set('X-Forwarded-For', nextIp())
+    .send({ token: ctx.claim.token });
   assert.equal(lookup.status, 404);
 });
 
@@ -316,7 +323,10 @@ test('a claim token grants nothing beyond that one claim', async () => {
   assert.equal(asAuth.status, 401, 'a claim token is not a session token');
 
   // And it cannot reach another giveaway's claim.
-  const lookup = await api().get(`/api/claims/lookup?token=${encodeURIComponent(ctx.claim.token)}`);
+  const lookup = await api()
+    .post('/api/claims/lookup')
+    .set('X-Forwarded-For', nextIp())
+    .send({ token: ctx.claim.token });
   assert.equal(lookup.status, 200);
   assert.notEqual(lookup.body.claim_id, other.claim.id);
 });

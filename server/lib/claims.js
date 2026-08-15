@@ -8,6 +8,7 @@ const { pool } = require('../db');
 const { STATES, ROLES, PUBLIC_STATUS, assertTransition, ClaimTransitionError } = require('./claimStateMachine');
 const { issueToken, hashToken } = require('./claimTokens');
 const { encryptDeliveryDetails, decryptDeliveryDetails } = require('./claimCrypto');
+const { recordEvent } = require('./claimEvents');
 
 // Bumped whenever the wording a winner agrees to changes, so a consent given
 // under old wording is distinguishable from one given under new wording.
@@ -80,11 +81,61 @@ async function createClaimForDraw(client, { giveawayId, winnerUserId, entryId })
   return { id, token, expiresAt };
 }
 
-async function recordEvent(client, { claimId, from, to, actorUserId, actorRole, note }) {
+// Creates a claim for a giveaway that was drawn before this workflow existed,
+// or whose claim was somehow never created.
+//
+// Never picks a winner: it reads the winner the draw already chose, from
+// winner_entry_id. If a giveaway has no drawn winner there is nothing to claim
+// and it refuses — the one thing this must never do is quietly decide who won.
+//
+// Idempotent and safe under concurrency: the UNIQUE constraint on giveaway_id
+// means a second simultaneous attempt cannot create a duplicate, and the
+// advisory-free ON CONFLICT path simply returns the existing claim.
+async function backfillClaimForGiveaway(client, giveawayId) {
+  const giveaway = await client.query(
+    `SELECT g.id, g.status, g.winner_entry_id, e.user_id AS winner_user_id
+       FROM giveaways g
+       LEFT JOIN entries e ON e.id = g.winner_entry_id
+      WHERE g.id = $1
+      FOR UPDATE OF g`,
+    [giveawayId]
+  );
+  const row = giveaway.rows[0];
+  if (!row) {
+    throw new ClaimTransitionError('This giveaway does not exist.', { status: 404, code: 'NOT_FOUND' });
+  }
+  if (row.status !== 'drawn' || !row.winner_entry_id || !row.winner_user_id) {
+    throw new ClaimTransitionError(
+      'This giveaway has no drawn winner, so there is nothing to claim. Draw a winner first — a claim never chooses one.',
+      { status: 409, code: 'NO_WINNER' }
+    );
+  }
+
+  const existing = await client.query('SELECT * FROM prize_claims WHERE giveaway_id = $1', [giveawayId]);
+  if (existing.rowCount > 0) {
+    return { created: false, claim: existing.rows[0] };
+  }
+
+  const created = await createClaimForDraw(client, {
+    giveawayId,
+    winnerUserId: row.winner_user_id,
+    entryId: row.winner_entry_id,
+  });
+  const claim = await getClaimById(client, created.id);
+  return { created: true, claim };
+}
+
+// Invalidates every previous token for a claim and issues nothing in its place.
+//
+// Used before queueing a fresh invitation: the outbox worker writes the new
+// token as part of its send, so between these two steps no token is valid at
+// all — which is the safe direction to be wrong in.
+async function invalidateTokens(client, claimId) {
   await client.query(
-    `INSERT INTO prize_claim_events (id, claim_id, from_status, to_status, actor_user_id, actor_role, note)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [uuid(), claimId, from, to, actorUserId || null, actorRole, note ? String(note).slice(0, 500) : null]
+    `UPDATE prize_claims
+        SET token_hash = NULL, token_expires_at = NULL, token_used_at = NULL, updated_at = NOW()
+      WHERE id = $1`,
+    [claimId]
   );
 }
 
@@ -326,6 +377,8 @@ function publicStatusFor(status) {
 
 module.exports = {
   CONSENT_VERSION,
+  backfillClaimForGiveaway,
+  invalidateTokens,
   DEFAULT_RETENTION_DAYS,
   deliveryRetentionDays,
   resolveRole,

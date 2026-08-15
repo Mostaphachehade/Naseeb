@@ -4,6 +4,11 @@ const API = '/api';
 // numbers. No-ops entirely if GA_MEASUREMENT_ID isn't set on the server.
 (function loadAnalytics() {
   if (window.location.pathname === '/admin.html') return;
+  // Never on the claim page. The claim token arrives in a URL fragment and is
+  // erased before this file loads, but analytics scripts read location, title
+  // and referrer, and a third-party script on a page whose whole purpose is a
+  // one-time credential is a risk with nothing on the other side of it.
+  if (window.location.pathname === '/claim.html') return;
   fetch(`${API}/config`)
     .then((r) => r.json())
     .then((config) => {

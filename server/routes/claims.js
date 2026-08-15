@@ -11,10 +11,25 @@ const {
 const { STATES, ROLES, ClaimTransitionError } = require('../lib/claimStateMachine');
 const claims = require('../lib/claims');
 const { isConfigured: isEncryptionConfigured } = require('../lib/claimCrypto');
-const { issueToken } = require('../lib/claimTokens');
+const { areClaimsEnabled } = require('../lib/featureFlags');
+const notifications = require('../lib/claimNotifications');
+const { runMaintenanceOnce } = require('../lib/claimScheduler');
 
 const router = express.Router();
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+
+// With claims switched off the whole workflow is inert rather than half
+// present. Notably this does NOT fall back to the old host-only delivery
+// confirmation — that path is gone, and a disabled claim workflow means
+// delivery simply isn't recorded, not that a host can declare it alone again.
+router.use((req, res, next) => {
+  if (areClaimsEnabled()) return next();
+  res.set('Cache-Control', 'no-store');
+  return res.status(503).json({
+    error: 'Prize claims are currently unavailable.',
+    code: 'CLAIMS_DISABLED',
+  });
+});
 
 // Delivery details are the minimum needed to physically hand something over.
 // No identity documents, no date of birth, no payment details — none of it is
@@ -86,12 +101,19 @@ function baseClaimView(claim) {
 // Winner: redeeming a claim link
 // ---------------------------------------------------------------------------
 
-// Shows the winner what they are about to claim. Deliberately does not consume
-// the token — a link should survive being opened twice before the form is
-// filled in — and returns nothing sensitive.
-router.get('/lookup', claimTokenLimiter, async (req, res) => {
+// Shows the winner what they are about to claim.
+//
+// A POST with the token in the body, not a GET with it in the query string.
+// The token arrives at the browser in a URL fragment, which is never sent to a
+// server — putting it back into a query string here would undo that, writing a
+// live single-use credential into the access log of every proxy between the
+// winner and this process.
+//
+// Deliberately does not consume the token: a link should survive being opened
+// twice before the form is filled in. Returns nothing sensitive.
+router.post('/lookup', claimTokenLimiter, async (req, res) => {
   try {
-    const token = req.query.token;
+    const token = req.body && req.body.token;
     if (!token) return res.status(400).json({ error: 'Missing claim token.' });
 
     const claim = await claims.lookupByToken(pool, token);
@@ -115,6 +137,17 @@ router.get('/lookup', claimTokenLimiter, async (req, res) => {
   } catch (err) {
     return claimError(res, err);
   }
+});
+
+// The old GET form is refused outright rather than left as a quiet alternative.
+// A token in a query string is a token in a log; answering 410 here means an
+// old email, a bookmark or a copied link fails loudly instead of leaking.
+router.get('/lookup', claimTokenLimiter, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.status(410).json({
+    error: 'This claim link format is no longer supported. Please open the link from your email again.',
+    code: 'USE_FRAGMENT_LINK',
+  });
 });
 
 // The winner consents, supplies delivery details, and the claim opens.
@@ -409,55 +442,62 @@ router.get('/admin/review', requireAdmin, async (req, res) => {
   }
 });
 
-// Reissues a claim link to the same winner after an expired claim has been
-// reviewed. Never picks a different winner: the draw already happened, and
-// redrawing would take a prize from the person who actually won it.
+// Reissues a claim link to the same winner.
+//
+// Never picks a different winner: the draw already happened, and redrawing
+// would take a prize from the person who actually won it. Used after an expired
+// claim has been reviewed, or when a winner says the email never arrived.
+//
+// The new token is issued by the outbox worker as part of sending, not here.
+// Between invalidating the old one and the send succeeding, no token is valid
+// at all — the safe direction to be wrong in.
 router.post('/:id/admin/reissue', claimActionLimiter, requireAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { token, tokenHash, expiresAt } = issueToken();
-
     await client.query('BEGIN');
-    const { claim } = await claims.transition(client, {
-      claimId: req.params.id,
-      to: STATES.AWAITING_CLAIM,
-      role: ROLES.ADMIN,
-      actorUserId: req.userId,
-      note: req.body && req.body.note ? req.body.note : 'claim link reissued',
-      extra: {
-        // Issuing a replacement invalidates whatever came before it: the old
-        // hash is gone, so the old link can never be redeemed.
-        token_hash: tokenHash,
-        token_expires_at: expiresAt,
-        token_issued_at: new Date(),
-        token_used_at: null,
-        expired_at: null,
-      },
-    });
 
-    const context = await client.query(
-      `SELECT g.title, winner.name AS winner_name, winner.email AS winner_email
-         FROM giveaways g JOIN users winner ON winner.id = $2 WHERE g.id = $1`,
-      [claim.giveaway_id, claim.winner_user_id]
-    );
-    await client.query('COMMIT');
+    const existing = await claims.getClaimById(client, req.params.id);
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'This claim does not exist.' });
+    }
 
-    res.set('Cache-Control', 'no-store');
-    res.json(baseClaimView(claim));
-
-    const info = context.rows[0];
-    if (info) {
-      sendEmail({
-        to: info.winner_email,
-        subject: `Your prize is waiting: ${info.title}`,
-        html: claimInvitationHtml({
-          winnerName: info.winner_name,
-          giveawayTitle: info.title,
-          claimUrl: `${APP_URL}/claim.html?token=${token}`,
-          expiresAt,
-        }),
+    // An expired claim goes back to awaiting_claim; one that is merely
+    // undelivered stays where it is and just gets a fresh link.
+    if (existing.status === STATES.EXPIRED) {
+      await claims.transition(client, {
+        claimId: req.params.id,
+        to: STATES.AWAITING_CLAIM,
+        role: ROLES.ADMIN,
+        actorUserId: req.userId,
+        note: req.body && req.body.note ? req.body.note : 'claim link reissued after review',
+        extra: { expired_at: null },
       });
     }
+
+    // Every previous token dies here, used or not.
+    await claims.invalidateTokens(client, req.params.id);
+    await notifications.requeueInvitation(client, req.params.id);
+    await client.query(
+      'UPDATE prize_claims SET invitation_sent_at = NULL, updated_at = NOW() WHERE id = $1',
+      [req.params.id]
+    );
+
+    await client.query('COMMIT');
+
+    // Awaited: an admin clicking "resend" should be told whether it worked.
+    const summary = await notifications.processDueNotifications({ appUrl: APP_URL });
+
+    const refreshed = await claims.getClaimById(pool, req.params.id);
+    const state = await notifications.notificationStateFor(pool, req.params.id);
+
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      ...baseClaimView(refreshed),
+      invitation: state,
+      delivery_attempted: summary.attempted,
+      delivery_succeeded: summary.delivered,
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     return claimError(res, err);
@@ -466,21 +506,69 @@ router.post('/:id/admin/reissue', claimActionLimiter, requireAdmin, async (req, 
   }
 });
 
-// Exposed so retention and expiry can be driven by a scheduler as well as
-// opportunistically. Both are idempotent and safe to run concurrently.
-router.post('/admin/maintenance', requireAdmin, async (req, res) => {
+// Creates a claim for a giveaway drawn before this workflow existed, or whose
+// claim was never created. Reads the winner the draw already chose — it does
+// not, and cannot, pick one.
+router.post('/admin/backfill/:giveawayId', claimActionLimiter, requireAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const expired = await claims.expireLapsedClaims(client);
-    const erased = await claims.eraseExpiredDeliveryDetails(client);
+    const { created, claim } = await claims.backfillClaimForGiveaway(client, req.params.giveawayId);
+    if (created) {
+      await notifications.queueInvitation(client, claim.id);
+    }
     await client.query('COMMIT');
-    res.json({ expired_claims: expired, delivery_details_erased: erased });
+
+    let summary = null;
+    if (created) {
+      summary = await notifications.processDueNotifications({ appUrl: APP_URL });
+    }
+
+    res.set('Cache-Control', 'no-store');
+    res.status(created ? 201 : 200).json({
+      created,
+      ...baseClaimView(claim),
+      invitation: await notifications.notificationStateFor(pool, claim.id),
+      delivery_succeeded: summary ? summary.delivered : null,
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     return claimError(res, err);
   } finally {
     client.release();
+  }
+});
+
+// Drawn giveaways with no claim at all — the backlog an operator needs to work
+// through after deploying this workflow.
+router.get('/admin/missing-claims', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT g.id AS giveaway_id, g.title, g.entry_deadline, u.name AS winner_name
+         FROM giveaways g
+         JOIN entries e ON e.id = g.winner_entry_id
+         JOIN users u ON u.id = e.user_id
+         LEFT JOIN prize_claims c ON c.giveaway_id = g.id
+        WHERE g.status = 'drawn' AND g.winner_entry_id IS NOT NULL AND c.id IS NULL
+        ORDER BY g.entry_deadline DESC`
+    );
+    res.set('Cache-Control', 'no-store');
+    res.json(result.rows);
+  } catch (err) {
+    return claimError(res, err);
+  }
+});
+
+// On-demand maintenance. The automatic path is a scheduler inside the process
+// (server/lib/claimScheduler.js) with no route of its own, so retention does not
+// depend on anybody visiting this.
+router.post('/admin/maintenance', requireAdmin, async (req, res) => {
+  try {
+    const summary = await runMaintenanceOnce({});
+    res.set('Cache-Control', 'no-store');
+    res.json(summary);
+  } catch (err) {
+    return claimError(res, err);
   }
 });
 

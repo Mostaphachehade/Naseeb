@@ -53,7 +53,32 @@
 
           <button class="btn primary" id="enter-btn" data-i18n="detail.enterFree" style="width:100%; margin-top:22px; justify-content:center;">Enter for free</button>
           <button class="btn ghost" id="draw-btn" data-i18n="detail.drawWinner" style="width:100%; margin-top:12px; justify-content:center; display:none;">Draw winner now</button>
-          <button class="btn primary" id="confirm-delivery-btn" data-i18n="detail.confirmDelivery" style="width:100%; margin-top:12px; justify-content:center; display:none;">Confirm prize delivered</button>
+          <!-- Fulfilment. Rendered from the claim's current state, so only the
+               actions that are actually valid right now are shown, to the one
+               person entitled to take them. Hidden entirely when the claim
+               workflow is switched off — a dead button is worse than none. -->
+          <div id="claim-panel" style="display:none; margin-top:16px; border-top:1px solid rgba(0,0,0,0.08); padding-top:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+              <strong id="claim-state-label">Prize delivery</strong>
+              <span class="pill-badge" id="claim-state-pill"></span>
+            </div>
+            <p class="hint" id="claim-state-help" style="margin-top:6px;"></p>
+
+            <!-- Delivery details, fetched only for the host and only after the
+                 winner consented. Never written to localStorage, a URL, or an
+                 analytics event. -->
+            <div id="claim-delivery" style="display:none; background:var(--mint); border-radius:10px; padding:12px 14px; margin-top:10px; font-size:0.95rem;"></div>
+
+            <div id="claim-actions" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;"></div>
+
+            <div id="claim-dispute-box" style="display:none; margin-top:12px;">
+              <label for="claim-dispute-reason" style="font-size:0.9rem;">What went wrong?</label>
+              <textarea id="claim-dispute-reason" maxlength="500" placeholder="A short description — an administrator will read this."></textarea>
+              <button class="btn ghost" id="claim-dispute-submit" style="margin-top:8px;">Send to review</button>
+            </div>
+
+            <p class="form-error" id="claim-error"></p>
+          </div>
           <p class="form-error" id="action-error"></p>
           <p class="form-success" id="action-success"></p>
           <p class="hint" style="margin-top:14px;" data-i18n="detail.hint">No payment is ever requested to enter or to improve your odds. One entry per person.</p>
@@ -132,14 +157,7 @@
         drawBtn.onclick = drawWinner;
       }
 
-      const confirmBtn = document.getElementById('confirm-delivery-btn');
-      if (isHost && g.status === 'drawn' && !g.prize_delivered) {
-        confirmBtn.style.display = 'block';
-        confirmBtn.disabled = false;
-        confirmBtn.onclick = confirmDelivery;
-      } else {
-        confirmBtn.style.display = 'none';
-      }
+      await renderClaim(g, isHost);
     } catch (err) {
       document.getElementById('title').textContent = t('detail.notFound');
       document.getElementById('description').textContent = err.message;
@@ -180,20 +198,174 @@
     }
   }
 
-  async function confirmDelivery() {
-    const errorEl = document.getElementById('action-error');
-    const confirmBtn = document.getElementById('confirm-delivery-btn');
-    errorEl.classList.remove('show');
-    confirmBtn.disabled = true;
+  // What each state means to the person looking at it, and which move they may
+  // make next. Mirrors the server's state machine — the server is still the
+  // one enforcing it; this only decides what to offer.
+  const CLAIM_STATE_TEXT = {
+    awaiting_claim: {
+      pill: 'Awaiting winner',
+      host: 'The winner has been emailed a claim link. Delivery details arrive once they claim and consent.',
+      winner: 'Check your email for your claim link, and tell us where to send the prize.',
+    },
+    claimed: {
+      pill: 'Claimed',
+      host: 'The winner has claimed and shared delivery details. Start preparing the prize.',
+      winner: 'The host has your delivery details and will prepare your prize.',
+    },
+    preparing_delivery: {
+      pill: 'Preparing',
+      host: "Mark it sent once it's with a courier or the handover is arranged.",
+      winner: 'The host is preparing your prize.',
+    },
+    shipped_or_arranged: {
+      pill: 'Sent',
+      host: "Once it should have arrived, say so — the winner then confirms they received it.",
+      winner: 'Your prize is on its way.',
+    },
+    delivered_pending_confirmation: {
+      pill: 'Awaiting confirmation',
+      host: 'Waiting for the winner to confirm they received it. Only they can close this.',
+      winner: 'The host says it has arrived. Please confirm you received it.',
+    },
+    delivered: { pill: 'Delivered', host: 'Confirmed received by the winner.', winner: 'You confirmed you received this.' },
+    disputed: {
+      pill: 'Under review',
+      host: 'An administrator is reviewing this.',
+      winner: 'An administrator is reviewing this.',
+    },
+    expired: {
+      pill: 'Under review',
+      host: 'The claim window closed. An administrator is reviewing it — the prize has not been cancelled or redrawn.',
+      winner: 'Your claim window closed. An administrator is reviewing it.',
+    },
+    cancelled: { pill: 'Closed', host: 'This claim was closed by an administrator.', winner: 'This claim was closed.' },
+  };
+
+  // Only transitions the current role may make from the current state.
+  const CLAIM_ACTIONS = {
+    claimed: { host: [['preparing_delivery', 'Start preparing']] },
+    preparing_delivery: { host: [['shipped_or_arranged', 'Mark as sent or arranged']] },
+    shipped_or_arranged: { host: [['delivered_pending_confirmation', 'Report as delivered']] },
+    delivered_pending_confirmation: { winner: [['delivered', 'Confirm I received it']] },
+  };
+
+  const DISPUTABLE = ['claimed', 'preparing_delivery', 'shipped_or_arranged', 'delivered_pending_confirmation'];
+
+  let currentClaim = null;
+
+  async function renderClaim(g, isHost) {
+    const panel = document.getElementById('claim-panel');
+    const config = await api('/config').catch(() => ({}));
+
+    // No claim workflow, no controls at all.
+    if (!config.claims_enabled || g.status !== 'drawn') {
+      panel.style.display = 'none';
+      return;
+    }
+
+    let claim;
     try {
-      await api(`/giveaways/${id}/confirm-delivery`, { method: 'POST' });
+      claim = await api(`/claims/giveaway/${id}`);
+    } catch (err) {
+      // Not the winner, host or an admin — or no claim exists. Either way there
+      // is nothing here for this visitor.
+      panel.style.display = 'none';
+      return;
+    }
+
+    currentClaim = claim;
+    panel.style.display = 'block';
+
+    const text = CLAIM_STATE_TEXT[claim.status] || { pill: claim.status, host: '', winner: '' };
+    document.getElementById('claim-state-pill').textContent = text.pill;
+    document.getElementById('claim-state-help').textContent =
+      claim.role === 'winner' ? text.winner : text.host;
+
+    // Delivery details: shown only when the server actually returned them,
+    // which it does only for the host after consent and before erasure.
+    const deliveryEl = document.getElementById('claim-delivery');
+    if (claim.delivery && claim.delivery.available) {
+      const d = claim.delivery.details;
+      deliveryEl.style.display = 'block';
+      deliveryEl.replaceChildren();
+      const heading = document.createElement('strong');
+      heading.textContent = 'Deliver to';
+      deliveryEl.appendChild(heading);
+      [
+        d.recipient_name,
+        d.phone,
+        d.address_line1,
+        d.address_line2,
+        [d.city, d.emirate].filter(Boolean).join(', '),
+        d.notes ? `Note: ${d.notes}` : null,
+      ]
+        .filter(Boolean)
+        .forEach((line) => {
+          const p = document.createElement('div');
+          // textContent, never innerHTML: these are values a winner typed.
+          p.textContent = line;
+          deliveryEl.appendChild(p);
+        });
+      const consent = document.createElement('p');
+      consent.className = 'hint';
+      consent.style.marginBottom = '0';
+      consent.textContent = `Shared with your consent on ${new Date(claim.delivery.consentedAt).toLocaleDateString()}. Deleted once delivery is confirmed and the retention period passes.`;
+      deliveryEl.appendChild(consent);
+    } else {
+      deliveryEl.style.display = 'none';
+    }
+
+    // Actions valid for this state and this role, and nothing else.
+    const actionsEl = document.getElementById('claim-actions');
+    actionsEl.replaceChildren();
+    const available = (CLAIM_ACTIONS[claim.status] || {})[claim.role] || [];
+    available.forEach(([to, label]) => {
+      const button = document.createElement('button');
+      button.className = 'btn primary';
+      button.textContent = label;
+      button.onclick = () => moveClaim(to);
+      actionsEl.appendChild(button);
+    });
+
+    const disputeBox = document.getElementById('claim-dispute-box');
+    if (DISPUTABLE.includes(claim.status) && (claim.role === 'host' || claim.role === 'winner')) {
+      const raise = document.createElement('button');
+      raise.className = 'btn ghost';
+      raise.textContent = 'Report a problem';
+      raise.onclick = () => {
+        disputeBox.style.display = disputeBox.style.display === 'block' ? 'none' : 'block';
+      };
+      actionsEl.appendChild(raise);
+    } else {
+      disputeBox.style.display = 'none';
+    }
+  }
+
+  async function moveClaim(to, note) {
+    const errorEl = document.getElementById('claim-error');
+    errorEl.classList.remove('show');
+    try {
+      await api(`/claims/${currentClaim.id}/transition`, {
+        method: 'POST',
+        body: JSON.stringify({ to, note }),
+      });
       load();
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.add('show');
-      confirmBtn.disabled = false;
     }
   }
+
+  document.getElementById('claim-dispute-submit').addEventListener('click', () => {
+    const reason = document.getElementById('claim-dispute-reason').value.trim();
+    const errorEl = document.getElementById('claim-error');
+    if (!reason) {
+      errorEl.textContent = 'Please describe the problem so an administrator can act on it.';
+      errorEl.classList.add('show');
+      return;
+    }
+    moveClaim('disputed', reason);
+  });
 
   load();
 </script>

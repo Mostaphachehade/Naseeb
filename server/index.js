@@ -19,6 +19,15 @@ const app = require('./app');
 const { init, isSlotProtectionActive, SLOT_CONSTRAINT_NAME } = require('./db');
 const { isAdsCheckoutEnabled, areClaimsEnabled } = require('./lib/featureFlags');
 const { isConfigured: isClaimEncryptionConfigured } = require('./lib/claimCrypto');
+const claimScheduler = require('./lib/claimScheduler');
+
+// A rejected promise nobody awaited terminates the process on modern Node.
+// Most of this codebase awaits everything, but a background send or a
+// scheduler tick that slips through should be logged and survived rather than
+// taking the site down — and console.error is mirrored into Sentry.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason instanceof Error ? reason.message : reason);
+});
 
 // Taking card payments without a verified webhook is the failure this whole
 // phase exists to prevent: checkout would work, customers would be charged, and
@@ -105,6 +114,16 @@ const PORT = process.env.PORT || 3000;
 init()
   .then(async () => {
     await assertSlotProtection();
+
+    // Retention, claim expiry and undelivered invitations run on their own from
+    // here. Deliberately in-process and on a timer rather than behind an HTTP
+    // route: there is no endpoint to call, so there is nothing for the public
+    // to invoke. Only one instance does the work per tick — see the advisory
+    // lock in claimScheduler.
+    if (areClaimsEnabled()) {
+      claimScheduler.start();
+    }
+
     app.listen(PORT, () => {
       console.log(`Naseeb running at http://localhost:${PORT}`);
     });

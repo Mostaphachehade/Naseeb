@@ -99,17 +99,36 @@
 
 <div id="site-footer"></div>
 
+<script>
+  // Runs BEFORE any other script on this page, and the ordering is the point.
+  //
+  // The token arrives in the URL *fragment*. Fragments are never sent to a
+  // server, so it does not reach this application, a reverse proxy, or any
+  // access log on the way in — unlike a query string, which would be written
+  // into every one of them.
+  //
+  // It is read once, immediately erased from the address bar, and then held
+  // only in memory. Erasing it before anything else loads means it is gone
+  // before analytics initialises, before any third-party script can read
+  // location.href, and before any request this page makes can carry it in a
+  // Referer header.
+  window.__claimToken = null;
+  (function captureClaimToken() {
+    var hash = window.location.hash || '';
+    var match = hash.match(/(?:^#|&)token=([^&]+)/);
+    if (!match) return;
+    window.__claimToken = decodeURIComponent(match[1]);
+    // replaceState rather than assigning location.hash: no new history entry,
+    // and nothing left behind for the back button to restore.
+    window.history.replaceState({}, document.title, window.location.pathname);
+  })();
+</script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
 <script>
-  // Read once, then removed from the address bar. A claim link is a single-use
-  // credential: leaving it in the URL puts it into browser history, and into
-  // the Referer header of anything this page loads.
-  const params = new URLSearchParams(window.location.search);
-  const claimToken = params.get('token');
-  if (claimToken) {
-    window.history.replaceState({}, '', window.location.pathname);
-  }
+  // Already captured and erased by the inline script above.
+  const claimToken = window.__claimToken;
+  window.__claimToken = null;
 
   let consentVersion = null;
 
@@ -129,7 +148,13 @@
 
     let claim;
     try {
-      claim = await api(`/claims/lookup?token=${encodeURIComponent(claimToken)}`);
+      // POST, so the token travels in the request body. In a query string it
+      // would be written into the server's access log and every proxy in
+      // between — the exact leak the fragment was chosen to avoid.
+      claim = await api('/claims/lookup', {
+        method: 'POST',
+        body: JSON.stringify({ token: claimToken }),
+      });
     } catch (err) {
       return invalid(err.message);
     }
