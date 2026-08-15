@@ -48,6 +48,41 @@ Then open http://localhost:3000
 
 Tables are created automatically on first run if they don't already exist.
 
+> **`npm run db:init` is a production-capable command.** It runs the schema
+> migration in `server/db.js` against whatever `DATABASE_URL` is in your
+> environment — including the live database, with no confirmation prompt and no
+> guard in front of it. It is idempotent (`CREATE TABLE IF NOT EXISTS`, `ADD
+> COLUMN IF NOT EXISTS`), so it is not destructive today, but it is a direct
+> write path to production and future migrations may not be as forgiving. Never
+> run it casually, never run it to "reset" anything, and never run it while a
+> `.env` pointing at production is loaded unless you specifically intend to
+> migrate production. To prepare a database for tests, use the test tooling
+> below instead — it cannot reach production by construction.
+
+## Running the tests
+
+The test suite never reads `.env`. It reads `.env.test` (gitignored) or real
+environment variables, and refuses to run against anything that isn't an
+isolated test database — see `testEnv.js`. This is deliberate: the suite
+creates, updates and deletes users, giveaways and entries, and it previously
+inherited the production connection string from `.env`.
+
+```bash
+npm run test:db:start          # throwaway local Postgres in .tmp-testdb/ (port 55432)
+export TEST_DATABASE_URL="postgresql://postgres@127.0.0.1:55432/naseeb_test"
+npm test                       # resets the schema, then runs every test file
+npm run test:db:destroy        # when you're done
+```
+
+`npm test` refuses to start if the target database isn't named like a test
+database (the name must contain `test`), or if it's on a remote host without
+`ALLOW_REMOTE_TEST_DB=yes`. Errors describe the target as `host:port/database`
+only, so a misconfigured run can't leak a password into a log.
+
+Already have a Postgres you'd rather use? Skip `test:db:start` and point
+`TEST_DATABASE_URL` at a scratch database of your own whose name contains
+`test`. CI does exactly this with an ephemeral `postgres:16` service container.
+
 ## Project structure
 
 ```
