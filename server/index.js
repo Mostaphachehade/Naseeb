@@ -17,7 +17,8 @@ if (process.env.SENTRY_DSN) {
 
 const app = require('./app');
 const { init, isSlotProtectionActive, SLOT_CONSTRAINT_NAME } = require('./db');
-const { isAdsCheckoutEnabled } = require('./lib/featureFlags');
+const { isAdsCheckoutEnabled, areClaimsEnabled } = require('./lib/featureFlags');
+const { isConfigured: isClaimEncryptionConfigured } = require('./lib/claimCrypto');
 
 // Taking card payments without a verified webhook is the failure this whole
 // phase exists to prevent: checkout would work, customers would be charged, and
@@ -44,7 +45,32 @@ function assertPaymentConfiguration() {
   process.exit(1);
 }
 
+// Claims hold the most sensitive data on the platform — a winner's home
+// address and phone number. Without a key there is nowhere safe to put them, so
+// in production that is a refusal to start rather than a surprise 503 the first
+// time somebody wins something. Elsewhere it is a warning: local development
+// and CI can exercise everything except the encrypted path.
+//
+// Only variable names appear here, never key material.
+function assertClaimConfiguration() {
+  if (!areClaimsEnabled()) return;
+  if (isClaimEncryptionConfigured()) return;
+
+  const message =
+    'Prize claims are enabled but CLAIM_ENCRYPTION_KEY is missing or invalid. Winner delivery ' +
+    'details are encrypted with it, so claims cannot be completed without one. Generate a key ' +
+    "with:  node -e \"console.log('v1:' + require('crypto').randomBytes(32).toString('base64'))\"  " +
+    'and set CLAIM_ENCRYPTION_KEY, or set CLAIMS_ENABLED=false to run without prize claims.';
+
+  if (process.env.NODE_ENV === 'production') {
+    console.error(`${message} Refusing to start.`);
+    process.exit(1);
+  }
+  console.error(`WARNING: ${message}`);
+}
+
 assertPaymentConfiguration();
+assertClaimConfiguration();
 
 // Runs after init(), which is what creates the constraint when it can. If it
 // still isn't there afterwards, the migration declined to add it — almost

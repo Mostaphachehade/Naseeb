@@ -5,7 +5,8 @@ const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { enterLimiter } = require('../middleware/rateLimit');
 const { sendEmail } = require('../lib/email');
-const { winnerEmailHtml, entryEmailHtml } = require('../lib/emailTemplates');
+const { winnerEmailHtml, entryEmailHtml, claimInvitationHtml } = require('../lib/emailTemplates');
+const claims = require('../lib/claims');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
@@ -141,8 +142,17 @@ router.get('/:id', optionalAuth, async (req, res) => {
       }
     }
 
+    // Coarse, non-sensitive status only: that a delivery is in progress, not
+    // who is delivering what to which address.
+    const claimRes = await pool.query('SELECT status FROM prize_claims WHERE giveaway_id = $1', [
+      req.params.id,
+    ]);
+    const claimStatus = claimRes.rows[0]
+      ? claims.publicStatusFor(claimRes.rows[0].status)
+      : null;
+
     const enriched = await withHostAndCount(row);
-    res.json({ ...enriched, already_entered: alreadyEntered, winner });
+    res.json({ ...enriched, already_entered: alreadyEntered, winner, claim_status: claimStatus });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -390,6 +400,18 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
       winner.user_id,
     ]);
     const winnerUser = winnerUserRes.rows[0];
+
+    // The claim is created in the same transaction as the draw. A winner
+    // without a claim would be a winner with no way to receive anything, and a
+    // claim without a winner would be nonsense — they exist or they don't,
+    // together. The token is returned once, for the email, and is never stored
+    // in plaintext or logged.
+    const claim = await claims.createClaimForDraw(client, {
+      giveawayId: req.params.id,
+      winnerUserId: winner.user_id,
+      entryId: winner.id,
+    });
+
     await client.query('COMMIT');
 
     res.json({
@@ -411,6 +433,20 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
         giveawayUrl,
       }),
     });
+
+    // Sent separately and marked sensitive: this is the only message that
+    // carries the single-use claim link, and its body must never reach a log.
+    sendEmail({
+      to: winnerUser.email,
+      sensitive: true,
+      subject: `Claim your prize: ${giveaway.title}`,
+      html: claimInvitationHtml({
+        winnerName: winnerUser.name,
+        giveawayTitle: giveaway.title,
+        claimUrl: `${APP_URL}/claim.html?token=${claim.token}`,
+        expiresAt: claim.expiresAt,
+      }),
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error(err);
@@ -420,32 +456,30 @@ router.post('/:id/draw', requireAuth, async (req, res) => {
   }
 });
 
-// Host confirms the prize was actually sent to the winner. Purely a public
-// trust signal — there's no escrow or enforcement behind it — but it's
-// visible on the giveaway page and the public Winners page either way, so
-// an unconfirmed delivery is something anyone can see, not just claim.
+// Superseded by the claim workflow in server/routes/claims.js.
+//
+// This used to be the whole of "delivery": the host clicked a button and the
+// giveaway said the prize had been delivered. Nobody else had a say — not the
+// winner who was supposed to have received it, and not an administrator if the
+// two disagreed. prize_delivered is now set only when the winner confirms
+// receipt, so this endpoint cannot do what its name says any more.
 router.post('/:id/confirm-delivery', requireAuth, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM giveaways WHERE id = $1', [req.params.id]);
-    const giveaway = result.rows[0];
-    if (!giveaway) {
+    const result = await pool.query('SELECT host_id FROM giveaways WHERE id = $1', [req.params.id]);
+    if (!result.rows[0]) {
       return res.status(404).json({ error: 'This giveaway does not exist.' });
     }
-    if (giveaway.host_id !== req.userId) {
-      return res.status(403).json({ error: 'Only the host of this giveaway can confirm delivery.' });
+    if (result.rows[0].host_id !== req.userId) {
+      return res.status(403).json({ error: 'Only the host of this giveaway can manage delivery.' });
     }
-    if (giveaway.status !== 'drawn') {
-      return res.status(400).json({ error: 'A winner has to be drawn before delivery can be confirmed.' });
-    }
-    if (giveaway.prize_delivered) {
-      return res.json({ prize_delivered: true, prize_delivered_at: giveaway.prize_delivered_at });
-    }
-    const updated = await pool.query(
-      `UPDATE giveaways SET prize_delivered = TRUE, prize_delivered_at = NOW()
-       WHERE id = $1 RETURNING prize_delivered, prize_delivered_at`,
-      [req.params.id]
-    );
-    res.json(updated.rows[0]);
+    const claim = await claims.getClaimByGiveaway(pool, req.params.id);
+    return res.status(409).json({
+      error:
+        'Delivery is now confirmed by the winner, not by the host. Move the claim along from your dashboard — the winner confirms receipt at the end.',
+      code: 'USE_CLAIM_WORKFLOW',
+      claim_id: claim ? claim.id : null,
+      claim_status: claim ? claim.status : null,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });

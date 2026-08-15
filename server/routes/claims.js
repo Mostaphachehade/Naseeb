@@ -1,0 +1,487 @@
+const express = require('express');
+const { pool } = require('../db');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { claimTokenLimiter, claimActionLimiter } = require('../middleware/rateLimit');
+const { sendEmail } = require('../lib/email');
+const {
+  claimInvitationHtml,
+  claimStatusHtml,
+  hostClaimNotificationHtml,
+} = require('../lib/emailTemplates');
+const { STATES, ROLES, ClaimTransitionError } = require('../lib/claimStateMachine');
+const claims = require('../lib/claims');
+const { isConfigured: isEncryptionConfigured } = require('../lib/claimCrypto');
+const { issueToken } = require('../lib/claimTokens');
+
+const router = express.Router();
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+
+// Delivery details are the minimum needed to physically hand something over.
+// No identity documents, no date of birth, no payment details — none of it is
+// needed to deliver a prize, and collecting it would mean holding it.
+const DELIVERY_FIELDS = {
+  recipient_name: { required: true, max: 120 },
+  phone: { required: true, max: 32 },
+  address_line1: { required: true, max: 200 },
+  address_line2: { required: false, max: 200 },
+  city: { required: true, max: 100 },
+  emirate: { required: true, max: 100 },
+  notes: { required: false, max: 500 },
+};
+
+function validateDeliveryDetails(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { error: 'Delivery details are required.' };
+  }
+  const details = {};
+  for (const [field, rule] of Object.entries(DELIVERY_FIELDS)) {
+    const value = input[field];
+    if (value === undefined || value === null || String(value).trim() === '') {
+      if (rule.required) {
+        return { error: `${field.replace(/_/g, ' ')} is required.` };
+      }
+      continue;
+    }
+    const trimmed = String(value).trim();
+    if (trimmed.length > rule.max) {
+      return { error: `${field.replace(/_/g, ' ')} must be ${rule.max} characters or fewer.` };
+    }
+    details[field] = trimmed;
+  }
+  // Anything not on the list is dropped rather than stored: a client cannot
+  // widen what this system holds about a winner by sending extra fields.
+  return { details };
+}
+
+function claimError(res, err) {
+  if (err instanceof ClaimTransitionError) {
+    return res.status(err.status).json({ error: err.message, code: err.code });
+  }
+  console.error('Claim operation failed:', err.message);
+  return res.status(500).json({ error: 'Something went wrong. Please try again.' });
+}
+
+// What every caller may see about a claim, regardless of who they are. Contains
+// no delivery details and no token.
+function baseClaimView(claim) {
+  return {
+    id: claim.id,
+    giveaway_id: claim.giveaway_id,
+    status: claim.status,
+    public_status: claims.publicStatusFor(claim.status),
+    claimed_at: claim.claimed_at,
+    shipped_at: claim.shipped_at,
+    delivery_reported_at: claim.delivery_reported_at,
+    delivered_at: claim.delivered_at,
+    disputed_at: claim.disputed_at,
+    resolved_at: claim.resolved_at,
+    expired_at: claim.expired_at,
+    consent_version: claim.consent_version,
+    consented_at: claim.consented_at,
+    delivery_details_erased: Boolean(claim.delivery_erased_at),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Winner: redeeming a claim link
+// ---------------------------------------------------------------------------
+
+// Shows the winner what they are about to claim. Deliberately does not consume
+// the token — a link should survive being opened twice before the form is
+// filled in — and returns nothing sensitive.
+router.get('/lookup', claimTokenLimiter, async (req, res) => {
+  try {
+    const token = req.query.token;
+    if (!token) return res.status(400).json({ error: 'Missing claim token.' });
+
+    const claim = await claims.lookupByToken(pool, token);
+    if (!claim) {
+      // Same answer for wrong, expired and already-used, so this cannot be used
+      // to work out which tokens exist.
+      return res.status(404).json({ error: 'This claim link is invalid, expired, or already used.' });
+    }
+
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      claim_id: claim.id,
+      title: claim.title,
+      prize_description: claim.prize_description,
+      image_url: claim.image_url,
+      funded_by: claim.funded_by,
+      host_name: claim.host_name,
+      expires_at: claim.token_expires_at,
+      consent_version: claims.CONSENT_VERSION,
+    });
+  } catch (err) {
+    return claimError(res, err);
+  }
+});
+
+// The winner consents, supplies delivery details, and the claim opens.
+//
+// Consent is explicit and recorded: without it nothing is stored and the host
+// is told nothing. The delivery details are encrypted before they reach the
+// database.
+router.post('/redeem', claimTokenLimiter, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { token, consent, consent_version, delivery } = req.body || {};
+
+    if (!token) return res.status(400).json({ error: 'Missing claim token.' });
+
+    if (consent !== true) {
+      return res.status(400).json({
+        error:
+          'You need to agree to share your delivery details with the host before we can pass them on.',
+        code: 'CONSENT_REQUIRED',
+      });
+    }
+    if (consent_version !== claims.CONSENT_VERSION) {
+      return res.status(409).json({
+        error: 'The consent wording has been updated. Please reload the page and read it again.',
+        code: 'CONSENT_VERSION_CHANGED',
+        consent_version: claims.CONSENT_VERSION,
+      });
+    }
+
+    if (!isEncryptionConfigured()) {
+      // Without a key there is nowhere safe to put an address, so nothing is
+      // stored at all. Names the variable, never a value.
+      console.error('Claim redemption refused: CLAIM_ENCRYPTION_KEY is not configured.');
+      return res.status(503).json({
+        error: 'Prize claims are temporarily unavailable. Please try again shortly.',
+      });
+    }
+
+    const { error, details } = validateDeliveryDetails(delivery);
+    if (error) return res.status(400).json({ error });
+
+    await client.query('BEGIN');
+    const claim = await claims.redeemToken(client, {
+      token,
+      deliveryDetails: details,
+      consentVersion: claims.CONSENT_VERSION,
+    });
+
+    if (!claim) {
+      await client.query('ROLLBACK');
+      return res.status(410).json({
+        error: 'This claim link is invalid, expired, or has already been used.',
+        code: 'TOKEN_UNUSABLE',
+      });
+    }
+
+    const context = await client.query(
+      `SELECT g.title, g.host_id, hostuser.email AS host_email, hostuser.name AS host_name,
+              winner.name AS winner_name, winner.email AS winner_email
+         FROM giveaways g
+         JOIN users hostuser ON hostuser.id = g.host_id
+         JOIN users winner ON winner.id = $2
+        WHERE g.id = $1`,
+      [claim.giveaway_id, claim.winner_user_id]
+    );
+    await client.query('COMMIT');
+
+    res.set('Cache-Control', 'no-store');
+    res.json({ ...baseClaimView(claim), message: 'Your claim is in. The host has been notified.' });
+
+    // After the commit, and deliberately not awaited: a mail provider outage
+    // must not roll back a claim the winner has already completed.
+    const info = context.rows[0];
+    if (info) {
+      sendEmail({
+        to: info.host_email,
+        subject: `Your winner has claimed: ${info.title}`,
+        // Carries no address and no phone number — the host signs in to see
+        // those, so they are never sitting in an inbox or a mail provider's logs.
+        html: hostClaimNotificationHtml({
+          hostName: info.host_name,
+          giveawayTitle: info.title,
+          winnerName: info.winner_name,
+          dashboardUrl: `${APP_URL}/dashboard.html`,
+        }),
+      });
+      sendEmail({
+        to: info.winner_email,
+        subject: `Claim received: ${info.title}`,
+        html: claimStatusHtml({
+          recipientName: info.winner_name,
+          giveawayTitle: info.title,
+          status: STATES.CLAIMED,
+          message: 'The host has been notified and will arrange delivery.',
+          giveawayUrl: `${APP_URL}/giveaway.html?id=${claim.giveaway_id}`,
+        }),
+      });
+    }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    return claimError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Viewing a claim
+// ---------------------------------------------------------------------------
+
+// Role-aware. The role is worked out from the database on this request — the
+// caller cannot assert it — and decides what comes back.
+router.get('/giveaway/:giveawayId', requireAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const claim = await claims.getClaimByGiveaway(client, req.params.giveawayId);
+    if (!claim) return res.status(404).json({ error: 'No claim exists for this giveaway.' });
+
+    const role = await claims.resolveRole(client, claim, req.userId);
+    if (!role) return res.status(403).json({ error: "You don't have access to this claim." });
+
+    const view = { ...baseClaimView(claim), role };
+
+    if (role === ROLES.HOST) {
+      // The host sees delivery details only after the winner consented, only
+      // the fields needed to deliver, and only until retention erases them.
+      view.delivery = claims.hostVisibleDelivery(claim);
+    } else if (role === ROLES.WINNER) {
+      view.delivery = claims.hostVisibleDelivery(claim);
+    } else if (role === ROLES.ADMIN) {
+      // An administrator gets the details only while actually intervening —
+      // a dispute or an expired claim. Not as a matter of course.
+      view.delivery =
+        claim.status === STATES.DISPUTED || claim.status === STATES.EXPIRED
+          ? claims.hostVisibleDelivery(claim)
+          : { available: false, reason: 'not_required' };
+    }
+
+    const history = await client.query(
+      `SELECT from_status, to_status, actor_role, note, created_at
+         FROM prize_claim_events WHERE claim_id = $1 ORDER BY created_at ASC`,
+      [claim.id]
+    );
+    view.history = history.rows;
+
+    res.set('Cache-Control', 'no-store');
+    res.json(view);
+  } catch (err) {
+    return claimError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Moving a claim along
+// ---------------------------------------------------------------------------
+
+// One endpoint for every state change, because there is one state machine.
+// Which moves are legal, and who may make them, live in
+// server/lib/claimStateMachine.js rather than being spread across a route per
+// verb where one of them can quietly disagree with the others.
+router.post('/:id/transition', claimActionLimiter, requireAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { to, note } = req.body || {};
+
+    await client.query('BEGIN');
+
+    const existing = await claims.getClaimById(client, req.params.id);
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'This claim does not exist.' });
+    }
+
+    const role = await claims.resolveRole(client, existing, req.userId);
+    if (!role) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: "You don't have access to this claim." });
+    }
+
+    // A dispute and an admin resolution both have to say why. An unexplained
+    // dispute is unresolvable, and an unexplained resolution is unauditable.
+    const needsReason =
+      to === STATES.DISPUTED || (role === ROLES.ADMIN && existing.status === STATES.DISPUTED);
+    if (needsReason && (!note || !String(note).trim())) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A short reason is required.', code: 'REASON_REQUIRED' });
+    }
+
+    const extra = {};
+    if (to === STATES.DISPUTED) extra.disputed_by = req.userId;
+    if (role === ROLES.ADMIN && existing.status === STATES.DISPUTED) {
+      extra.resolved_by = req.userId;
+      extra.resolved_at = new Date();
+    }
+
+    const { claim } = await claims.transition(client, {
+      claimId: req.params.id,
+      to,
+      role,
+      actorUserId: req.userId,
+      note,
+      extra,
+    });
+
+    // The public delivery flag on the giveaway follows the claim rather than
+    // leading it, so the trust signal on the giveaway page can only say
+    // "delivered" once the winner has said so.
+    if (to === STATES.DELIVERED) {
+      await client.query(
+        'UPDATE giveaways SET prize_delivered = TRUE, prize_delivered_at = NOW() WHERE id = $1',
+        [claim.giveaway_id]
+      );
+    }
+
+    const context = await client.query(
+      `SELECT g.title, winner.name AS winner_name, winner.email AS winner_email,
+              hostuser.name AS host_name, hostuser.email AS host_email
+         FROM giveaways g
+         JOIN users hostuser ON hostuser.id = g.host_id
+         JOIN users winner ON winner.id = $2
+        WHERE g.id = $1`,
+      [claim.giveaway_id, claim.winner_user_id]
+    );
+
+    await client.query('COMMIT');
+
+    res.set('Cache-Control', 'no-store');
+    res.json(baseClaimView(claim));
+
+    // Sent after the commit and never awaited — see the note in /redeem.
+    const info = context.rows[0];
+    if (info) {
+      const audience = role === ROLES.WINNER ? info.host_email : info.winner_email;
+      const audienceName = role === ROLES.WINNER ? info.host_name : info.winner_name;
+      sendEmail({
+        to: audience,
+        subject: `Update on ${info.title}`,
+        html: claimStatusHtml({
+          recipientName: audienceName,
+          giveawayTitle: info.title,
+          status: claim.status,
+          message: 'Sign in to see the details and what happens next.',
+          giveawayUrl: `${APP_URL}/giveaway.html?id=${claim.giveaway_id}`,
+        }),
+      });
+    }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    return claimError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Administration
+// ---------------------------------------------------------------------------
+
+// Everything a human needs to look at: disputes, and claims whose window ran
+// out. Deliberately carries no delivery details — an admin list is the last
+// place a page full of home addresses should appear.
+router.get('/admin/review', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    // Cheap, idempotent, and keeps the queue honest without needing a cron.
+    await client.query('BEGIN');
+    await claims.expireLapsedClaims(client);
+    await claims.eraseExpiredDeliveryDetails(client);
+    await client.query('COMMIT');
+
+    const result = await client.query(
+      `SELECT c.id, c.giveaway_id, c.status, c.disputed_at, c.expired_at, c.created_at,
+              g.title, winner.name AS winner_name, hostuser.name AS host_name
+         FROM prize_claims c
+         JOIN giveaways g ON g.id = c.giveaway_id
+         JOIN users winner ON winner.id = c.winner_user_id
+         JOIN users hostuser ON hostuser.id = g.host_id
+        WHERE c.status = ANY($1)
+        ORDER BY COALESCE(c.disputed_at, c.expired_at) ASC`,
+      [[STATES.DISPUTED, STATES.EXPIRED]]
+    );
+
+    res.set('Cache-Control', 'no-store');
+    res.json(result.rows);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    return claimError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+// Reissues a claim link to the same winner after an expired claim has been
+// reviewed. Never picks a different winner: the draw already happened, and
+// redrawing would take a prize from the person who actually won it.
+router.post('/:id/admin/reissue', claimActionLimiter, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { token, tokenHash, expiresAt } = issueToken();
+
+    await client.query('BEGIN');
+    const { claim } = await claims.transition(client, {
+      claimId: req.params.id,
+      to: STATES.AWAITING_CLAIM,
+      role: ROLES.ADMIN,
+      actorUserId: req.userId,
+      note: req.body && req.body.note ? req.body.note : 'claim link reissued',
+      extra: {
+        // Issuing a replacement invalidates whatever came before it: the old
+        // hash is gone, so the old link can never be redeemed.
+        token_hash: tokenHash,
+        token_expires_at: expiresAt,
+        token_issued_at: new Date(),
+        token_used_at: null,
+        expired_at: null,
+      },
+    });
+
+    const context = await client.query(
+      `SELECT g.title, winner.name AS winner_name, winner.email AS winner_email
+         FROM giveaways g JOIN users winner ON winner.id = $2 WHERE g.id = $1`,
+      [claim.giveaway_id, claim.winner_user_id]
+    );
+    await client.query('COMMIT');
+
+    res.set('Cache-Control', 'no-store');
+    res.json(baseClaimView(claim));
+
+    const info = context.rows[0];
+    if (info) {
+      sendEmail({
+        to: info.winner_email,
+        subject: `Your prize is waiting: ${info.title}`,
+        html: claimInvitationHtml({
+          winnerName: info.winner_name,
+          giveawayTitle: info.title,
+          claimUrl: `${APP_URL}/claim.html?token=${token}`,
+          expiresAt,
+        }),
+      });
+    }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    return claimError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+// Exposed so retention and expiry can be driven by a scheduler as well as
+// opportunistically. Both are idempotent and safe to run concurrently.
+router.post('/admin/maintenance', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const expired = await claims.expireLapsedClaims(client);
+    const erased = await claims.eraseExpiredDeliveryDetails(client);
+    await client.query('COMMIT');
+    res.json({ expired_claims: expired, delivery_details_erased: erased });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    return claimError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+module.exports = router;

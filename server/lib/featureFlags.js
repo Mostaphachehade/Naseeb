@@ -25,4 +25,15 @@ function isAdsCheckoutEnabled() {
   return TRUTHY.has(String(process.env.ADS_CHECKOUT_ENABLED || '').trim().toLowerCase());
 }
 
-module.exports = { isAdsCheckoutEnabled };
+// The winner claim, delivery and dispute workflow. Defaults to ON: it replaces
+// a flow where the host alone declared a prize delivered and the winner had no
+// say, so the safe default is the one that gives the winner a voice. The switch
+// exists so an operator who has not yet generated an encryption key can run
+// without it rather than being locked out of their own site.
+function areClaimsEnabled() {
+  const raw = String(process.env.CLAIMS_ENABLED || '').trim().toLowerCase();
+  if (raw === '') return true;
+  return TRUTHY.has(raw);
+}
+
+module.exports = { isAdsCheckoutEnabled, areClaimsEnabled };

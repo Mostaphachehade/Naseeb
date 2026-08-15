@@ -19,6 +19,13 @@ before(async () => {
 
 after(async () => {
   if (createdGiveawayIds.length) {
+    // Drawing a winner now also creates a prize claim, which references the
+    // winning entry — so claims come out before the entries they point at.
+    await pool.query(
+      'DELETE FROM prize_claim_events WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))',
+      [createdGiveawayIds]
+    );
+    await pool.query('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [createdGiveawayIds]);
   }

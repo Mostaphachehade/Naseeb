@@ -215,4 +215,79 @@ function entryEmailHtml({ entrantName, giveawayTitle, prizeDescription, imageUrl
 </html>`;
 }
 
-module.exports = { winnerEmailHtml, entryEmailHtml };
+// ---------------------------------------------------------------------------
+// Prize claim emails
+//
+// None of these carries a delivery address, a phone number, or any of the
+// details a winner submits. Both parties are told what changed and asked to
+// sign in — an inbox, and whatever a mail provider retains, is not somewhere
+// a home address belongs.
+// ---------------------------------------------------------------------------
+
+// The one email that contains a claim link. Sent to the winner only, and marked
+// sensitive so its body is never logged.
+function claimInvitationHtml({ winnerName, giveawayTitle, claimUrl, expiresAt }) {
+  const expiry = new Date(expiresAt).toUTCString();
+  return `<!DOCTYPE html>
+<html><body style="margin:0; padding:24px; background:#F7F4EE; font-family:Arial,Helvetica,sans-serif; color:#1F2421;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; margin:0 auto; background:#FFFFFF; border-radius:12px;">
+    <tr><td style="padding:28px;">
+      <p style="margin:0 0 14px; font-size:16px;">Hi ${escapeHtmlForEmail(winnerName)},</p>
+      <p style="margin:0 0 14px; font-size:16px;">You won <strong>${escapeHtmlForEmail(giveawayTitle)}</strong>. To receive your prize, confirm your claim and tell us where to send it.</p>
+      <p style="margin:0 0 20px;">
+        <a href="${claimUrl}" style="display:inline-block; background:#0B3B36; color:#FFFFFF; text-decoration:none; padding:12px 22px; border-radius:100px; font-weight:bold;">Claim your prize</a>
+      </p>
+      <p style="margin:0 0 10px; font-size:14px; color:#5B6660;">This link works once and expires on ${expiry}. Don&rsquo;t forward it &mdash; anyone with the link could claim in your place.</p>
+      <p style="margin:0; font-size:14px; color:#5B6660;">Your delivery details are only shared with the host after you agree to it, and only what&rsquo;s needed to get the prize to you.</p>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+// Sent to the host when a winner claims. Says that it happened and nothing more.
+function hostClaimNotificationHtml({ hostName, giveawayTitle, winnerName, dashboardUrl }) {
+  return `<!DOCTYPE html>
+<html><body style="margin:0; padding:24px; background:#F7F4EE; font-family:Arial,Helvetica,sans-serif; color:#1F2421;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; margin:0 auto; background:#FFFFFF; border-radius:12px;">
+    <tr><td style="padding:28px;">
+      <p style="margin:0 0 14px; font-size:16px;">Hi ${escapeHtmlForEmail(hostName)},</p>
+      <p style="margin:0 0 14px; font-size:16px;"><strong>${escapeHtmlForEmail(winnerName)}</strong> has claimed the prize for <strong>${escapeHtmlForEmail(giveawayTitle)}</strong> and agreed to share delivery details with you.</p>
+      <p style="margin:0 0 20px;">
+        <a href="${dashboardUrl}" style="display:inline-block; background:#0B3B36; color:#FFFFFF; text-decoration:none; padding:12px 22px; border-radius:100px; font-weight:bold;">Sign in to arrange delivery</a>
+      </p>
+      <p style="margin:0; font-size:14px; color:#5B6660;">The delivery address isn&rsquo;t in this email on purpose. Sign in to see it, and mark the prize sent once it&rsquo;s on its way.</p>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+const CLAIM_STATUS_WORDING = {
+  claimed: 'The claim is confirmed.',
+  preparing_delivery: 'The host is preparing the prize for delivery.',
+  shipped_or_arranged: 'The host has sent or arranged the prize.',
+  delivered_pending_confirmation: 'The host says the prize has arrived. Please confirm you received it.',
+  delivered: 'Delivery is confirmed. All done.',
+  disputed: 'A problem has been raised and an administrator is reviewing it.',
+  expired: 'The claim window closed and an administrator is reviewing it.',
+  cancelled: 'This claim has been closed.',
+};
+
+function claimStatusHtml({ recipientName, giveawayTitle, status, message, giveawayUrl }) {
+  const wording = CLAIM_STATUS_WORDING[status] || 'The status of this prize has changed.';
+  return `<!DOCTYPE html>
+<html><body style="margin:0; padding:24px; background:#F7F4EE; font-family:Arial,Helvetica,sans-serif; color:#1F2421;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; margin:0 auto; background:#FFFFFF; border-radius:12px;">
+    <tr><td style="padding:28px;">
+      <p style="margin:0 0 14px; font-size:16px;">Hi ${escapeHtmlForEmail(recipientName)},</p>
+      <p style="margin:0 0 14px; font-size:16px;">${escapeHtmlForEmail(wording)}</p>
+      <p style="margin:0 0 14px; font-size:16px;">Giveaway: <strong>${escapeHtmlForEmail(giveawayTitle)}</strong></p>
+      <p style="margin:0 0 20px;">
+        <a href="${giveawayUrl}" style="display:inline-block; background:#0B3B36; color:#FFFFFF; text-decoration:none; padding:12px 22px; border-radius:100px; font-weight:bold;">Open the giveaway</a>
+      </p>
+      <p style="margin:0; font-size:14px; color:#5B6660;">${escapeHtmlForEmail(message || '')}</p>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+module.exports = { winnerEmailHtml, entryEmailHtml, claimInvitationHtml, hostClaimNotificationHtml, claimStatusHtml };

@@ -15,6 +15,7 @@ const adsRoutes = require('./routes/ads');
 const adminRoutes = require('./routes/admin');
 const configRoutes = require('./routes/config');
 const webhookRoutes = require('./routes/webhooks');
+const claimRoutes = require('./routes/claims');
 
 const app = express();
 
@@ -45,6 +46,7 @@ app.use('/api/giveaways', giveawayRoutes);
 app.use('/api/host-applications', hostApplicationRoutes);
 app.use('/api/ad-inquiries', adInquiryRoutes);
 app.use('/api/ads', adsRoutes);
+app.use('/api/claims', claimRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/config', configRoutes);
 

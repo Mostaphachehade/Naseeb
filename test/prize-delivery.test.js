@@ -2,17 +2,27 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { api, pool, ensureInit } = require('../testHelpers');
+const claims = require('../server/lib/claims');
+const { STATES } = require('../server/lib/claimStateMachine');
 
 const createdUserIds = [];
 const createdGiveawayIds = [];
 
 before(async () => {
   await ensureInit();
+  // Fabricated key, generated per run, never written anywhere.
+  process.env.CLAIM_ENCRYPTION_KEY = `v1:${crypto.randomBytes(32).toString('base64')}`;
 });
 
 after(async () => {
   if (createdGiveawayIds.length) {
+    await pool.query(
+      'DELETE FROM prize_claim_events WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))',
+      [createdGiveawayIds]
+    );
+    await pool.query('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [createdGiveawayIds]);
   }
@@ -52,25 +62,83 @@ async function createDrawnGiveaway(hostId, winnerId) {
   return id;
 }
 
-test('host can confirm prize delivery after a draw', async () => {
+// Creates the claim the draw route would have created, and returns its
+// single-use token.
+async function createClaimFor(giveawayId, winnerId) {
+  const entry = await pool.query('SELECT id FROM entries WHERE giveaway_id = $1 LIMIT 1', [giveawayId]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const claim = await claims.createClaimForDraw(client, {
+      giveawayId,
+      winnerUserId: winnerId,
+      entryId: entry.rows[0].id,
+    });
+    await client.query('COMMIT');
+    return claim;
+  } finally {
+    client.release();
+  }
+}
+
+const FABRICATED_DELIVERY = {
+  recipient_name: 'Fabricated Recipient',
+  phone: '+971500000001',
+  address_line1: 'Unit 7, Invented Tower',
+  city: 'Fictionville',
+  emirate: 'Testopolis',
+};
+
+// Walks a claim from awaiting_claim all the way to delivered, through the real
+// endpoints — host moves it along, winner closes it.
+async function completeDelivery(giveawayId, host, winner) {
+  const claim = await createClaimFor(giveawayId, winner.id);
+  const redeemed = await api().post('/api/claims/redeem').send({
+    token: claim.token,
+    consent: true,
+    consent_version: claims.CONSENT_VERSION,
+    delivery: FABRICATED_DELIVERY,
+  });
+  assert.equal(redeemed.status, 200);
+
+  for (const [state, actor] of [
+    [STATES.PREPARING_DELIVERY, host],
+    [STATES.SHIPPED_OR_ARRANGED, host],
+    [STATES.DELIVERED_PENDING_CONFIRMATION, host],
+    [STATES.DELIVERED, winner],
+  ]) {
+    const res = await api()
+      .post(`/api/claims/${claim.id}/transition`)
+      .set('Authorization', `Bearer ${actor.token}`)
+      .send({ to: state });
+    assert.equal(res.status, 200, `moving to ${state} should succeed`);
+  }
+  return claim;
+}
+
+// The endpoint this file used to be about. It let a host declare, on their own,
+// that a prize had been delivered — the winner had no say, and nobody could
+// tell a delivered prize from one the host had simply clicked a button about.
+// It now refuses and points at the claim workflow.
+test('the host can no longer declare delivery on their own', async () => {
   const host = await createVerifiedUser('host');
   const winner = await createVerifiedUser('winner');
   const giveawayId = await createDrawnGiveaway(host.id, winner.id);
+  await createClaimFor(giveawayId, winner.id);
 
   const res = await api()
     .post(`/api/giveaways/${giveawayId}/confirm-delivery`)
     .set('Authorization', `Bearer ${host.token}`)
     .send();
 
-  assert.equal(res.status, 200);
-  assert.equal(res.body.prize_delivered, true);
-  assert.ok(res.body.prize_delivered_at);
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, 'USE_CLAIM_WORKFLOW');
 
   const check = await pool.query('SELECT prize_delivered FROM giveaways WHERE id = $1', [giveawayId]);
-  assert.equal(check.rows[0].prize_delivered, true);
+  assert.equal(check.rows[0].prize_delivered, false, 'nothing may be marked delivered by the host alone');
 });
 
-test('only the host can confirm delivery', async () => {
+test('an unrelated user cannot touch delivery at all', async () => {
   const host = await createVerifiedUser('host2');
   const winner = await createVerifiedUser('winner2');
   const stranger = await createVerifiedUser('stranger2');
@@ -86,7 +154,7 @@ test('only the host can confirm delivery', async () => {
   assert.equal(check.rows[0].prize_delivered, false);
 });
 
-test('delivery cannot be confirmed before a winner is drawn', async () => {
+test('delivery cannot be touched before a winner is drawn', async () => {
   const host = await createVerifiedUser('host3');
   const id = uuid();
   await pool.query(
@@ -101,36 +169,61 @@ test('delivery cannot be confirmed before a winner is drawn', async () => {
     .set('Authorization', `Bearer ${host.token}`)
     .send();
 
-  assert.equal(res.status, 400);
+  // No claim exists because nobody has won, so there is nothing to fulfil.
+  assert.equal(res.status, 409);
+  assert.equal(res.body.claim_id, null);
 });
 
-test('confirming delivery twice is idempotent, not an error', async () => {
+test('prize_delivered is set only once the winner confirms receipt', async () => {
   const host = await createVerifiedUser('host4');
   const winner = await createVerifiedUser('winner4');
   const giveawayId = await createDrawnGiveaway(host.id, winner.id);
+  const claim = await createClaimFor(giveawayId, winner.id);
 
-  const first = await api()
-    .post(`/api/giveaways/${giveawayId}/confirm-delivery`)
-    .set('Authorization', `Bearer ${host.token}`)
-    .send();
-  const second = await api()
-    .post(`/api/giveaways/${giveawayId}/confirm-delivery`)
-    .set('Authorization', `Bearer ${host.token}`)
-    .send();
+  await api().post('/api/claims/redeem').send({
+    token: claim.token,
+    consent: true,
+    consent_version: claims.CONSENT_VERSION,
+    delivery: FABRICATED_DELIVERY,
+  });
 
-  assert.equal(first.status, 200);
-  assert.equal(second.status, 200);
-  assert.equal(first.body.prize_delivered_at, second.body.prize_delivered_at);
+  // Right up to the last step, the host has not been able to set it.
+  for (const state of [STATES.PREPARING_DELIVERY, STATES.SHIPPED_OR_ARRANGED, STATES.DELIVERED_PENDING_CONFIRMATION]) {
+    await api()
+      .post(`/api/claims/${claim.id}/transition`)
+      .set('Authorization', `Bearer ${host.token}`)
+      .send({ to: state });
+    const midway = await pool.query('SELECT prize_delivered FROM giveaways WHERE id = $1', [giveawayId]);
+    assert.equal(midway.rows[0].prize_delivered, false, `still false at ${state}`);
+  }
+
+  const confirmed = await api()
+    .post(`/api/claims/${claim.id}/transition`)
+    .set('Authorization', `Bearer ${winner.token}`)
+    .send({ to: STATES.DELIVERED });
+  assert.equal(confirmed.status, 200);
+
+  const after = await pool.query(
+    'SELECT prize_delivered, prize_delivered_at FROM giveaways WHERE id = $1',
+    [giveawayId]
+  );
+  assert.equal(after.rows[0].prize_delivered, true);
+  assert.ok(after.rows[0].prize_delivered_at);
 });
 
-test('drawn giveaway with delivery status appears correctly on the public winners endpoint', async () => {
+test('a winner-confirmed delivery appears on the public winners endpoint', async () => {
   const host = await createVerifiedUser('host5');
   const winner = await createVerifiedUser('winner5');
   const giveawayId = await createDrawnGiveaway(host.id, winner.id);
-  await api().post(`/api/giveaways/${giveawayId}/confirm-delivery`).set('Authorization', `Bearer ${host.token}`).send();
+  await completeDelivery(giveawayId, host, winner);
 
   const res = await api().get('/api/giveaways/winners/all?pageSize=48');
   const found = res.body.items.find((i) => i.id === giveawayId);
   assert.ok(found, 'giveaway should appear in the public winners list');
   assert.equal(found.prize_delivered, true);
+
+  // And the public record still carries nothing about where it went.
+  const serialized = JSON.stringify(found);
+  assert.ok(!serialized.includes(FABRICATED_DELIVERY.address_line1));
+  assert.ok(!serialized.includes(FABRICATED_DELIVERY.phone));
 });

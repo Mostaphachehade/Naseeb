@@ -314,6 +314,85 @@ async function init() {
       value TEXT NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    -- Getting the prize to the winner.
+    --
+    -- Previously this was one boolean on giveaways, set by the host clicking a
+    -- button: the host asserting, alone and unverifiably, that they had sent
+    -- the thing they promised. The winner had no way to confirm or contradict
+    -- it, no way to pass on a delivery address, and no way to raise a problem.
+    -- The privacy policy meanwhile told entrants that hosts could contact them,
+    -- which nothing in the system made possible.
+    --
+    -- One claim per giveaway (UNIQUE), created when a winner is drawn.
+    CREATE TABLE IF NOT EXISTS prize_claims (
+      id TEXT PRIMARY KEY,
+      giveaway_id TEXT NOT NULL UNIQUE REFERENCES giveaways(id),
+      winner_user_id TEXT NOT NULL REFERENCES users(id),
+      entry_id TEXT NOT NULL REFERENCES entries(id),
+      status TEXT NOT NULL DEFAULT 'awaiting_claim',
+
+      -- Only ever the SHA-256 of the emailed token. The token itself is not
+      -- stored anywhere, so a database leak yields nothing that can be redeemed.
+      token_hash TEXT,
+      token_expires_at TIMESTAMPTZ,
+      token_used_at TIMESTAMPTZ,
+      token_issued_at TIMESTAMPTZ,
+
+      -- Which consent wording the winner agreed to, and when. Without this a
+      -- disclosure to the host cannot be justified after the fact.
+      consent_version TEXT,
+      consented_at TIMESTAMPTZ,
+
+      -- AES-256-GCM. Ciphertext, per-record IV and auth tag are stored
+      -- separately; key_version is what makes key rotation possible without
+      -- re-encrypting every row on the day of the rotation.
+      delivery_ciphertext TEXT,
+      delivery_iv TEXT,
+      delivery_tag TEXT,
+      delivery_key_version TEXT,
+      -- Set when retention erases the details. The claim survives; the address
+      -- does not.
+      delivery_erased_at TIMESTAMPTZ,
+
+      claimed_at TIMESTAMPTZ,
+      preparing_at TIMESTAMPTZ,
+      shipped_at TIMESTAMPTZ,
+      delivery_reported_at TIMESTAMPTZ,
+      delivered_at TIMESTAMPTZ,
+      disputed_at TIMESTAMPTZ,
+      disputed_by TEXT REFERENCES users(id),
+      resolved_at TIMESTAMPTZ,
+      resolved_by TEXT REFERENCES users(id),
+      expired_at TIMESTAMPTZ,
+      cancelled_at TIMESTAMPTZ,
+
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_prize_claims_winner ON prize_claims(winner_user_id);
+    CREATE INDEX IF NOT EXISTS idx_prize_claims_status ON prize_claims(status);
+    -- Token lookup is a single indexed equality on the hash. Partial, because a
+    -- used or unissued token has no hash worth indexing.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_prize_claims_token_hash
+      ON prize_claims(token_hash) WHERE token_hash IS NOT NULL;
+
+    -- Who changed what, when. Deliberately holds no delivery details of its
+    -- own: when retention erases an address, this history survives intact,
+    -- which is the point of keeping the two apart.
+    CREATE TABLE IF NOT EXISTS prize_claim_events (
+      id TEXT PRIMARY KEY,
+      claim_id TEXT NOT NULL REFERENCES prize_claims(id),
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      actor_user_id TEXT REFERENCES users(id),
+      actor_role TEXT NOT NULL,
+      -- Short, non-sensitive: a dispute reason or an admin's resolution note.
+      -- Never an address, never a phone number.
+      note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_prize_claim_events_claim ON prize_claim_events(claim_id, created_at);
   `);
 
   // Separate from the batch above because it has to inspect existing data and

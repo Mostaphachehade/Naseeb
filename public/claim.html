@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Claim your prize — Naseeb</title>
+<meta name="description" content="Confirm your prize claim and tell the host where to send it." />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="theme-color" content="#0B3B36" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to content</a>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap" style="max-width:600px;">
+
+    <div id="loading-panel" class="card narrow" style="text-align:center;">
+      <p style="color:var(--text-soft); margin:0;">Checking your claim link…</p>
+    </div>
+
+    <div id="invalid-panel" class="card narrow" style="display:none;">
+      <h2 style="margin-top:0;">This claim link doesn't work</h2>
+      <p style="color:var(--text-soft);" id="invalid-message">It may have expired, already been used, or been mistyped.</p>
+      <p class="hint">If you believe you won and can't claim, sign in and open the giveaway — or get in touch and we'll look into it. Nothing is lost: an unclaimed prize is reviewed by a person, never quietly cancelled or given to somebody else.</p>
+      <a href="/index.html" class="btn ghost" style="margin-top:14px;">Back to Naseeb</a>
+    </div>
+
+    <div id="done-panel" class="card narrow" style="display:none; text-align:center;">
+      <h2 style="margin-top:0;">Your claim is in.</h2>
+      <p style="color:var(--text-soft);" id="done-message"></p>
+      <a href="/dashboard.html" class="btn primary" style="margin-top:14px;">See your giveaways</a>
+    </div>
+
+    <div id="claim-panel" style="display:none;">
+      <div class="section-head">
+        <div>
+          <h2>You won.</h2>
+          <p id="prize-line"></p>
+        </div>
+      </div>
+
+      <div class="card narrow" style="max-width:none; margin-bottom:20px;">
+        <h3 style="margin-top:0;" id="giveaway-title"></h3>
+        <p style="color:var(--text-soft);" id="prize-description"></p>
+        <p class="hint" id="host-line"></p>
+      </div>
+
+      <form class="card narrow" id="claim-form" style="max-width:none;">
+        <p style="color:var(--text-soft); margin-top:0;">Tell us where to send it. We ask for the least we can — enough for the host to get the prize to you, and nothing else.</p>
+
+        <label for="recipient_name">Name for delivery</label>
+        <input id="recipient_name" maxlength="120" required />
+
+        <label for="phone">Phone number</label>
+        <input id="phone" maxlength="32" required />
+        <p class="hint">Couriers usually call before arriving.</p>
+
+        <label for="address_line1">Address</label>
+        <input id="address_line1" maxlength="200" required />
+
+        <label for="address_line2">Address line 2 (optional)</label>
+        <input id="address_line2" maxlength="200" />
+
+        <label for="city">City</label>
+        <input id="city" maxlength="100" required />
+
+        <label for="emirate">Emirate</label>
+        <input id="emirate" maxlength="100" required />
+
+        <label for="notes">Delivery notes (optional)</label>
+        <textarea id="notes" maxlength="500" placeholder="e.g. building name, best time to deliver"></textarea>
+
+        <div class="compliance-box">
+          <label style="display:flex; gap:10px; align-items:flex-start; font-weight:400; margin:0;">
+            <input type="checkbox" id="consent" style="margin-top:4px; width:auto;" required />
+            <span id="consent-text">
+              I agree that Naseeb may share the delivery details above with <strong id="consent-host"></strong>, the host of this giveaway, so they can send me my prize. They will not receive my email address or account details. I understand I can raise a problem through Naseeb if the prize doesn't arrive, and that these delivery details are deleted after the prize is confirmed delivered.
+            </span>
+          </label>
+        </div>
+
+        <button class="btn primary" type="submit" id="submit-btn">Confirm claim and share details</button>
+        <p class="form-error" id="error"></p>
+      </form>
+
+      <p class="hint" style="margin-top:14px;">Your details are encrypted before they're stored, and only this giveaway's host can see them.</p>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="/js/i18n.js"></script>
+<script src="/js/app.js"></script>
+<script>
+  // Read once, then removed from the address bar. A claim link is a single-use
+  // credential: leaving it in the URL puts it into browser history, and into
+  // the Referer header of anything this page loads.
+  const params = new URLSearchParams(window.location.search);
+  const claimToken = params.get('token');
+  if (claimToken) {
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
+  let consentVersion = null;
+
+  function show(panelId) {
+    ['loading-panel', 'invalid-panel', 'done-panel', 'claim-panel'].forEach((id) => {
+      document.getElementById(id).style.display = id === panelId ? 'block' : 'none';
+    });
+  }
+
+  function invalid(message) {
+    if (message) document.getElementById('invalid-message').textContent = message;
+    show('invalid-panel');
+  }
+
+  async function load() {
+    if (!claimToken) return invalid('No claim link was provided.');
+
+    let claim;
+    try {
+      claim = await api(`/claims/lookup?token=${encodeURIComponent(claimToken)}`);
+    } catch (err) {
+      return invalid(err.message);
+    }
+
+    consentVersion = claim.consent_version;
+    document.getElementById('giveaway-title').textContent = claim.title;
+    document.getElementById('prize-description').textContent = claim.prize_description;
+    document.getElementById('prize-line').textContent = `Confirm your claim for ${claim.title}.`;
+    document.getElementById('host-line').textContent = `Hosted by ${claim.host_name}. Funded by: ${claim.funded_by}`;
+    document.getElementById('consent-host').textContent = claim.host_name;
+    show('claim-panel');
+  }
+
+  document.getElementById('claim-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('error');
+    const btn = document.getElementById('submit-btn');
+    errorEl.classList.remove('show');
+
+    if (!document.getElementById('consent').checked) {
+      errorEl.textContent = 'Please tick the box so we can share your address with the host.';
+      errorEl.classList.add('show');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+
+    try {
+      await api('/claims/redeem', {
+        method: 'POST',
+        body: JSON.stringify({
+          token: claimToken,
+          consent: true,
+          consent_version: consentVersion,
+          delivery: {
+            recipient_name: document.getElementById('recipient_name').value,
+            phone: document.getElementById('phone').value,
+            address_line1: document.getElementById('address_line1').value,
+            address_line2: document.getElementById('address_line2').value || null,
+            city: document.getElementById('city').value,
+            emirate: document.getElementById('emirate').value,
+            notes: document.getElementById('notes').value || null,
+          },
+        }),
+      });
+      document.getElementById('done-message').textContent =
+        "The host has been told you've claimed, and can now arrange delivery. You'll get an email at each step, and you're the one who confirms it arrived.";
+      show('done-panel');
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = 'Confirm claim and share details';
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>

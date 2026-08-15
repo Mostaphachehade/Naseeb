@@ -53,4 +53,34 @@ const adCheckoutLimiter = rateLimit({
   message: { error: 'Too many checkout attempts. Please try again in a few minutes.' },
 });
 
-module.exports = { authLimiter, enterLimiter, applicationLimiter, adInquiryLimiter, adCheckoutLimiter };
+// Claim links are bearer credentials, so guessing one has to be expensive. The
+// tokens are 256 bits and unguessable in practice, but a limiter turns "in
+// practice" into "also by policy", and stops a leaked link being hammered.
+const claimTokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again in a few minutes.' },
+});
+
+// Fulfilment steps and disputes. Looser, since these are signed-in actions by
+// people with a legitimate stake — but still bounded, so a scripted client
+// cannot flood the audit history or the notification emails.
+const claimActionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please slow down and try again shortly.' },
+});
+
+module.exports = {
+  authLimiter,
+  enterLimiter,
+  applicationLimiter,
+  adInquiryLimiter,
+  adCheckoutLimiter,
+  claimTokenLimiter,
+  claimActionLimiter,
+};

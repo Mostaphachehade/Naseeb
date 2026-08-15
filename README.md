@@ -235,6 +235,60 @@ The remaining gates are human ones, and none of them is satisfied by a passing t
       have, and passing Phase 1.4 does not satisfy it.**
 - [ ] An end-to-end test on staging covering payment, fulfilment, refund and reconciliation
 
+## Getting the prize to the winner
+
+Drawing a winner used to be where the system stopped caring. The host clicked a
+button that said "delivered" and that was the whole record — the winner had no
+way to confirm it, contradict it, or pass on an address, and the privacy policy
+meanwhile told entrants that hosts could contact them, which nothing made
+possible.
+
+A draw now creates a **claim**, and the claim is a state machine:
+
+```
+awaiting_claim → claimed → preparing_delivery → shipped_or_arranged
+               → delivered_pending_confirmation → delivered
+                                    ↘ disputed ↗ (admin resolves)
+awaiting_claim → expired (admin review — never an automatic redraw)
+```
+
+Who may make each move is part of the definition, not a convention. The host
+moves a prize along to *sent*; **only the winner can confirm it arrived**. Either
+side can raise a dispute, and only an administrator can resolve one, with a
+reason that is recorded. Every transition is stamped with who did it and when.
+
+**Claim links.** The winner gets an emailed link carrying 256 bits of
+randomness. Only its SHA-256 hash is stored, so a database leak yields nothing
+redeemable. It works once, expires (`CLAIM_TOKEN_TTL_HOURS`), is invalidated the
+moment it is used or replaced, and grants access to that one claim and nothing
+else. Its body is never written to a log, even in development — see
+`CLAIM_DEV_LOG_LINKS` if you need to click one locally.
+
+**Consent.** Nothing about a winner reaches a host until the winner explicitly
+agrees, and the version of the consent wording plus the timestamp are recorded.
+Decline, and no delivery details are stored at all.
+
+**Delivery details.** Name, phone, address, and optional notes — the minimum to
+hand something over. No identity documents, no payment details, no date of
+birth; fields a client invents are dropped rather than stored. They are
+encrypted with AES-256-GCM (`CLAIM_ENCRYPTION_KEY`) with a fresh IV per record,
+and an altered record fails authentication rather than decrypting. They never
+appear in an email, a URL, a log, a Sentry payload or an admin list.
+
+**Retention.** `CLAIM_DELIVERY_RETENTION_DAYS` after a delivery is confirmed or
+a dispute closed, the encrypted details are erased. The claim, its outcome and
+its full transition history survive; the address does not. Cleanup is idempotent
+and safe to run concurrently or repeatedly. **The period is provisional and is
+one of the things UAE counsel needs to confirm.**
+
+**Key rotation.** Move the current `CLAIM_ENCRYPTION_KEY` into
+`CLAIM_ENCRYPTION_KEYS_PREVIOUS`, generate a new key with a new version prefix,
+deploy. Nothing needs re-encrypting: existing records stay readable under the
+version stamped on them, new records use the new key, and an old key can be
+dropped from the list once no record references it. Back the key up separately
+from database backups — losing it makes stored delivery details permanently
+unreadable, by design.
+
 ## Deploying to Render
 
 This repo includes a `render.yaml` blueprint.

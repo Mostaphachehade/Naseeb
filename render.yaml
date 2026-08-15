@@ -38,6 +38,19 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      # Winner delivery details are encrypted with this. The app refuses to
+      # start in production without it while claims are enabled. sync: false
+      # keeps it out of this file and out of git — set it in the dashboard, and
+      # back it up separately: losing it makes stored delivery details
+      # permanently unreadable.
+      - key: CLAIM_ENCRYPTION_KEY
+        sync: false
+      - key: CLAIM_ENCRYPTION_KEYS_PREVIOUS
+        sync: false
+      - key: CLAIM_TOKEN_TTL_HOURS
+        sync: false
+      - key: CLAIM_DELIVERY_RETENTION_DAYS
+        sync: false
       - key: GA_MEASUREMENT_ID
         sync: false
       - key: SENTRY_DSN
