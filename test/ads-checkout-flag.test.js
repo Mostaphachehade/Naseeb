@@ -17,14 +17,18 @@ const { api, pool, ensureInit } = require('../testHelpers');
 const realFetch = globalThis.fetch;
 let fetchCalls = [];
 
+// Returns a real Response rather than a hand-made lookalike: the Stripe SDK is
+// configured with createFetchHttpClient() and reads status, headers and the
+// body stream the way any fetch client would, so a duck-typed stub with only
+// .ok and .json() is not enough for it.
 function stubFetch(response) {
   fetchCalls = [];
   globalThis.fetch = async (url, options) => {
     fetchCalls.push({ url: String(url), options });
-    return {
-      ok: true,
-      json: async () => response,
-    };
+    return new Response(JSON.stringify(response), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
   };
 }
 
@@ -57,6 +61,12 @@ function postCheckout(body = VALID_BOOKING) {
 
 before(async () => {
   await ensureInit();
+  // The Stripe SDK refuses to build a client without a key, where the previous
+  // hand-rolled fetch client would happily send an unauthenticated request. The
+  // value is a fabricated placeholder and never leaves this process — every
+  // outbound call is intercepted by the fetch stub above. testEnv.js drops any
+  // key that isn't sk_test_, so a live key can't be substituted here by accident.
+  process.env.STRIPE_SECRET_KEY = 'sk_test_fabricated_key_for_tests_only';
 });
 
 beforeEach(() => {

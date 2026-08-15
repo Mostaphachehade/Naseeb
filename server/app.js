@@ -14,6 +14,7 @@ const adInquiryRoutes = require('./routes/adInquiries');
 const adsRoutes = require('./routes/ads');
 const adminRoutes = require('./routes/admin');
 const configRoutes = require('./routes/config');
+const webhookRoutes = require('./routes/webhooks');
 
 const app = express();
 
@@ -29,6 +30,14 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 app.use(cors({ origin: process.env.APP_URL || 'http://localhost:3000' }));
+
+// Mounted BEFORE express.json(), and the ordering is load-bearing rather than
+// stylistic. Stripe signs the exact bytes it sent; express.json() would consume
+// the stream and hand the route a parsed object, and re-serialising that object
+// does not reproduce those bytes — so every signature check would fail. Scoped
+// to this one path so the rest of the API still gets normal JSON parsing.
+app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhookRoutes);
+
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);

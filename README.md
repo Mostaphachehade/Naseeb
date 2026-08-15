@@ -126,6 +126,49 @@ won't start without them. Everything else is optional and degrades gracefully if
   (Settings → Upload → Upload presets) — unsigned uploads never need the API secret.
 - **`APP_URL`** — the public URL this app is served at, used to build links inside emails
   (verification, password reset). Set this to your real domain once deployed.
+- **`ADS_CHECKOUT_ENABLED`** — self-serve ad checkout. **Off unless explicitly set** to
+  `true`/`1`/`yes`/`on`; anything else, including absent or misspelled, fails closed and the
+  advertise page falls back to its manual inquiry form.
+- **`STRIPE_SECRET_KEY`** / **`STRIPE_WEBHOOK_SECRET`** — **required** whenever
+  `ADS_CHECKOUT_ENABLED` is on. The app refuses to start without them, on purpose: with
+  checkout live and no verified webhook, customers get charged for bookings nothing ever marks
+  as paid.
+
+## Ad payments
+
+Advertiser payments are the only payment flow in this codebase. Entering a giveaway is free
+and always will be — there is no price field anywhere on the entry path.
+
+Fulfilment happens **only** in the Stripe webhook at `POST /api/webhooks/stripe`. It used to
+happen when the customer's browser returned to the success page, which meant a closed tab or a
+dropped connection left a real payment recorded as unpaid and a banner that was bought but
+never ran. Webhooks are delivered server-to-server and retried until acknowledged, so nothing
+now depends on what the customer does after paying. `/api/ads/checkout/confirm` is a read-only
+status lookup — it cannot mark anything paid.
+
+Setting it up:
+
+1. In the Stripe dashboard, add an endpoint pointing at
+   `https://your-domain/api/webhooks/stripe`.
+2. Subscribe it to: `checkout.session.completed`,
+   `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`,
+   `checkout.session.expired`, `charge.refunded`, `charge.dispute.created`.
+3. Copy the signing secret it shows **once** into `STRIPE_WEBHOOK_SECRET`. It is per-endpoint
+   and per-environment, it is not the API key, and it cannot be retrieved later — if it is
+   lost, roll it in the dashboard and update the variable.
+4. Locally, `stripe listen --forward-to localhost:3000/api/webhooks/stripe` prints a
+   `whsec_...` valid for that session.
+
+Every delivery is signature-verified with `stripe.webhooks.constructEvent()` before any
+database statement runs, then recorded in a `stripe_events` ledger in the same transaction as
+the state change it causes. That pairing is what makes retries safe: a failure rolls back both,
+so Stripe's retry finds the event unprocessed, and a duplicate delivery finds it already
+recorded and does nothing. A verified event is still reconciled against the booking — session
+id, `client_reference_id`, currency and exact amount must all match, or it is refused and
+logged rather than fulfilled.
+
+The ledger stores an event id and type only. Webhook payloads are never persisted and never
+logged, so no customer or card data is retained here.
 
 ## Deploying to Render
 
@@ -141,6 +184,10 @@ This repo includes a `render.yaml` blueprint.
    ```
 4. Once deployed, set `APP_URL` to the `https://your-app.onrender.com` URL Render gives you
    (or your custom domain) so email links point to the right place.
+5. Leave `ADS_CHECKOUT_ENABLED` as `false`. To turn ad payments on later, set
+   `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in the dashboard first, register the
+   webhook endpoint against the deployed URL, and only then flip the flag — the app will
+   refuse to boot if the flag is on and either secret is missing.
 
 Any other Node host (Railway, Fly.io, a VPS) works the same way without the blueprint —
 just set the same environment variables and run `npm start`.

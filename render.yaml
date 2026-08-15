@@ -29,6 +29,15 @@ services:
       # value has to be changed deliberately, in this file, to turn payment on.
       - key: ADS_CHECKOUT_ENABLED
         value: false
+      # Required whenever ADS_CHECKOUT_ENABLED is true; the app refuses to boot
+      # without them. sync: false keeps both out of this file and out of git —
+      # set them in the Render dashboard. STRIPE_WEBHOOK_SECRET is the signing
+      # secret for the /api/webhooks/stripe endpoint, not the API key, and is
+      # different for every environment.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
       - key: GA_MEASUREMENT_ID
         sync: false
       - key: SENTRY_DSN

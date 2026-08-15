@@ -47,6 +47,19 @@ const pool = new Pool({
 
 async function init() {
   await pool.query(`
+    -- Serialises concurrent callers of init(). Postgres runs this whole
+    -- multi-statement string as one implicit transaction, so the lock is held
+    -- for the migration and released on commit.
+    --
+    -- CREATE TABLE IF NOT EXISTS is not safe against two connections creating
+    -- the same table at the same instant (the loser fails on a pg_type
+    -- duplicate key), and the data backfill below takes row locks while the
+    -- ALTERs take table locks — which is a deadlock waiting to happen once
+    -- more than one process boots against a fresh database. Test files run in
+    -- parallel and each call init(), so this is a real path, not a theoretical
+    -- one: it deadlocked reliably before this lock was added.
+    SELECT pg_advisory_xact_lock(4519283740192837);
+
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -171,6 +184,52 @@ async function init() {
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS amount_aed NUMERIC;
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;
     CREATE INDEX IF NOT EXISTS idx_ads_stripe_session_id ON ads(stripe_session_id) WHERE stripe_session_id IS NOT NULL;
+
+    -- Payment lifecycle, driven entirely by verified Stripe webhooks.
+    --
+    -- The older boolean "paid" is kept in step with this column rather than
+    -- replaced: /api/ads/active, the admin revenue report and the availability
+    -- calculation all read it, and quietly changing what "paid" means under
+    -- them would be a worse bug than the duplication. payment_status is the
+    -- detailed truth; paid is "should this banner be running and counted as
+    -- revenue", which is FALSE again once money goes back out (refund) or is
+    -- withdrawn pending resolution (dispute).
+    --
+    --   pending          booking created, no confirmed payment yet
+    --   awaiting_payment session completed on a delayed payment method
+    --   paid             verified payment, banner runs
+    --   failed           delayed payment did not clear
+    --   expired          checkout session expired unpaid
+    --   refunded         money returned to the advertiser
+    --   disputed         chargeback opened
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'pending';
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS disputed_at TIMESTAMPTZ;
+    -- Refunds and disputes arrive as charge events that reference a payment
+    -- intent, not a checkout session, so the intent is what links them back to
+    -- a booking. An identifier only — no card data is stored anywhere.
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT;
+    CREATE INDEX IF NOT EXISTS idx_ads_stripe_payment_intent ON ads(stripe_payment_intent) WHERE stripe_payment_intent IS NOT NULL;
+    -- Existing paid rows predate payment_status; without this they would read
+    -- as 'pending' forever and a later refund could not be reconciled.
+    UPDATE ads SET payment_status = 'paid' WHERE paid = TRUE AND payment_status = 'pending';
+
+    -- Idempotency ledger for Stripe webhook deliveries. Stripe retries an event
+    -- until it gets a 2xx, and can deliver the same event more than once even
+    -- after success, so "have I already acted on this event id" has to be a
+    -- durable question rather than an in-memory one.
+    --
+    -- The insert and the business-state update happen in one transaction: an
+    -- event is never recorded as processed unless the thing it was meant to do
+    -- also committed. Deliberately stores the event id and type only — never
+    -- the payload, which would mean keeping customer and payment details we
+    -- have no reason to hold.
+    CREATE TABLE IF NOT EXISTS stripe_events (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
     -- entries(giveaway_id) doesn't need its own index — it's already the
     -- leading column of the UNIQUE(giveaway_id, user_id) constraint above,

@@ -2,7 +2,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { adCheckoutLimiter } = require('../middleware/rateLimit');
-const { createCheckoutSession, retrieveCheckoutSession } = require('../lib/stripe');
+const { createCheckoutSession } = require('../lib/stripe');
 const { getSetting } = require('../lib/settings');
 const { isAdsCheckoutEnabled } = require('../lib/featureFlags');
 
@@ -153,37 +153,41 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
   }
 });
 
-// Called by the success page after Stripe redirects back. Verifies payment
-// directly with Stripe (never trusts the redirect alone) before marking
-// the booking paid.
+// Read-only status lookup for the success page after Stripe redirects back.
+//
+// This used to be the fulfilment path: it asked Stripe whether the session was
+// paid and, if so, flipped the booking to paid. That made getting paid
+// dependent on the customer's browser completing a redirect — close the tab and
+// the payment was real but the booking stayed unpaid forever. Fulfilment now
+// happens only in the Stripe webhook (server/routes/webhooks.js), which is
+// delivered server-to-server and retried until acknowledged.
+//
+// What is left is deliberately inert: it reads the booking's current state and
+// returns it. It issues no Stripe call and performs no write, so it cannot mark
+// anything paid, and it cannot be used to probe Stripe with guessed session ids.
+// A customer arriving before the webhook lands sees "still confirming", which is
+// the truth at that moment rather than a guess.
 //
 // Deliberately NOT behind the ADS_CHECKOUT_ENABLED flag. Turning checkout off
-// stops new sessions being created; it must not strand a customer who paid
-// moments earlier and is still mid-redirect, which is exactly the abandoned-
-// booking problem the flag exists to contain. With checkout disabled the only
-// session ids that can reach this route are ones Stripe already issued.
+// stops new sessions being created; it must not blank the status page for
+// someone who paid moments earlier and is still mid-redirect.
 router.get('/checkout/confirm', async (req, res) => {
   try {
     const sessionId = req.query.session_id;
     if (!sessionId) return res.status(400).json({ error: 'Missing session_id.' });
 
-    const session = await retrieveCheckoutSession(sessionId);
-    if (session.payment_status !== 'paid') {
-      return res.status(400).json({ error: 'Payment was not completed.' });
-    }
-
-    await pool.query('UPDATE ads SET paid = TRUE WHERE stripe_session_id = $1 AND paid = FALSE', [sessionId]);
-
     const result = await pool.query(
-      'SELECT business_name, starts_at, ends_at, amount_aed FROM ads WHERE stripe_session_id = $1',
+      `SELECT business_name, starts_at, ends_at, amount_aed, payment_status
+       FROM ads WHERE stripe_session_id = $1`,
       [sessionId]
     );
-    if (!result.rows[0]) return res.status(404).json({ error: 'Booking not found.' });
+    const booking = result.rows[0];
+    if (!booking) return res.status(404).json({ error: 'Booking not found.' });
 
-    res.json(result.rows[0]);
+    res.json({ ...booking, paid: booking.payment_status === 'paid' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Something went wrong confirming your payment.' });
+    res.status(500).json({ error: 'Something went wrong looking up your booking.' });
   }
 });
 

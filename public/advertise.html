@@ -27,9 +27,9 @@
     </div>
 
     <div id="success-panel" class="card narrow" style="display:none; text-align:center;">
-      <h2>You're booked.</h2>
+      <h2 id="success-heading">You're booked.</h2>
       <p style="color:var(--text-soft); margin-bottom:18px;" id="success-details"></p>
-      <p class="hint">A receipt was sent to your email. Your banner goes live automatically on the start date — no further action needed.</p>
+      <p class="hint" id="success-note">A receipt was sent to your email. Your banner goes live automatically on the start date — no further action needed.</p>
       <a href="/index.html" class="btn primary" style="margin-top:16px;">Back to Naseeb</a>
     </div>
 
@@ -280,8 +280,24 @@
         const booking = await api(`/ads/checkout/confirm?session_id=${encodeURIComponent(sessionId)}`);
         document.getElementById('processing-panel').style.display = 'none';
         document.getElementById('success-panel').style.display = 'block';
-        document.getElementById('success-details').textContent =
-          `${booking.business_name}'s banner runs ${new Date(booking.starts_at + 'T00:00:00').toLocaleDateString()} – ${new Date(booking.ends_at + 'T00:00:00').toLocaleDateString()} (AED ${Number(booking.amount_aed).toLocaleString()} paid).`;
+
+        const runs = `${new Date(booking.starts_at + 'T00:00:00').toLocaleDateString()} – ${new Date(booking.ends_at + 'T00:00:00').toLocaleDateString()}`;
+
+        // This page no longer decides whether the payment succeeded — it only
+        // reports what the confirmed booking record says. Stripe's webhook is
+        // what marks a booking paid, and it can land a moment after the
+        // customer gets redirected here, so "not paid yet" is a normal state to
+        // show rather than an error.
+        if (booking.paid) {
+          document.getElementById('success-details').textContent =
+            `${booking.business_name}'s banner runs ${runs} (AED ${Number(booking.amount_aed).toLocaleString()} paid).`;
+        } else {
+          document.getElementById('success-heading').textContent = 'Payment received — confirming';
+          document.getElementById('success-details').textContent =
+            `We're waiting for your bank to confirm the payment. Once it clears, ${booking.business_name}'s banner is scheduled for ${runs}.`;
+          document.getElementById('success-note').textContent =
+            "This usually takes a few seconds. You'll get an email as soon as it's confirmed — you don't need to stay on this page or pay again.";
+        }
       } catch (err) {
         document.getElementById('processing-panel').style.display = 'none';
         document.getElementById('booking-flow').style.display = 'block';
