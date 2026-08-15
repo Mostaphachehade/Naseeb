@@ -1,46 +1,188 @@
-// Versions and effective dates for the public policy documents.
+// Versions, revision dates and — crucially — approval status for the public
+// policy documents.
 //
-// Two things this makes possible that were not before: telling a reader which
-// version they are looking at, and — once signup captures it — recording which
-// version a particular person agreed to.
+// The previous version of this file stamped both documents with an effective
+// date of 15 August 2026. That was wrong in a way worth spelling out: this
+// branch has never been deployed, the pages have never been shown to anyone,
+// and no lawyer has read them. An "effective date" asserts that a document took
+// legal effect on a day — a claim about the world, not a formatting detail — and
+// asserting it for a draft is the same category of mistake as backfilling an
+// acceptance record.
 //
-// What it deliberately does NOT do is claim anyone has agreed to anything. No
-// account on this platform has ever been shown a versioned policy, so there is
-// no historical acceptance to record and none is invented. The
-// policy_acceptances table starts empty on purpose, and stays empty until
-// signup-time capture is built. An empty table is an honest answer to "who
-// accepted what"; a backfilled one would be a fabricated answer.
+// So four things are kept separate, because they answer four different
+// questions:
 //
-// Bump the version and the effective date together whenever the wording changes
-// in a way a reader would care about.
+//   version         which text is this?
+//   draftRevisedAt  when was this text last edited?
+//   status          has anyone with authority approved it?
+//   effectiveDate   from when does it bind anyone?
+//
+// A date passing does not change a status. A version number going up does not
+// mean approval. Both documents are drafts, both have a null effective date,
+// and nothing can be accepted against either.
+
+const POLICY_STATUS = {
+  // Written, not reviewed. Cannot be accepted, has no effective date.
+  DRAFT: 'draft',
+  // Owner information supplied and counsel has signed off on the text — but it
+  // still does not bind anyone until someone deliberately makes it effective.
+  APPROVED: 'approved',
+  // Live. The only status against which an acceptance may be recorded.
+  EFFECTIVE: 'effective',
+};
+
+// Moving a policy to EFFECTIVE is a deliberate, reviewed edit to this file —
+// setting the status AND an explicit effectiveDate — not something a deploy, a
+// date rolling over, or an environment variable can do on its own. That is the
+// point: activation should be a decision somebody made and someone else can see
+// in a diff.
 const POLICIES = {
   terms: {
     id: 'terms',
-    version: '2026-08-15.1',
-    effectiveDate: '2026-08-15',
+    version: '2026-08-15.1-draft',
+    status: POLICY_STATUS.DRAFT,
+    draftRevisedAt: '2026-08-15',
+    // Null until the policy is made effective. Never a placeholder date.
+    effectiveDate: null,
+    approvedAt: null,
+    approvedBy: null,
     url: '/terms.html',
-    // Everything here is under review; see docs/UAE_COUNSEL_REVIEW.md.
-    reviewStatus: 'pending_counsel_review',
+    blockers: [
+      'owner information outstanding (legal entity, licence, registered address, contact for notices)',
+      'qualified UAE counsel review outstanding — see docs/UAE_COUNSEL_REVIEW.md',
+    ],
   },
   privacy: {
     id: 'privacy',
-    version: '2026-08-15.1',
-    effectiveDate: '2026-08-15',
+    version: '2026-08-15.1-draft',
+    status: POLICY_STATUS.DRAFT,
+    draftRevisedAt: '2026-08-15',
+    effectiveDate: null,
+    approvedAt: null,
+    approvedBy: null,
     url: '/privacy.html',
-    reviewStatus: 'pending_counsel_review',
+    blockers: [
+      'data controller identity outstanding',
+      'cross-border transfer basis and retention periods outstanding',
+      'qualified UAE counsel review outstanding — see docs/UAE_COUNSEL_REVIEW.md',
+    ],
   },
 };
 
 // The consent wording a winner agrees to when sharing delivery details is
-// versioned separately, in server/lib/claims.js, because it is presented at a
-// different moment and changes for different reasons.
+// versioned separately, in server/lib/claims.js: it is presented at a different
+// moment, to a different person, and changes for different reasons.
 
+class PolicyNotAcceptableError extends Error {
+  constructor(message, { code = 'POLICY_NOT_EFFECTIVE', status = 409 } = {}) {
+    super(message);
+    this.name = 'PolicyNotAcceptableError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
+function getPolicy(id) {
+  return POLICIES[id] || null;
+}
+
+// Effective means all three: someone marked it effective, gave it a date, and
+// that date has arrived. Any one of them missing means it is not in force.
+function isEffective(policy, now = new Date()) {
+  if (!policy) return false;
+  if (policy.status !== POLICY_STATUS.EFFECTIVE) return false;
+  if (!policy.effectiveDate) return false;
+  return new Date(`${policy.effectiveDate}T00:00:00Z`) <= now;
+}
+
+// The only gate on recording that somebody agreed to something.
+function canBeAccepted(policy, now = new Date()) {
+  return isEffective(policy, now);
+}
+
+// Throws rather than returning false, so a caller cannot forget to check.
+function assertAcceptable(policyId, now = new Date()) {
+  const policy = getPolicy(policyId);
+  if (!policy) {
+    throw new PolicyNotAcceptableError(`Unknown policy: ${policyId}`, {
+      code: 'UNKNOWN_POLICY',
+      status: 404,
+    });
+  }
+  if (policy.status === POLICY_STATUS.DRAFT) {
+    throw new PolicyNotAcceptableError(
+      `The ${policyId} policy is a draft and cannot be accepted. It is pending owner information and qualified UAE counsel review.`,
+      { code: 'POLICY_IS_DRAFT' }
+    );
+  }
+  if (policy.status === POLICY_STATUS.APPROVED) {
+    throw new PolicyNotAcceptableError(
+      `The ${policyId} policy has been approved but has not been made effective. Approval and activation are separate steps.`,
+      { code: 'POLICY_NOT_YET_EFFECTIVE' }
+    );
+  }
+  if (!isEffective(policy, now)) {
+    throw new PolicyNotAcceptableError(
+      `The ${policyId} policy is not in force${policy.effectiveDate ? ` until ${policy.effectiveDate}` : ''}.`,
+      { code: 'POLICY_NOT_YET_EFFECTIVE' }
+    );
+  }
+  return policy;
+}
+
+// Records that a user accepted a specific version of a policy.
+//
+// Refuses outright for anything that is not effective, so there is no path —
+// deliberate or accidental — by which a draft ends up in policy_acceptances.
+// That table stays empty until a policy is genuinely in force, and an empty
+// table is the honest answer to "who agreed to what".
+async function recordAcceptance(client, { userId, policyId, now = new Date() }) {
+  const policy = assertAcceptable(policyId, now);
+
+  const { v4: uuid } = require('uuid');
+  await client.query(
+    `INSERT INTO policy_acceptances (id, user_id, policy_id, policy_version)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_id, policy_id, policy_version) DO NOTHING`,
+    [uuid(), userId, policy.id, policy.version]
+  );
+  return { policyId: policy.id, version: policy.version };
+}
+
+// What the pages render. Deliberately reports effectiveDate as null for a
+// draft rather than substituting the revision date — showing a reader a date
+// under the heading "effective" is the mistake this file exists to prevent.
 function currentPolicies() {
-  return POLICIES;
+  return Object.fromEntries(
+    Object.values(POLICIES).map((policy) => [
+      policy.id,
+      {
+        id: policy.id,
+        version: policy.version,
+        status: policy.status,
+        draftRevisedAt: policy.draftRevisedAt,
+        effectiveDate: policy.effectiveDate,
+        isEffective: isEffective(policy),
+        acceptable: canBeAccepted(policy),
+        blockers: policy.blockers,
+      },
+    ])
+  );
 }
 
 function policyVersion(id) {
   return POLICIES[id] ? POLICIES[id].version : null;
 }
 
-module.exports = { POLICIES, currentPolicies, policyVersion };
+module.exports = {
+  POLICY_STATUS,
+  POLICIES,
+  PolicyNotAcceptableError,
+  getPolicy,
+  isEffective,
+  canBeAccepted,
+  assertAcceptable,
+  recordAcceptance,
+  currentPolicies,
+  policyVersion,
+};

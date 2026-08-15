@@ -7,6 +7,11 @@ open, and every fact that is deliberately blank because we will not invent it.
 Nobody should read this repository, its documentation or its public pages as advice
 that any campaign — ours or a host's — is lawful.
 
+**The Terms and Privacy Policy are drafts with no effective date.** They have never been
+presented to any user, nobody has accepted them, and the system refuses to record an
+acceptance against a draft. Approving the text and making it effective are two separate,
+deliberate steps — see §D. Neither happens automatically, and neither happens on deploy.
+
 ---
 
 ## A. Facts we do not have, and will not invent
@@ -145,7 +150,12 @@ will not imply it.
 - [ ] Section B questions answered by qualified UAE counsel
 - [ ] Terms and Privacy revised to reflect that advice, with a new version and date
 - [ ] Retention periods confirmed and the provisional wording removed
-- [ ] Acceptance capture built, so a version and timestamp exist per account
+- [ ] Both policies moved from `draft` to `approved` in `server/lib/policies.js`, recording
+      who approved them and when
+- [ ] A deliberate, separate transition from `approved` to `effective` with an explicit
+      effective date — not inferred from a version number or a calendar date
+- [ ] Acceptance capture built, so a version and timestamp exist per account, from that
+      point forward and never backdated
 - [ ] Data access, correction and deletion workflows built (they are manual today, and
       the Privacy Policy says so)
 - [ ] A decision recorded on whether host paid plans are offered at all, given that they

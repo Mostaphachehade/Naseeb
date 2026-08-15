@@ -229,22 +229,24 @@ test('retention periods are labelled provisional', () => {
   assert.match(terms, /provisional pending/i, 'Terms must label retention provisional');
 });
 
-test('policies carry a version and effective date, and claim no prior acceptance', () => {
-  const { POLICIES } = require('../server/lib/policies');
+test('policies are versioned drafts that claim no effective date and no acceptance', () => {
+  const { POLICIES, POLICY_STATUS } = require('../server/lib/policies');
 
   ['terms', 'privacy'].forEach((id) => {
     assert.ok(POLICIES[id], `${id} policy must be versioned`);
-    assert.match(POLICIES[id].version, /^\d{4}-\d{2}-\d{2}\.\d+$/, 'version must be dated');
-    assert.match(POLICIES[id].effectiveDate, /^\d{4}-\d{2}-\d{2}$/);
-    assert.equal(POLICIES[id].reviewStatus, 'pending_counsel_review');
+    assert.match(POLICIES[id].version, /^\d{4}-\d{2}-\d{2}\.\d+-draft$/, 'a draft version must say so');
+    assert.equal(POLICIES[id].status, POLICY_STATUS.DRAFT);
+    // Not a date, not a placeholder — nothing. See test/policy-status.test.js
+    // for why an asserted effective date was the original mistake.
+    assert.equal(POLICIES[id].effectiveDate, null);
   });
 
   // Both documents must say, in the document itself, that acceptance is not
   // recorded — rather than leaving a reader to assume it is.
   const terms = read('public/terms.html');
   const privacy = read('public/privacy.html');
-  assert.match(terms, /do not currently record acceptance/i);
-  assert.match(privacy, /do not currently record acceptance/i);
+  assert.match(terms, /do not record acceptance/i);
+  assert.match(privacy, /do not record acceptance/i);
 });
 
 test('the privacy policy names every provider that actually processes data', () => {

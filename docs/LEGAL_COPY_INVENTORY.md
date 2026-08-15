@@ -1,5 +1,12 @@
 # Legal and compliance copy — inventory of every claim, and what changed
 
+> **These pages are review drafts and must not be deployed publicly in their current
+> form.** The Terms and Privacy Policy carry status `draft`, have **no effective date**,
+> have never been presented to anyone for acceptance, and bind nobody. They are pending
+> the owner information in §A of `docs/UAE_COUNSEL_REVIEW.md` and review by qualified UAE
+> counsel. Publishing them as they stand would put unreviewed legal text in front of real
+> users with unfilled placeholders in it.
+
 Covers every HTML page, email template, README section and metadata tag that made a
 legal, regulatory, licensing, fairness, privacy or guarantee claim. Compiled by
 searching for *GCGRA, licence, compliant, regulated, gambling, gaming, lawful, legal,
@@ -83,15 +90,39 @@ configured; signals and ad personalisation disabled; not loaded on the claim pag
 how delivery details are encrypted, the fragment-based claim link, and the retention
 table.
 
-## 7. Versioning and effective dates
+## 7. Versioning, status and effective dates
 
-`server/lib/policies.js` holds a version and effective date per document, exposed through
-`/api/config` and rendered on both pages, so the page and the record cannot drift.
+An earlier draft of this phase stamped both documents "Effective 15 August 2026". That was
+wrong, and worth being precise about why: this branch has never been deployed, the pages
+have never been shown to anyone, and no lawyer has read them. An effective date asserts
+that a document took legal effect on a particular day — a claim about the world, not a
+formatting detail.
 
-A `policy_acceptances` table exists and **starts empty on purpose**. No account has ever
-been shown a versioned policy, so there is no historical acceptance — and both documents
-say so in as many words rather than implying otherwise. Acceptance capture at signup is
-planned work (Phase 2), not something claimed to exist.
+`server/lib/policies.js` now keeps four things apart, because they answer four different
+questions:
+
+| Field | Question | Current value |
+|---|---|---|
+| `version` | Which text is this? | `2026-08-15.1-draft` |
+| `draftRevisedAt` | When was this text last edited? | 2026-08-15 |
+| `status` | Has anyone with authority approved it? | `draft` |
+| `effectiveDate` | From when does it bind anyone? | `null` |
+
+Status is `draft` → `approved` → `effective`, and **none of the three is inferred from any
+of the others.** A higher version number does not mean approval. A date passing does not
+activate anything. An approved policy with a past effective date is still not in force
+until someone explicitly moves it to `effective` — approval and activation are separate
+acts.
+
+Activation is a reviewed edit to `server/lib/policies.js`, visible in a diff. It is
+deliberately **not** driven by an environment variable, so no deployment can make an
+unreviewed document effective by having the right configuration set.
+
+`policy_acceptances` exists and **is empty, and stays empty**. `recordAcceptance()` refuses
+outright for anything that is not effective, so there is no path — deliberate or accidental
+— by which a draft ends up recorded as accepted. Both documents say in as many words that
+we hold no record of anyone agreeing to anything. Acceptance capture at signup is planned
+work for a later phase, and will record from that point forward, not retrospectively.
 
 ## 8. Not done, on purpose
 

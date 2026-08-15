@@ -367,6 +367,19 @@ none should be treated as satisfied by a passing test suite.
 **This platform has not been reviewed or approved by qualified UAE legal counsel, and is
 not described anywhere as compliant or production-ready.**
 
+**The Terms of Service and Privacy Policy are review drafts and must not be deployed
+publicly in their current form.** Both carry status `draft` with **no effective date**,
+contain unfilled *to be confirmed* placeholders, have never been presented to anyone for
+acceptance, and bind nobody. Deploying them as they stand would put unreviewed legal text
+with visible gaps in front of real users.
+
+Policy status is explicit — `draft` → `approved` → `effective` — and nothing infers one
+from another: a version bump does not mean approval, a date passing does not activate
+anything, and an approved policy still needs a deliberate transition to become effective.
+Activation is a reviewed edit to `server/lib/policies.js` that shows up in a diff, never an
+environment variable, so no deploy can quietly make an unreviewed document live.
+`policy_acceptances` is empty and refuses writes for any policy that is not effective.
+
 - `docs/UAE_COUNSEL_REVIEW.md` — every open legal question, and the facts (legal entity,
   licence, registered address, data controller, jurisdiction) that are deliberately left
   blank rather than invented.

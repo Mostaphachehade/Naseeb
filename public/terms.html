@@ -23,12 +23,14 @@
   <div class="wrap" style="max-width:720px;">
     <div class="section-head">
       <div>
-        <h2>Terms of Service</h2>
+        <h2>Terms of Service <span class="pill-badge" id="policy-status-pill" style="vertical-align:middle;">DRAFT</span></h2>
         <p>
-          Version <strong id="policy-version">2026-08-15.1</strong> · Effective <strong id="policy-effective">15 August 2026</strong><br />
-          <span style="color:var(--text-soft);">These terms have <strong>not</strong> been reviewed or approved by qualified UAE legal counsel. Review is outstanding and the wording will change as a result — see the open questions at the end.</span>
+          <strong>Draft — not yet legally effective.</strong><br />
+          Draft version <strong id="policy-version">2026-08-15.1-draft</strong> · last revised <strong id="policy-revised">15 August 2026</strong> · effective date: <strong id="policy-effective">not yet effective</strong><br />
+          <span style="color:var(--text-soft);">This document has <strong>not</strong> been reviewed or approved by qualified UAE legal counsel, and is pending owner information that is still outstanding. It has never been presented to any user for acceptance and does not bind anyone. It is published here so it can be reviewed, not because it is in force.</span>
         </p>
       </div>
+    </div>
     </div>
 
     <div class="compliance-box" style="margin-bottom:24px;">
@@ -86,8 +88,8 @@
     <p style="color:var(--text-soft);">These terms are governed by the laws of the United Arab Emirates. The specific emirate, the competent courts, and any arbitration or consumer-dispute route are <em>to be confirmed</em> — we have not stated a forum we have not verified.</p>
 
     <h3>12. Changes to these terms</h3>
-    <p style="color:var(--text-soft);">These terms carry a version and an effective date, shown at the top. When we change them materially we will publish a new version with a new date.</p>
-    <p style="color:var(--text-soft);"><strong>We do not currently record acceptance of these terms at signup, and no existing account has been asked to accept a specific version.</strong> We are not going to pretend otherwise: if you hold an account created before acceptance capture exists, we hold no record that you agreed to any particular version, and we will not claim we do. Acceptance capture is planned, and from that point a version and timestamp will be recorded for each account.</p>
+    <p style="color:var(--text-soft);">These terms carry a version, a revision date and a status, shown at the top. They are currently a <strong>draft with no effective date</strong>: not approved, never presented to anyone for acceptance, and binding on nobody. Approval and activation are separate deliberate steps — a new version number, or a date passing, does not make a policy effective.</p>
+    <p style="color:var(--text-soft);"><strong>We do not record acceptance of these terms, and no account has ever been asked to accept any version.</strong> We are not going to pretend otherwise: we hold no record that you agreed to anything, and we will not claim we do. The system refuses to record an acceptance against a draft. Once these terms have been approved by counsel and deliberately made effective, acceptance capture at signup will record a version and timestamp per account — from that point forward, not retrospectively.</p>
 
     <h3>13. Contact</h3>
     <p style="color:var(--text-soft);">A contact address for legal notices, and the identity of the entity behind Naseeb, are <em>to be confirmed</em>. Until they are published, please use the contact details on our <a href="/about.html" style="font-weight:600;">About page</a> for anything urgent.</p>
@@ -100,15 +102,27 @@
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
 <script>
-  // The version shown is whatever the server currently publishes, so the page
-  // and the record cannot drift apart.
+  // Renders the policy's real status. A draft never shows an effective date:
+  // showing a reader a date under that heading is exactly the claim this page
+  // must not make.
   api('/config')
     .then((config) => {
-      if (!config.policies || !config.policies.terms) return;
-      document.getElementById('policy-version').textContent = config.policies.terms.version;
-      document.getElementById('policy-effective').textContent = new Date(
-        config.policies.terms.effectiveDate + 'T00:00:00Z'
-      ).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+      const policy = config.policies && config.policies.terms;
+      if (!policy) return;
+      document.getElementById('policy-version').textContent = policy.version;
+      document.getElementById('policy-status-pill').textContent = policy.status.toUpperCase();
+      if (policy.draftRevisedAt) {
+        document.getElementById('policy-revised').textContent = new Date(
+          policy.draftRevisedAt + 'T00:00:00Z'
+        ).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+      }
+      document.getElementById('policy-effective').textContent = policy.effectiveDate
+        ? new Date(policy.effectiveDate + 'T00:00:00Z').toLocaleDateString(undefined, {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          })
+        : 'not yet effective';
     })
     .catch(() => {});
 </script>
