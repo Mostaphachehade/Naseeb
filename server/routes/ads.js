@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
-const { pool } = require('../db');
+const { pool, isSlotProtectionActive } = require('../db');
 const { adCheckoutLimiter } = require('../middleware/rateLimit');
 const { createCheckoutSession } = require('../lib/stripe');
 const { getSetting } = require('../lib/settings');
@@ -76,6 +76,31 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
     // executed: no pending ad row to reconcile later, no Checkout Session
     // created that nobody will ever fulfil.
     if (!isAdsCheckoutEnabled()) {
+      return res.status(503).json({
+        error:
+          'Online booking is temporarily unavailable. Send an inquiry below and we’ll book your slot directly.',
+        checkoutEnabled: false,
+      });
+    }
+
+    // Defence in depth. Startup already refuses to boot with checkout on and no
+    // overlap protection, but a startup check only proves something about the
+    // moment the process began: the constraint can be dropped by a migration, a
+    // restore, or a hand-run ALTER while the process keeps running happily. It
+    // can also be bypassed entirely by anything that starts the app without
+    // going through server/index.js.
+    //
+    // Checked here, before validation, before the hold is inserted and before
+    // Stripe is contacted, so an unprotected checkout takes no money and leaves
+    // no trace. The customer-facing message is the same one the kill switch
+    // gives — the reason is an internal matter and belongs in the log, not the
+    // response.
+    if (!(await isSlotProtectionActive(pool))) {
+      console.error(
+        'Ad checkout refused: booking overlap protection is not active. Two advertisers could ' +
+          'otherwise be sold the same dates. Checkout stays unavailable until the ' +
+          'exclusion constraint is in place.'
+      );
       return res.status(503).json({
         error:
           'Online booking is temporarily unavailable. Send an inquiry below and we’ll book your slot directly.',

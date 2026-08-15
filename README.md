@@ -199,10 +199,41 @@ logged loudly, because real money was taken for dates that cannot be delivered a
 to refund or reschedule it.
 
 The migration that adds the constraint checks for pre-existing overlaps first. If it finds any,
-it reports the conflicting booking ids and dates and declines to add the constraint, leaving
-every row untouched — those are real bookings that real advertisers may have paid for, and
-picking a winner automatically would destroy a commercial record, quite possibly the wrong one.
-Resolve them by hand and restart.
+it reports the conflicting booking ids and dates — identifiers only, never the advertiser's name
+or email — and declines to add the constraint, leaving every row untouched. Those are real
+bookings that real advertisers may have paid for, and picking a winner automatically would
+destroy a commercial record, quite possibly the wrong one. Resolve them by hand: set one side to
+`slot_status = 'released'` **with** `slot_released_at` and a `slot_release_reason`, then restart.
+The reason is what stops the migration re-claiming that slot on the next deploy.
+
+### Before enabling ad checkout
+
+`ADS_CHECKOUT_ENABLED` is not a switch to flip once the code looks finished. Three gates enforce
+part of that automatically:
+
+- **Startup refuses to boot** if checkout is on and either Stripe variable is missing.
+- **Startup refuses to boot** if checkout is on and the overlap constraint is missing, blocked
+  or unverifiable. With checkout off the app starts normally, so a deployment carrying
+  overlapping legacy bookings can still run while someone fixes the data.
+- **`POST /api/ads/checkout` refuses at request time** whenever overlap protection is not
+  confirmed — before any hold is inserted and before Stripe is contacted. A startup check only
+  proves something about the moment the process began; the constraint can be dropped by a
+  migration or a restore while the process runs on happily.
+
+The remaining gates are human ones, and none of them is satisfied by a passing test suite:
+
+- [ ] Overlap constraint confirmed active in the production database
+- [ ] Stripe webhook endpoint registered against the production URL, with all six event types
+- [ ] `STRIPE_WEBHOOK_SECRET` set for that endpoint in the production environment
+- [ ] Displayed price and charged price proven identical (Phase 1.4)
+- [ ] **An admin reconciliation queue exists.** A payment that lands after its dates were
+      reallocated becomes `payment_status = 'requires_reconciliation'`: real money taken for a
+      slot that cannot be delivered. Today that state raises a Sentry alert and nothing more —
+      there is no screen anyone can look at and no way to work through a backlog of them.
+      Selling slots without somewhere for those to land means the failure is silent to everyone
+      except whoever reads the alerts. **This is a mandatory pre-enable gate, not a nice to
+      have, and passing Phase 1.4 does not satisfy it.**
+- [ ] An end-to-end test on staging covering payment, fulfilment, refund and reconciliation
 
 ## Deploying to Render
 

@@ -16,7 +16,7 @@ if (process.env.SENTRY_DSN) {
 }
 
 const app = require('./app');
-const { init } = require('./db');
+const { init, isSlotProtectionActive, SLOT_CONSTRAINT_NAME } = require('./db');
 const { isAdsCheckoutEnabled } = require('./lib/featureFlags');
 
 // Taking card payments without a verified webhook is the failure this whole
@@ -46,15 +46,44 @@ function assertPaymentConfiguration() {
 
 assertPaymentConfiguration();
 
+// Runs after init(), which is what creates the constraint when it can. If it
+// still isn't there afterwards, the migration declined to add it — almost
+// always because bookings already overlap, which it reports and refuses to
+// resolve on its own.
+//
+// Selling the slot without this constraint means the only thing standing
+// between two advertisers and the same dates is application code being right
+// every time. That is exactly the assumption that produced the bug, so with
+// checkout on it is not a warning, it is a refusal to start.
+//
+// With checkout off the site runs perfectly well unprotected: nothing can book
+// a slot, so nothing can double-book one. That is what makes it possible to
+// deploy, read the overlap report, and fix the data.
+async function assertSlotProtection() {
+  if (!isAdsCheckoutEnabled()) return;
+
+  if (await isSlotProtectionActive()) return;
+
+  console.error(
+    `ADS_CHECKOUT_ENABLED is on, but the ${SLOT_CONSTRAINT_NAME} exclusion constraint is not ` +
+      'active — it is missing, was blocked by existing overlapping bookings, or could not be ' +
+      'verified. Refusing to start: without it, two advertisers can be sold the same dates. ' +
+      'Resolve any overlapping bookings reported above and restart to apply the constraint, or ' +
+      'set ADS_CHECKOUT_ENABLED=false to run without self-serve ad checkout.'
+  );
+  process.exit(1);
+}
+
 const PORT = process.env.PORT || 3000;
 
 init()
-  .then(() => {
+  .then(async () => {
+    await assertSlotProtection();
     app.listen(PORT, () => {
       console.log(`Naseeb running at http://localhost:${PORT}`);
     });
   })
   .catch((err) => {
-    console.error('Failed to connect to the database:', err.message);
+    console.error('Failed to start:', err.message);
     process.exit(1);
   });

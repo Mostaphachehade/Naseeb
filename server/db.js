@@ -257,10 +257,19 @@ async function init() {
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS slot_release_reason TEXT;
     -- Existing paid bookings predate slot_status and would otherwise read as
     -- released, leaving their dates open to be sold twice.
+    --
+    -- Only rows that have never had a slot decision recorded. A booking that
+    -- was explicitly released — a refund, a dispute, or an admin resolving an
+    -- overlap by hand — carries a released_at and a reason, and re-claiming it
+    -- here would silently overrule that. It would also undo the exact fix this
+    -- migration asks an admin to make, so the next deploy would re-break the
+    -- overlap they had just resolved.
     UPDATE ads
        SET slot_status = 'paid'
      WHERE paid = TRUE
        AND slot_status = 'released'
+       AND slot_released_at IS NULL
+       AND slot_release_reason IS NULL
        AND starts_at IS NOT NULL
        AND ends_at IS NOT NULL;
 
@@ -351,9 +360,11 @@ async function ensureSlotExclusionConstraint(client = pool) {
     console.error(
       `Cannot add ${SLOT_CONSTRAINT_NAME}: ${overlaps.length} existing booking pair(s) already ` +
         'overlap. These are real commercial records and have been left untouched — no booking ' +
-        'has been deleted, moved or overwritten. Resolve them by hand (cancel or reschedule one ' +
-        'side of each pair, setting slot_status to released), then restart to apply the ' +
-        'constraint. Overlapping pairs (booking ids and dates):'
+        'has been deleted, moved or overwritten. Resolve them by hand: for one side of each ' +
+        'pair, set slot_status to released along with slot_released_at and a slot_release_reason ' +
+        '(the reason is what stops this migration re-claiming the slot on the next deploy), then ' +
+        'restart to apply the constraint. Self-serve ad checkout cannot be enabled until it ' +
+        'applies. Overlapping pairs (booking ids and dates):'
     );
     overlaps.forEach((row) => {
       console.error(
@@ -373,10 +384,36 @@ async function ensureSlotExclusionConstraint(client = pool) {
   return { status: 'created' };
 }
 
+// Is the database actually enforcing non-overlapping bookings right now?
+//
+// Asked of the database every time it matters rather than remembered from
+// startup, because "the constraint was there an hour ago" is not the same claim
+// as "the constraint is there". A dropped constraint, a restored-from-backup
+// database, a migration that reported 'blocked', or a connection that cannot be
+// queried at all must all read as unprotected.
+//
+// Any failure answers false. This gate exists to stop money being taken for
+// dates that might be double-sold, so the only safe response to "I could not
+// check" is to behave as though the answer were no.
+async function isSlotProtectionActive(client = pool) {
+  try {
+    const result = await client.query(
+      `SELECT 1 FROM pg_constraint
+        WHERE conname = $1 AND conrelid = 'ads'::regclass AND contype = 'x'`,
+      [SLOT_CONSTRAINT_NAME]
+    );
+    return result.rowCount > 0;
+  } catch (err) {
+    console.error('Could not verify booking overlap protection:', err.message);
+    return false;
+  }
+}
+
 module.exports = {
   pool,
   init,
   findOverlappingSlots,
   ensureSlotExclusionConstraint,
+  isSlotProtectionActive,
   SLOT_CONSTRAINT_NAME,
 };
