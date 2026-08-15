@@ -87,7 +87,11 @@ function nextIp() {
   return `10.${(ipCounter >> 16) & 255}.${(ipCounter >> 8) & 255}.${ipCounter & 255}`;
 }
 
-function bookWeeks(weeks = 2, name = 'Reservation Test Co') {
+// Fetches the current quote first, the way the page does. Since Phase 1.4 a
+// checkout without the quote version the customer was shown is rejected with a
+// 409, so every booking here goes through the same two steps a browser does.
+async function bookWeeks(weeks = 2, name = 'Reservation Test Co') {
+  const quote = await api().get('/api/ads/availability');
   return api()
     .post('/api/ads/checkout')
     .set('X-Forwarded-For', nextIp())
@@ -97,6 +101,7 @@ function bookWeeks(weeks = 2, name = 'Reservation Test Co') {
       image_url: 'https://example.com/banner.jpg',
       target_url: 'https://example.com',
       weeks,
+      quote_version: quote.body.quoteVersion,
     });
 }
 

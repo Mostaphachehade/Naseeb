@@ -25,7 +25,13 @@ test('availability returns a next-available date and the current price', async (
   const res = await api().get('/api/ads/availability');
   assert.equal(res.status, 200);
   assert.match(res.body.nextAvailableDate, /^\d{4}-\d{2}-\d{2}$/);
-  assert.equal(typeof res.body.pricePerWeekAed, 'number');
+  // Since Phase 1.4 the price is an unambiguous integer in fils plus a
+  // preformatted display string, rather than a bare AED number the page had to
+  // interpret and multiply for itself.
+  assert.equal(typeof res.body.pricePerWeekFils, 'number');
+  assert.equal(Number.isInteger(res.body.pricePerWeekFils), true);
+  assert.equal(res.body.currency, 'AED');
+  assert.equal(typeof res.body.quoteVersion, 'string');
   assert.equal(typeof res.body.maxWeeks, 'number');
 });
 

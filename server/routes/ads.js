@@ -3,7 +3,7 @@ const { v4: uuid } = require('uuid');
 const { pool, isSlotProtectionActive } = require('../db');
 const { adCheckoutLimiter } = require('../middleware/rateLimit');
 const { createCheckoutSession } = require('../lib/stripe');
-const { getSetting } = require('../lib/settings');
+const { getAdPriceQuote, totalFilsFor, formatFils, MAX_WEEKS } = require('../lib/adPricing');
 const { isAdsCheckoutEnabled } = require('../lib/featureFlags');
 const {
   addDays,
@@ -19,7 +19,6 @@ const router = express.Router();
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_WEEKS = 8;
 
 // The currently active homepage banner ad, if any. Prefers a paid booking
 // whose date range covers today; falls back to the original manually
@@ -44,23 +43,30 @@ router.get('/active', async (req, res) => {
   }
 });
 
+// Everything the advertise page needs to render prices, and nothing it needs to
+// calculate them. The weekly rate, each duration option and each total arrive
+// already computed and already formatted, in integer fils plus a display
+// string, so the browser never multiplies money.
+//
 // checkoutEnabled is the only thing this exposes about the flag: a boolean the
 // page uses to decide which panel to render. The environment variable itself,
 // and every Stripe/database detail behind it, stays server-side.
+//
+// no-store because a cached copy of this is a stale price. A customer served an
+// old quoteVersion from a proxy would be shown one number, then rejected at
+// checkout — correct, but a confusing way to find out.
 router.get('/availability', async (req, res) => {
   try {
-    const [nextDate, pricePerWeekAed] = await Promise.all([
-      nextAvailableDate(pool),
-      getSetting('ad_price_per_week_aed'),
-    ]);
+    const [nextDate, quote] = await Promise.all([nextAvailableDate(pool), getAdPriceQuote(pool)]);
+    res.set('Cache-Control', 'no-store');
     res.json({
       nextAvailableDate: nextDate,
-      pricePerWeekAed: Number(pricePerWeekAed),
-      maxWeeks: MAX_WEEKS,
+      ...quote,
       checkoutEnabled: isAdsCheckoutEnabled(),
     });
   } catch (err) {
     console.error(err);
+    res.set('Cache-Control', 'no-store');
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
@@ -132,8 +138,28 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
       return res.status(400).json({ error: `Choose between 1 and ${MAX_WEEKS} weeks.` });
     }
 
-    const pricePerWeekAed = await getSetting('ad_price_per_week_aed');
-    const amountAed = weeksNum * Number(pricePerWeekAed);
+    // The price the customer was shown, checked against the price as it stands
+    // right now. If the owner changed it between the page loading and this
+    // request, the two disagree and the customer must be told rather than
+    // quietly charged the new amount — or, just as bad, quietly charged the old
+    // one. Verified before anything is created: a stale quote leaves no hold,
+    // no booking row and no Stripe session behind.
+    //
+    // Note what is NOT read here: any price, total or amount from req.body. The
+    // browser is told what things cost; it is never asked.
+    const quote = await getAdPriceQuote(pool);
+    if (req.body.quote_version !== quote.quoteVersion) {
+      res.set('Cache-Control', 'no-store');
+      return res.status(409).json({
+        code: 'PRICE_CHANGED',
+        error:
+          'The advertising price changed while you were filling this in. Please review the updated total and confirm to continue.',
+        quote,
+      });
+    }
+
+    const unitPriceFils = quote.pricePerWeekFils;
+    const amountFils = totalFilsFor(unitPriceFils, weeksNum);
     const id = uuid();
     const holdExpiresAt = holdExpiryFrom();
 
@@ -158,12 +184,16 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
       startsAtStr = await nextAvailableDate(client);
       endsAtStr = toDateStr(addDays(startsAtStr, weeksNum * 7 - 1));
 
+      // amount_aed is derived from amount_fils in SQL rather than computed in
+      // JavaScript, so the two can never disagree and no float ever touches it.
       await client.query(
         `INSERT INTO ads
            (id, business_name, image_url, target_url, media_type, contact_email,
-            starts_at, ends_at, amount_aed, paid, active,
+            starts_at, ends_at, amount_fils, amount_aed, unit_price_fils, weeks,
+            currency, quote_version, paid, active,
             slot_status, hold_expires_at, payment_status)
-         VALUES ($1, $2, $3, $4, 'image', $5, $6, $7, $8, FALSE, FALSE, 'held', $9, 'pending')`,
+         VALUES ($1, $2, $3, $4, 'image', $5, $6, $7, $8::bigint, $8::numeric / 100, $9, $10,
+                 $11, $12, FALSE, FALSE, 'held', $13, 'pending')`,
         [
           id,
           business_name.trim(),
@@ -172,7 +202,11 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
           contact_email.trim().toLowerCase(),
           startsAtStr,
           endsAtStr,
-          amountAed,
+          amountFils,
+          unitPriceFils,
+          weeksNum,
+          quote.currency,
+          quote.quoteVersion,
           holdExpiresAt,
         ]
       );
@@ -187,9 +221,11 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
     let session;
     try {
       session = await createCheckoutSession({
-        amountFils: amountAed * 100,
-        currency: 'aed',
-        productName: `Naseeb homepage ad — ${business_name.trim()} (${weeksNum} week${weeksNum > 1 ? 's' : ''})`,
+        // Straight from the verified quote, in integer fils. Not recomputed
+        // from a decimal, and not taken from the request.
+        amountFils,
+        currency: quote.currency.toLowerCase(),
+        productName: `Naseeb homepage ad — ${business_name.trim()} (${weeksNum} week${weeksNum > 1 ? 's' : ''}, ${formatFils(amountFils)})`,
         successUrl: `${APP_URL}/advertise.html?session_id={CHECKOUT_SESSION_ID}&status=success`,
         cancelUrl: `${APP_URL}/advertise.html?status=cancelled`,
         clientReferenceId: id,
@@ -224,10 +260,20 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
 
     await pool.query('UPDATE ads SET stripe_session_id = $1 WHERE id = $2', [session.id, id]);
 
-    res.json({ checkoutUrl: session.url });
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      checkoutUrl: session.url,
+      // Echoed back from the verified quote so the page can show what is about
+      // to be charged without recomputing it.
+      amountFils,
+      amountDisplay: formatFils(amountFils),
+      currency: quote.currency,
+      quoteVersion: quote.quoteVersion,
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Something went wrong. Please try again.' });
+    res.set('Cache-Control', 'no-store');
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -255,14 +301,25 @@ router.get('/checkout/confirm', async (req, res) => {
     if (!sessionId) return res.status(400).json({ error: 'Missing session_id.' });
 
     const result = await pool.query(
-      `SELECT business_name, starts_at, ends_at, amount_aed, payment_status
+      `SELECT business_name, starts_at, ends_at, amount_aed, amount_fils, currency,
+              weeks, unit_price_fils, quote_version, payment_status
        FROM ads WHERE stripe_session_id = $1`,
       [sessionId]
     );
     const booking = result.rows[0];
     if (!booking) return res.status(404).json({ error: 'Booking not found.' });
 
-    res.json({ ...booking, paid: booking.payment_status === 'paid' });
+    // Formatted from the amount stored on the booking, not from the current
+    // price setting — the confirmation must show what this customer was
+    // actually charged even if the owner has since changed the rate.
+    const amountFils = Number(booking.amount_fils);
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      ...booking,
+      amountFils,
+      amountDisplay: formatFils(amountFils),
+      paid: booking.payment_status === 'paid',
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong looking up your booking.' });

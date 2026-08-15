@@ -71,9 +71,14 @@ test('an admin can update a setting and it persists on re-read', async () => {
   const reread = await api().get('/api/admin/settings').set('Authorization', `Bearer ${admin.token}`);
   assert.equal(reread.body.ad_price_per_week_aed, '750');
 
-  // And it's what the public ad-availability endpoint actually charges.
+  // And it's what the public ad-availability endpoint actually charges. Since
+  // Phase 1.4 that endpoint reports the price in integer fils, with every
+  // duration's total calculated server-side, so the page cannot display a
+  // number that differs from the one Stripe is asked for.
   const availability = await api().get('/api/ads/availability');
-  assert.equal(availability.body.pricePerWeekAed, 750);
+  assert.equal(availability.body.pricePerWeekFils, 75000);
+  assert.equal(availability.body.pricePerWeekDisplay, 'AED 750');
+  assert.equal(availability.body.durations.find((d) => d.weeks === 2).totalFils, 150000);
 });
 
 test('settings updates reject an unknown key', async () => {

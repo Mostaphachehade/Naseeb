@@ -53,7 +53,9 @@
 
       <div class="card narrow" id="pricing-card" style="max-width:none; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
         <div>
-          <div style="font-family:'Fraunces',serif; font-size:1.6rem; color:var(--ink-deep);">AED 500<span style="font-size:0.95rem; color:var(--text-soft); font-weight:400;"> / week</span></div>
+          <!-- Filled from /api/ads/availability. No price is hard-coded on this
+               page: the server is the only place the rate exists. -->
+          <div style="font-family:'Fraunces',serif; font-size:1.6rem; color:var(--ink-deep);"><span id="week-price">—</span><span style="font-size:0.95rem; color:var(--text-soft); font-weight:400;"> / week</span></div>
           <p class="hint" style="margin-top:2px;">Next available: <strong id="next-available">—</strong></p>
         </div>
         <span class="pill-badge company" id="pricing-badge">Pay online, live automatically</span>
@@ -85,16 +87,18 @@
         <input id="target_url" type="url" placeholder="https://your-business-site.com" required />
 
         <label for="weeks">How many weeks?</label>
-        <select id="weeks">
-          <option value="1">1 week — AED 500</option>
-          <option value="2" selected>2 weeks — AED 1,000</option>
-          <option value="4">4 weeks — AED 2,000</option>
-          <option value="8">8 weeks — AED 4,000</option>
-        </select>
+        <!-- Options are built from the server's duration list, each with its
+             own server-calculated total. The browser never multiplies money. -->
+        <select id="weeks"></select>
 
         <div class="compliance-box">
-          You'll pay <strong id="total-price">AED 1,000</strong> now via Stripe. Your banner is scheduled starting <strong id="form-start-date">—</strong> and runs automatically — no manual follow-up needed.
+          You'll pay <strong id="total-price">—</strong> now via Stripe. Your banner is scheduled starting <strong id="form-start-date">—</strong> and runs automatically — no manual follow-up needed.
         </div>
+
+        <!-- Shown when the owner changes the price mid-session. The customer is
+             told the new total and has to confirm it; nothing is held or
+             charged until they do. -->
+        <div id="price-changed-notice" class="form-error show" style="display:none; margin-bottom:14px;"></div>
 
         <button class="btn primary" type="submit" id="checkout-btn">Continue to payment</button>
         <p class="form-error" id="error"></p>
@@ -130,17 +134,26 @@
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
 <script>
-  const WEEK_PRICE_AED = 500;
   let nextAvailableDate = null;
   // Fail closed: nothing shows a payment form until the server has said, in
   // this response, that checkout is on.
   let checkoutEnabled = false;
+
+  // The current server quote: the weekly rate, every duration with its own
+  // server-calculated total, and the version identifying which price these
+  // came from. There is no price constant anywhere on this page — if this is
+  // null, the page has no prices to show and cannot check out.
+  let quote = null;
+  // Set when the server rejects a checkout because the price moved. The
+  // customer has to look at the new total and submit again.
+  let awaitingPriceConfirmation = false;
 
   async function loadAvailability() {
     try {
       const availability = await api('/ads/availability');
       checkoutEnabled = availability.checkoutEnabled === true;
       nextAvailableDate = availability.nextAvailableDate;
+      applyQuote(availability);
       const formatted = new Date(nextAvailableDate + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
       document.getElementById('next-available').textContent = formatted;
       document.getElementById('form-start-date').textContent = formatted;
@@ -149,6 +162,39 @@
       document.getElementById('next-available').textContent = 'now';
     }
     applyCheckoutState();
+  }
+
+  // Renders a server quote. Every number here arrives already calculated and
+  // already formatted — the page picks strings out of the response and puts
+  // them on screen, and at no point multiplies a rate by a duration itself.
+  function applyQuote(next, { keepSelection = true } = {}) {
+    if (!next || !Array.isArray(next.durations) || !next.durations.length) return;
+
+    const select = document.getElementById('weeks');
+    const previous = keepSelection && select.value ? Number(select.value) : null;
+    quote = next;
+
+    document.getElementById('week-price').textContent = quote.pricePerWeekDisplay;
+
+    select.innerHTML = '';
+    quote.durations.forEach((duration) => {
+      const option = document.createElement('option');
+      option.value = String(duration.weeks);
+      option.textContent = duration.label;
+      option.dataset.totalDisplay = duration.totalDisplay;
+      select.appendChild(option);
+    });
+
+    const wanted = quote.durations.some((d) => d.weeks === previous) ? previous : quote.durations[0].weeks;
+    select.value = String(wanted);
+    renderTotal();
+  }
+
+  function renderTotal() {
+    if (!quote) return;
+    const weeks = Number(document.getElementById('weeks').value);
+    const duration = quote.durations.find((d) => d.weeks === weeks);
+    if (duration) document.getElementById('total-price').textContent = duration.totalDisplay;
   }
 
   // Swaps the page between self-serve booking and inquiry-only. The inquiry
@@ -172,10 +218,7 @@
       "Tell us your dates and what you'd like to run. We'll confirm availability and invoice you directly.";
   }
 
-  document.getElementById('weeks').addEventListener('change', (e) => {
-    const total = Number(e.target.value) * WEEK_PRICE_AED;
-    document.getElementById('total-price').textContent = `AED ${total.toLocaleString()}`;
-  });
+  document.getElementById('weeks').addEventListener('change', renderTotal);
 
   let cloudinaryConfig = null;
   fetch('/api/config').then((r) => r.json()).then((config) => {
@@ -224,26 +267,73 @@
       return;
     }
 
+    if (!quote) {
+      errorEl.textContent = 'Prices are still loading. Give it a moment and try again.';
+      errorEl.classList.add('show');
+      return;
+    }
+
     btn.disabled = true;
     btn.textContent = 'Starting checkout…';
+
+    // Deliberately sends no price and no total — only which duration was
+    // chosen, and which quote the customer was looking at when they chose it.
+    // The server works out what that costs.
+    const payload = {
+      business_name: document.getElementById('business_name').value,
+      contact_email: document.getElementById('contact_email').value,
+      image_url: document.getElementById('image_url').value,
+      target_url: document.getElementById('target_url').value,
+      weeks: Number(document.getElementById('weeks').value),
+      quote_version: quote.quoteVersion,
+    };
+
+    let res;
     try {
-      const { checkoutUrl } = await api('/ads/checkout', {
+      res = await fetch('/api/ads/checkout', {
         method: 'POST',
-        body: JSON.stringify({
-          business_name: document.getElementById('business_name').value,
-          contact_email: document.getElementById('contact_email').value,
-          image_url: document.getElementById('image_url').value,
-          target_url: document.getElementById('target_url').value,
-          weeks: Number(document.getElementById('weeks').value),
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
-      window.location.href = checkoutUrl;
     } catch (err) {
-      errorEl.textContent = err.message;
+      errorEl.textContent = 'Could not reach the server. Please try again.';
       errorEl.classList.add('show');
       btn.disabled = false;
       btn.textContent = 'Continue to payment';
+      return;
     }
+
+    const data = await res.json().catch(() => ({}));
+
+    // The owner changed the price while this form was open. Nothing has been
+    // held and nothing has been charged; show the new total and make the
+    // customer agree to it before trying again.
+    if (res.status === 409 && data.code === 'PRICE_CHANGED') {
+      applyQuote(data.quote);
+      awaitingPriceConfirmation = true;
+
+      const weeks = Number(document.getElementById('weeks').value);
+      const duration = quote.durations.find((d) => d.weeks === weeks);
+      const notice = document.getElementById('price-changed-notice');
+      notice.textContent = `${data.error} The new total for ${weeks} week${weeks > 1 ? 's' : ''} is ${duration ? duration.totalDisplay : quote.pricePerWeekDisplay + ' per week'}.`;
+      notice.style.display = 'block';
+
+      btn.disabled = false;
+      btn.textContent = 'Confirm new price and continue';
+      return;
+    }
+
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Something went wrong. Please try again.';
+      errorEl.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = awaitingPriceConfirmation ? 'Confirm new price and continue' : 'Continue to payment';
+      return;
+    }
+
+    document.getElementById('price-changed-notice').style.display = 'none';
+    awaitingPriceConfirmation = false;
+    window.location.href = data.checkoutUrl;
   });
 
   document.getElementById('inquiry-form').addEventListener('submit', async (e) => {
@@ -290,7 +380,7 @@
         // show rather than an error.
         if (booking.paid) {
           document.getElementById('success-details').textContent =
-            `${booking.business_name}'s banner runs ${runs} (AED ${Number(booking.amount_aed).toLocaleString()} paid).`;
+            `${booking.business_name}'s banner runs ${runs} (${booking.amountDisplay} paid).`;
         } else {
           document.getElementById('success-heading').textContent = 'Payment received — confirming';
           document.getElementById('success-details').textContent =

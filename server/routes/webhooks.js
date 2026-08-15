@@ -64,7 +64,8 @@ async function fulfilSession(client, event) {
   }
 
   const adRes = await client.query(
-    `SELECT id, amount_aed, stripe_session_id, payment_status, slot_status, starts_at, ends_at
+    `SELECT id, amount_aed, amount_fils, currency, stripe_session_id, payment_status,
+            slot_status, starts_at, ends_at
      FROM ads WHERE id = $1 FOR UPDATE`,
     [adId]
   );
@@ -100,11 +101,24 @@ async function fulfilSession(client, event) {
     return { action: 'awaiting_payment' };
   }
 
-  if (String(session.currency || '').toLowerCase() !== 'aed') {
+  // Reconciled against what this booking recorded when it was sold, never
+  // against the current owner setting. If the price changed after the customer
+  // checked out, the amount Stripe collected is still the right amount for
+  // this booking — comparing it to today's price would reject a perfectly good
+  // payment, and comparing a *lower* stored amount to a raised price would be
+  // worse still.
+  const expectedCurrency = String(ad.currency || 'AED').toLowerCase();
+  if (String(session.currency || '').toLowerCase() !== expectedCurrency) {
     return { action: 'refused', reason: 'currency does not match' };
   }
 
-  if (session.amount_total !== fils(ad.amount_aed)) {
+  // amount_fils is authoritative; amount_aed is only consulted for bookings
+  // taken before that column existed.
+  const expectedFils = ad.amount_fils !== null && ad.amount_fils !== undefined
+    ? Number(ad.amount_fils)
+    : fils(ad.amount_aed);
+
+  if (session.amount_total !== expectedFils) {
     return { action: 'refused', reason: 'amount does not match the booking' };
   }
 

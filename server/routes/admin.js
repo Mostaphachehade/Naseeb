@@ -3,11 +3,21 @@ const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 const { getAllSettings, setSetting } = require('../lib/settings');
+const { PRICE_FORMAT } = require('../lib/adPricing');
 
 const router = express.Router();
 
 const SETTINGS_VALIDATORS = {
-  ad_price_per_week_aed: (v) => typeof v === 'string' && Number.isFinite(Number(v)) && Number(v) > 0,
+  // Stricter than "is it a number": this value is converted to integer fils and
+  // charged. Number('1e3') and Number(' 500 ') are both finite and both produce
+  // a price no one intended, and anything with more than two decimal places
+  // cannot be represented in fils at all. Must be a plain decimal amount.
+  //
+  // Changing it necessarily changes the quote version (derived from the value
+  // and its updated_at), so customers mid-checkout are told the price moved
+  // rather than being charged the new one. Existing bookings are untouched —
+  // they carry their own agreed amount.
+  ad_price_per_week_aed: (v) => PRICE_FORMAT.test(String(v).trim()) && Number(v) > 0,
   hosting_plan_standard_price_aed: (v) => typeof v === 'string' && Number.isFinite(Number(v)) && Number(v) >= 0,
   hosting_plan_partner_price_aed: (v) => typeof v === 'string' && Number.isFinite(Number(v)) && Number(v) >= 0,
   maintenance_mode: (v) => v === 'true' || v === 'false',

@@ -255,6 +255,28 @@ async function init() {
     -- would erase the only evidence of a disputed or lost booking.
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS slot_released_at TIMESTAMPTZ;
     ALTER TABLE ads ADD COLUMN IF NOT EXISTS slot_release_reason TEXT;
+
+    -- What was actually quoted, agreed and charged — in fils, as integers.
+    --
+    -- amount_aed (NUMERIC) stays because the revenue report and the admin
+    -- panel read it, but it is derived from amount_fils rather than the other
+    -- way round. Money is reconciled against these columns, never against the
+    -- current owner setting: the setting is what the price is *now*, and a
+    -- booking is owed exactly what it was sold at, whatever happened to the
+    -- price afterwards.
+    --
+    -- quote_version records which price the customer was shown, so a
+    -- disagreement about what someone agreed to can be answered from the row.
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS unit_price_fils BIGINT;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS weeks INTEGER;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS amount_fils BIGINT;
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'AED';
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS quote_version TEXT;
+    -- Bookings taken before these columns existed. ROUND on NUMERIC is exact —
+    -- no floating point is involved in converting an existing amount to fils.
+    UPDATE ads
+       SET amount_fils = ROUND(amount_aed * 100)
+     WHERE amount_fils IS NULL AND amount_aed IS NOT NULL;
     -- Existing paid bookings predate slot_status and would otherwise read as
     -- released, leaving their dates open to be sold twice.
     --

@@ -55,8 +55,15 @@ function nextIp() {
   return `10.${(ipCounter >> 16) & 255}.${(ipCounter >> 8) & 255}.${ipCounter & 255}`;
 }
 
-function postCheckout(body = VALID_BOOKING) {
-  return api().post('/api/ads/checkout').set('X-Forwarded-For', nextIp()).send(body);
+// Sends the current quote version, as the page does. Without it the server
+// answers 409 (the price may have moved), which would mask what these tests are
+// actually about — the kill switch.
+async function postCheckout(body = VALID_BOOKING) {
+  const quote = await api().get('/api/ads/availability');
+  return api()
+    .post('/api/ads/checkout')
+    .set('X-Forwarded-For', nextIp())
+    .send({ quote_version: quote.body.quoteVersion, ...body });
 }
 
 before(async () => {
@@ -151,10 +158,17 @@ test('availability reports the checkout state and leaks nothing else', async () 
 
   // The response is a fixed, boolean-and-numbers shape. Anything else appearing
   // here — a key name, an env value, a Stripe identifier — is a regression.
-  assert.deepEqual(
-    Object.keys(enabled.body).sort(),
-    ['checkoutEnabled', 'maxWeeks', 'nextAvailableDate', 'pricePerWeekAed']
-  );
+  assert.deepEqual(Object.keys(enabled.body).sort(), [
+    'checkoutEnabled',
+    'currency',
+    'currencyMinorUnits',
+    'durations',
+    'maxWeeks',
+    'nextAvailableDate',
+    'pricePerWeekDisplay',
+    'pricePerWeekFils',
+    'quoteVersion',
+  ]);
   assert.equal(typeof enabled.body.checkoutEnabled, 'boolean');
 
   const serialized = JSON.stringify(enabled.body);

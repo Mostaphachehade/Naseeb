@@ -87,7 +87,8 @@ function nextIp() {
   return `10.${64 + ((ipCounter >> 16) & 63)}.${(ipCounter >> 8) & 255}.${ipCounter & 255}`;
 }
 
-function bookSlot(name = 'Protection Test Co') {
+async function bookSlot(name = 'Protection Test Co') {
+  const quote = await api().get('/api/ads/availability');
   return api()
     .post('/api/ads/checkout')
     .set('X-Forwarded-For', nextIp())
@@ -97,6 +98,7 @@ function bookSlot(name = 'Protection Test Co') {
       image_url: 'https://example.com/banner.jpg',
       target_url: 'https://example.com',
       weeks: 1,
+      quote_version: quote.body.quoteVersion,
     });
 }
 
