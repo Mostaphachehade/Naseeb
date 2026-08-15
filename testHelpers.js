@@ -1,4 +1,10 @@
-require('dotenv').config();
+// Must run before ./server/db is required — that module builds its Pool from
+// process.env.DATABASE_URL at require time, so the guard has to have approved
+// (and possibly rewritten) the target first. See testEnv.js.
+const { configureTestEnv } = require('./testEnv');
+
+configureTestEnv();
+
 const request = require('supertest');
 const app = require('./server/app');
 const { pool, init } = require('./server/db');

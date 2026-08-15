@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test",
+    "test": "node scripts/reset-test-db.js && node --test",
+    "test:db:start": "scripts/test-db.sh start",
+    "test:db:stop": "scripts/test-db.sh stop",
+    "test:db:destroy": "scripts/test-db.sh destroy",
     "db:init": "node -e \"require('./server/db').init().then(() => process.exit(0))\""
   },
   "dependencies": {

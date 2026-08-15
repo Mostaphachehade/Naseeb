@@ -12,11 +12,37 @@ types.setTypeParser(1082, (val) => val);
 // Postgres connection. Works with any hosted Postgres (Neon, Supabase, Render
 // Postgres, etc). Most hosted providers require SSL but use certificates that
 // Node doesn't automatically trust, hence rejectUnauthorized: false below.
+//
+// DATABASE_SSL decides, and the host is only sniffed as a fallback for
+// existing deployments that don't set it. The previous version tested the
+// connection string for the literal substring 'localhost', which meant an
+// otherwise identical local database addressed as 127.0.0.1 was handed an SSL
+// config it couldn't honour and failed with "The server does not support SSL
+// connections" — a confusing failure for anyone pointing the test suite at a
+// local cluster.
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+
+function isLocalDatabase(connectionString) {
+  if (!connectionString) return false;
+  try {
+    return LOCAL_DB_HOSTS.has(new URL(connectionString).hostname);
+  } catch {
+    return connectionString.includes('localhost');
+  }
+}
+
+function sslConfig() {
+  const explicit = (process.env.DATABASE_SSL || '').toLowerCase();
+  if (explicit === 'false' || explicit === 'disable' || explicit === '0') return false;
+  if (explicit === 'true' || explicit === 'require' || explicit === '1') {
+    return { rejectUnauthorized: false };
+  }
+  return isLocalDatabase(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false };
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost')
-    ? false
-    : { rejectUnauthorized: false },
+  ssl: sslConfig(),
 });
 
 async function init() {

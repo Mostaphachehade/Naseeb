@@ -27,8 +27,12 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://naseeb:naseeb@localhost:5432/naseeb_test
-      JWT_SECRET: ci-test-secret-not-used-anywhere-real
+      # TEST_DATABASE_URL rather than DATABASE_URL: the suite's guard reads this
+      # one by name, so CI exercises the same path a developer's machine does
+      # instead of a special case. The database name contains "test" and the
+      # host is local, which is what the guard in testEnv.js requires.
+      TEST_DATABASE_URL: postgresql://naseeb:naseeb@localhost:5432/naseeb_test
+      DATABASE_SSL: 'false'
       APP_URL: http://localhost:3000
 
     steps:
@@ -41,11 +45,11 @@ jobs:
 
       - run: npm ci
 
-      # Creates the schema once, sequentially, before the test files run in
-      # parallel. Without this, two test files can both run CREATE TABLE IF
-      # NOT EXISTS against the same brand-new database at the same instant —
-      # that check isn't safe against concurrent first-creation in Postgres,
-      # and the second writer loses with a duplicate-key error on pg_type.
-      - run: npm run db:init
-
+      # `npm test` now resets the schema itself (scripts/reset-test-db.js) as a
+      # single sequential step before `node --test` runs the files in parallel,
+      # so the separate db:init step this job used to need is gone. That
+      # ordering still matters: two test files both running CREATE TABLE IF NOT
+      # EXISTS against a brand-new database at the same instant is not safe in
+      # Postgres — the second writer loses with a duplicate-key error on
+      # pg_type.
       - run: npm test
