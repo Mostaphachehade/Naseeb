@@ -41,17 +41,30 @@
         </div>
       </div>
 
+      <!-- Shown instead of the online booking form when the server reports
+           checkoutEnabled: false. The inquiry form below stays available in
+           both states, so an advertiser is never left without a way to buy —
+           the route changes from self-serve to a direct conversation. -->
+      <div class="card narrow" id="checkout-unavailable" style="display:none; max-width:none; margin-bottom:20px;">
+        <h3 style="margin-top:0;">Online booking is temporarily unavailable</h3>
+        <p style="color:var(--text-soft);">We've paused self-serve card payment for the homepage banner while we finish some work on it. The slot itself is still available — send an inquiry below and we'll confirm your dates and invoice you directly, usually the same day.</p>
+        <p class="hint" style="margin-bottom:0;">Nothing is charged online while this is paused, and no booking is held until we've confirmed it with you.</p>
+      </div>
+
       <div class="card narrow" id="pricing-card" style="max-width:none; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
         <div>
           <div style="font-family:'Fraunces',serif; font-size:1.6rem; color:var(--ink-deep);">AED 500<span style="font-size:0.95rem; color:var(--text-soft); font-weight:400;"> / week</span></div>
           <p class="hint" style="margin-top:2px;">Next available: <strong id="next-available">—</strong></p>
         </div>
-        <span class="pill-badge company">Pay online, live automatically</span>
+        <span class="pill-badge company" id="pricing-badge">Pay online, live automatically</span>
       </div>
 
       <div id="cancelled-notice" class="form-error show" style="display:none; margin-bottom:16px;">Checkout was cancelled — you weren't charged. Ready when you are.</div>
 
-      <form class="card narrow" id="ad-form" style="max-width:none;">
+      <!-- Hidden until the server confirms checkout is enabled. Failing closed
+           means a slow or failed availability call shows no payment form at
+           all, rather than briefly showing one that can't complete. -->
+      <form class="card narrow" id="ad-form" style="max-width:none; display:none;">
         <label for="business_name">Business name</label>
         <input id="business_name" placeholder="e.g. Al Fahim Marketing LLC" required />
 
@@ -87,10 +100,10 @@
         <p class="form-error" id="error"></p>
       </form>
 
-      <div class="section-head" style="margin-top:40px;">
+      <div class="section-head" style="margin-top:40px;" id="inquiry-head">
         <div>
-          <h3>Want something custom?</h3>
-          <p>Video ads, a longer campaign, or a different placement — tell us what you have in mind and we'll follow up directly.</p>
+          <h3 id="inquiry-heading">Want something custom?</h3>
+          <p id="inquiry-subheading">Video ads, a longer campaign, or a different placement — tell us what you have in mind and we'll follow up directly.</p>
         </div>
       </div>
 
@@ -119,17 +132,44 @@
 <script>
   const WEEK_PRICE_AED = 500;
   let nextAvailableDate = null;
+  // Fail closed: nothing shows a payment form until the server has said, in
+  // this response, that checkout is on.
+  let checkoutEnabled = false;
 
   async function loadAvailability() {
     try {
-      const { nextAvailableDate: date } = await api('/ads/availability');
-      nextAvailableDate = date;
-      const formatted = new Date(date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const availability = await api('/ads/availability');
+      checkoutEnabled = availability.checkoutEnabled === true;
+      nextAvailableDate = availability.nextAvailableDate;
+      const formatted = new Date(nextAvailableDate + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
       document.getElementById('next-available').textContent = formatted;
       document.getElementById('form-start-date').textContent = formatted;
     } catch (err) {
+      checkoutEnabled = false;
       document.getElementById('next-available').textContent = 'now';
     }
+    applyCheckoutState();
+  }
+
+  // Swaps the page between self-serve booking and inquiry-only. The inquiry
+  // form is untouched in both states — it's the fallback that keeps the slot
+  // sellable while online payment is paused.
+  function applyCheckoutState() {
+    const form = document.getElementById('ad-form');
+    const notice = document.getElementById('checkout-unavailable');
+
+    if (checkoutEnabled) {
+      notice.style.display = 'none';
+      form.style.display = '';
+      return;
+    }
+
+    notice.style.display = 'block';
+    form.style.display = 'none';
+    document.getElementById('pricing-badge').textContent = 'Booked by inquiry';
+    document.getElementById('inquiry-heading').textContent = 'Book the banner slot';
+    document.getElementById('inquiry-subheading').textContent =
+      "Tell us your dates and what you'd like to run. We'll confirm availability and invoice you directly.";
   }
 
   document.getElementById('weeks').addEventListener('change', (e) => {
@@ -176,6 +216,14 @@
     const errorEl = document.getElementById('error');
     const btn = document.getElementById('checkout-btn');
     errorEl.classList.remove('show');
+
+    // The form is hidden when checkout is off, so this is belt-and-braces
+    // against a stale page left open across a deploy that turned it off.
+    if (!checkoutEnabled) {
+      applyCheckoutState();
+      return;
+    }
+
     btn.disabled = true;
     btn.textContent = 'Starting checkout…';
     try {

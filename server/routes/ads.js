@@ -4,6 +4,7 @@ const { pool } = require('../db');
 const { adCheckoutLimiter } = require('../middleware/rateLimit');
 const { createCheckoutSession, retrieveCheckoutSession } = require('../lib/stripe');
 const { getSetting } = require('../lib/settings');
+const { isAdsCheckoutEnabled } = require('../lib/featureFlags');
 
 const router = express.Router();
 
@@ -49,13 +50,21 @@ router.get('/active', async (req, res) => {
   }
 });
 
+// checkoutEnabled is the only thing this exposes about the flag: a boolean the
+// page uses to decide which panel to render. The environment variable itself,
+// and every Stripe/database detail behind it, stays server-side.
 router.get('/availability', async (req, res) => {
   try {
     const [nextAvailableDate, pricePerWeekAed] = await Promise.all([
       computeNextAvailableDate(),
       getSetting('ad_price_per_week_aed'),
     ]);
-    res.json({ nextAvailableDate, pricePerWeekAed: Number(pricePerWeekAed), maxWeeks: MAX_WEEKS });
+    res.json({
+      nextAvailableDate,
+      pricePerWeekAed: Number(pricePerWeekAed),
+      maxWeeks: MAX_WEEKS,
+      checkoutEnabled: isAdsCheckoutEnabled(),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -68,6 +77,18 @@ router.get('/availability', async (req, res) => {
 // abandons checkout; GET /checkout/confirm below is what flips it to paid.
 router.post('/checkout', adCheckoutLimiter, async (req, res) => {
   try {
+    // Checked before validation, before any database write and before Stripe
+    // is contacted, so a disabled checkout is inert rather than partially
+    // executed: no pending ad row to reconcile later, no Checkout Session
+    // created that nobody will ever fulfil.
+    if (!isAdsCheckoutEnabled()) {
+      return res.status(503).json({
+        error:
+          'Online booking is temporarily unavailable. Send an inquiry below and we’ll book your slot directly.',
+        checkoutEnabled: false,
+      });
+    }
+
     const { business_name, contact_email, image_url, target_url, weeks } = req.body;
 
     if (!business_name || !business_name.trim()) {
@@ -135,6 +156,12 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
 // Called by the success page after Stripe redirects back. Verifies payment
 // directly with Stripe (never trusts the redirect alone) before marking
 // the booking paid.
+//
+// Deliberately NOT behind the ADS_CHECKOUT_ENABLED flag. Turning checkout off
+// stops new sessions being created; it must not strand a customer who paid
+// moments earlier and is still mid-redirect, which is exactly the abandoned-
+// booking problem the flag exists to contain. With checkout disabled the only
+// session ids that can reach this route are ones Stripe already issued.
 router.get('/checkout/confirm', async (req, res) => {
   try {
     const sessionId = req.query.session_id;

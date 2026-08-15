@@ -24,6 +24,11 @@ services:
         sync: false
       - key: CLOUDINARY_UPLOAD_PRESET
         sync: false
+      # Self-serve ad checkout. Pinned to false here rather than left to the
+      # dashboard so a redeploy can't silently inherit a stale "true" — the
+      # value has to be changed deliberately, in this file, to turn payment on.
+      - key: ADS_CHECKOUT_ENABLED
+        value: false
       - key: GA_MEASUREMENT_ID
         sync: false
       - key: SENTRY_DSN
