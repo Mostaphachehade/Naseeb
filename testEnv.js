@@ -132,6 +132,23 @@ function configureTestEnv() {
   // than set, so anything that starts reading it again fails loudly.
   delete process.env.JWT_SECRET;
   process.env.APP_URL = process.env.APP_URL || 'http://localhost:3000';
+
+  // The suite IS the proxy.
+  //
+  // Requests arrive over a loopback socket, and each one carries an
+  // X-Forwarded-For the test wrote — which is precisely what one trusted hop
+  // means: the rightmost entry was added by something we control. Setting this
+  // explicitly rather than inheriting a default keeps the assumption visible,
+  // and keeps the limiters doing real per-identity work instead of sharing one
+  // bucket across the whole suite. See server/lib/proxyTrust.js.
+  process.env.TRUSTED_PROXY_HOPS = process.env.TRUSTED_PROXY_HOPS || '1';
+
+  // Keys the network hashes in the integrity tables. Ephemeral and per-run, so
+  // nothing links across runs and no default can be shipped. Would be REFUSED
+  // in production by riskSignals.assertSignalSecret — it matches the test-only
+  // placeholder pattern deliberately.
+  process.env.INTEGRITY_SIGNAL_SECRET =
+    'test-only-integrity-signal-secret-not-valid-outside-the-test-suite-0123456789';
   // Tests speak plain http to an in-process server; a Secure cookie would never
   // be sent back. Production cannot make this choice — see
   // sessions.assertCookieSecurity, which refuses to start on it.

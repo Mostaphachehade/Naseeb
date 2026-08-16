@@ -11,6 +11,8 @@ const { winnerEmailHtml, entryEmailHtml } = require('../lib/emailTemplates');
 const claims = require('../lib/claims');
 const notifications = require('../lib/claimNotifications');
 const { areClaimsEnabled } = require('../lib/featureFlags');
+const integrity = require('../lib/entryIntegrity');
+const riskSignals = require('../lib/riskSignals');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
@@ -27,9 +29,13 @@ async function withHostAndCount(row) {
   const hostRes = await pool.query('SELECT name, is_verified_business FROM users WHERE id = $1', [
     row.host_id,
   ]);
-  const countRes = await pool.query('SELECT COUNT(*)::int AS c FROM entries WHERE giveaway_id = $1', [
-    row.id,
-  ]);
+  // Disqualified entries are excluded from every public tally, here and in the
+  // three other places that count. integrity.COUNTED_SQL is shared so a fourth
+  // variant cannot quietly disagree with the draw — see docs/ENTRY_INTEGRITY.md §6.
+  const countRes = await pool.query(
+    `SELECT COUNT(*)::int AS c FROM entries WHERE giveaway_id = $1 AND ${integrity.COUNTED_SQL}`,
+    [row.id]
+  );
   return {
     ...row,
     // Rows written before media validation existed may hold anything. The
@@ -70,7 +76,9 @@ router.get('/', async (req, res) => {
 router.get('/stats/summary', async (req, res) => {
   try {
     const giveawaysRes = await pool.query('SELECT COUNT(*)::int AS c FROM giveaways');
-    const entriesRes = await pool.query('SELECT COUNT(*)::int AS c FROM entries');
+    const entriesRes = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM entries WHERE ${integrity.COUNTED_SQL}`
+    );
     const valueRes = await pool.query(
       'SELECT COALESCE(SUM(estimated_value_aed), 0)::numeric AS v FROM giveaways WHERE estimated_value_aed IS NOT NULL'
     );
@@ -106,7 +114,8 @@ router.get('/winners/all', async (req, res) => {
          giveaways.prize_delivered, giveaways.prize_delivered_at,
          hostuser.name AS host_name, hostuser.is_verified_business AS host_verified,
          winneruser.name AS winner_name, entries.ticket_number AS winner_ticket_number,
-         (SELECT COUNT(*)::int FROM entries e2 WHERE e2.giveaway_id = giveaways.id) AS entry_count
+         (SELECT COUNT(*)::int FROM entries e2
+           WHERE e2.giveaway_id = giveaways.id AND e2.integrity_status <> 'disqualified') AS entry_count
        FROM giveaways
        JOIN users hostuser ON hostuser.id = giveaways.host_id
        JOIN entries ON entries.id = giveaways.winner_entry_id
@@ -138,13 +147,18 @@ router.get('/:id', optionalAuth, async (req, res) => {
     const row = result.rows[0];
     if (!row) return res.status(404).json({ error: 'This giveaway does not exist.' });
 
+    // The viewer's own entry, and only their own. A coarse status plus the
+    // written reason if a decision was made about them — never the signals that
+    // prompted a review, never another account, never an administrator's notes.
     let alreadyEntered = false;
+    let myEntry = null;
     if (req.userId) {
       const entryRes = await pool.query(
-        'SELECT id FROM entries WHERE giveaway_id = $1 AND user_id = $2',
+        'SELECT * FROM entries WHERE giveaway_id = $1 AND user_id = $2',
         [req.params.id, req.userId]
       );
       alreadyEntered = entryRes.rows.length > 0;
+      myEntry = integrity.entrantView(entryRes.rows[0]);
     }
 
     let winner = null;
@@ -170,7 +184,13 @@ router.get('/:id', optionalAuth, async (req, res) => {
       : null;
 
     const enriched = await withHostAndCount(row);
-    res.json({ ...enriched, already_entered: alreadyEntered, winner, claim_status: claimStatus });
+    res.json({
+      ...enriched,
+      already_entered: alreadyEntered,
+      my_entry: myEntry,
+      winner,
+      claim_status: claimStatus,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -325,6 +345,10 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
       return res.status(409).json({ error: "You're already entered in this giveaway. Good luck!" });
     }
 
+    // Ticket numbers count every entry ever made on this giveaway, including
+    // any that were later disqualified. They are receipts, not a tally: two
+    // people must never be told they hold ticket #4, and reusing a number after
+    // a disqualification would do exactly that.
     const countRes = await client.query('SELECT COUNT(*)::int AS c FROM entries WHERE giveaway_id = $1', [
       req.params.id,
     ]);
@@ -334,6 +358,22 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
       'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, $4)',
       [id, req.params.id, req.userId, ticketNumber]
     );
+
+    // Risk signals are recorded in the same transaction, and record is all they
+    // do: nothing here can refuse the entry, change its status, or touch the
+    // account. A failure to record a signal must never cost somebody their
+    // entry, so it is caught and dropped rather than rolled back.
+    try {
+      await riskSignals.recordEntrySignals(client, {
+        entryId: id,
+        giveawayId: req.params.id,
+        userId: req.userId,
+        ip: req.ip,
+      });
+    } catch (signalErr) {
+      console.error('Entry risk signals could not be recorded:', signalErr.message);
+    }
+
     await client.query('COMMIT');
 
     res.status(201).json({ id, ticket_number: ticketNumber });
@@ -402,10 +442,25 @@ router.post('/:id/draw', requireAuth, requireHostAccess, async (req, res) => {
         .json({ error: 'You can draw a winner once the entry deadline has passed.' });
     }
 
-    const entriesRes = await client.query('SELECT * FROM entries WHERE giveaway_id = $1', [
-      req.params.id,
-    ]);
-    const entries = entriesRes.rows;
+    // Fails closed on an open question. If any entry is under review, or an
+    // integrity case is open on this giveaway, the draw stops here with a
+    // conflict — a winner drawn out of a pool somebody is currently arguing
+    // about is a winner nobody can defend, and a draw that happens an hour later
+    // is a far smaller problem.
+    try {
+      await integrity.assertDrawable(client, req.params.id);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      if (err instanceof integrity.IntegrityError) {
+        return res.status(err.status).json({ error: err.message, code: err.code });
+      }
+      throw err;
+    }
+
+    // Eligible entries only, locked for the duration of the transaction. A
+    // disqualification that commits between this read and the winner write
+    // would otherwise be able to disagree with the pool the winner came from.
+    const entries = await integrity.lockEligibleEntries(client, req.params.id);
     if (entries.length === 0) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'No one has entered yet, so there is no one to draw.' });
@@ -533,7 +588,10 @@ router.get('/mine/hosted', requireAuth, requireHostAccess, async (req, res) => {
 router.get('/mine/entered', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT giveaways.*, entries.ticket_number FROM entries
+      `SELECT giveaways.*, entries.id AS my_entry_id, entries.ticket_number,
+              entries.created_at AS my_entry_created_at, entries.integrity_status,
+              entries.integrity_status_reason
+       FROM entries
        JOIN giveaways ON giveaways.id = entries.giveaway_id
        WHERE entries.user_id = $1
        ORDER BY entries.created_at DESC`,
@@ -542,13 +600,87 @@ router.get('/mine/entered', requireAuth, async (req, res) => {
     const rows = await Promise.all(
       result.rows.map(async (r) => {
         const enriched = await withHostAndCount(r);
-        return { ...enriched, my_ticket_number: r.ticket_number };
+        return {
+          ...enriched,
+          my_ticket_number: r.ticket_number,
+          // The entrant's own coarse status, on their own dashboard. Same shape
+          // as the giveaway page, from the same function.
+          my_entry: integrity.entrantView({
+            created_at: r.my_entry_created_at,
+            ticket_number: r.ticket_number,
+            integrity_status: r.integrity_status,
+            integrity_status_reason: r.integrity_status_reason,
+          }),
+        };
       })
     );
     res.json(rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// A host may say "please look at this", and nothing more.
+//
+// Hosts have a direct interest in who wins their own giveaway, which is exactly
+// why they cannot act on that interest here: this endpoint records a flag and
+// opens an administrator case. It does not change an entry's status, it does not
+// remove anybody from the pool, and it does not tell the host anything about the
+// entrant they did not already know.
+router.post('/:id/entries/:entryId/flag', requireAuth, requireHostAccess, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const giveawayRes = await client.query('SELECT host_id FROM giveaways WHERE id = $1', [
+      req.params.id,
+    ]);
+    const giveaway = giveawayRes.rows[0];
+    if (!giveaway) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'This giveaway does not exist.' });
+    }
+    if (giveaway.host_id !== req.userId) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Only the host of this giveaway can flag an entry on it.' });
+    }
+
+    const entryRes = await client.query(
+      'SELECT id FROM entries WHERE id = $1 AND giveaway_id = $2',
+      [req.params.entryId, req.params.id]
+    );
+    if (!entryRes.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'That entry is not part of this giveaway.' });
+    }
+
+    const opened = await integrity.openCase(client, {
+      giveawayId: req.params.id,
+      entryId: req.params.entryId,
+      reason: req.body && req.body.reason,
+      actorUserId: req.userId,
+      postDraw: false,
+    });
+
+    await client.query('COMMIT');
+    // Idempotent: flagging twice reports the same open case rather than
+    // creating a second one.
+    res.status(opened.created ? 201 : 200).json({
+      case_opened: Boolean(opened.case),
+      already_open: !opened.created,
+      // Deliberately no entry status here. A host flagging an entry learns
+      // nothing about whether it was acted on.
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err instanceof integrity.IntegrityError) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
   }
 });
 

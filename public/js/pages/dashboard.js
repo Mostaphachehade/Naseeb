@@ -32,6 +32,21 @@
     },
   };
 
+  const ENTRY_STATUS_NOTE = {
+    under_review: 'Entry under review',
+    disqualified: 'Entry disqualified',
+  };
+
+  function entryStatusNote(myEntry) {
+    if (!myEntry || !ENTRY_STATUS_NOTE[myEntry.status]) return null;
+    return el('p', {
+      class: 'delivery-pill pending',
+      text: myEntry.reason
+        ? `${ENTRY_STATUS_NOTE[myEntry.status]} — ${myEntry.reason}`
+        : ENTRY_STATUS_NOTE[myEntry.status],
+    });
+  }
+
   function emptyWithLink(before, href, linkText, after) {
     return el('div', { class: 'empty u-97294b20' }, [
       before,
@@ -84,7 +99,15 @@
     try {
       const entered = await api('/giveaways/mine/entered');
       mount(enteredGrid, entered.length
-        ? entered.map(giveawayCard)
+        ? entered.map((g) => {
+            const card = giveawayCard(g);
+            // Their own entry's coarse status, on their own dashboard. Absent
+            // when the entry is ordinary — a badge saying "fine" on every card
+            // makes the one that isn't harder to notice.
+            const note = entryStatusNote(g.my_entry);
+            if (note) card.appendChild(note);
+            return card;
+          })
         : emptyWithLink("You haven't entered anything yet. ", '/index.html', 'Browse open giveaways', '.'));
     } catch (err) {
       mount(enteredGrid, errorNode(err.message));

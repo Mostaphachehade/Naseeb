@@ -53,3 +53,82 @@ jobs:
       # Postgres — the second writer loses with a duplicate-key error on
       # pg_type.
       - run: npm test
+
+  # The hostile-data browser run, as a required job of its own.
+  #
+  # It is separate from `test` because it needs a browser and takes minutes, and
+  # required because a security check that only runs when somebody remembers is
+  # not a check. It fails the build on a payload execution, an unexpected
+  # network request, a CSP violation or a JavaScript error.
+  browser-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: naseeb
+          POSTGRES_PASSWORD: naseeb
+          POSTGRES_DB: naseeb_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # The same guarded variable the local suite uses, so CI cannot reach a
+      # real database by construction. No production .env is ever present.
+      TEST_DATABASE_URL: postgresql://naseeb:naseeb@localhost:5432/naseeb_test
+      DATABASE_SSL: 'false'
+      APP_URL: http://localhost:3000
+      # Chromium is pinned to a published Playwright release rather than
+      # "whatever is current", so a browser change cannot silently alter what
+      # this job proves.
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.pw-browsers
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Pinned version. Update it deliberately, in a commit that says so.
+      - name: Install pinned Chromium
+        run: npx --yes playwright@1.55.0 install --with-deps chromium
+
+      - name: Prepare the isolated schema
+        run: node scripts/reset-test-db.js
+
+      # Proves the detector still reports red before the real run is trusted
+      # when it reports green. Inverted on purpose: this step FAILS if the
+      # injected payload is not caught.
+      - name: Self-test — the harness must fail on a real injection
+        run: |
+          if HOSTILE_SELFTEST=1 npm run test:browser-security; then
+            echo "::error::The hostile-data harness passed while live markup was injected. The detector is broken."
+            exit 1
+          fi
+          echo "Self-test behaved correctly: the injected payload was caught."
+
+      - name: Hostile-data browser run
+        run: npm run test:browser-security
+
+      # Only on failure, and only the harness's own report — which by
+      # construction contains no session cookie, CSRF token, claim token or
+      # delivery detail, because it never prints them. Fabricated data only.
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-security-report
+          path: .browser-security/
+          retention-days: 7
+          if-no-files-found: ignore

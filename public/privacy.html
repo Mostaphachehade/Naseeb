@@ -46,6 +46,12 @@
     <p class="u-a2aae0fb"><strong>Claiming a prize:</strong> if you win and choose to claim, the delivery details you provide — a name for delivery, a phone number, an address, and any delivery note. Nothing more: we do not ask for identity documents, dates of birth or payment details, and if a browser sends fields we did not ask for, they are discarded rather than stored.</p>
     <p class="u-a2aae0fb"><strong>Advertising with us:</strong> your business name, contact email, the banner and destination link you supply, and a record of the booking. Card details are handled by Stripe and never reach us.</p>
 
+    <p class="u-a2aae0fb"><strong>Entry integrity signals:</strong> when you enter a giveaway we record, alongside that entry, a one-way keyed hash of a <em>coarsened</em> version of your network address — an IPv4 /24 or an IPv6 /48, never the address itself. The raw address is never written to our database. The hash is keyed with a dedicated secret and with the current retention period, so it cannot be reversed to an address and stops matching across periods. We use it for one purpose: to notice when several accounts created in the last two days enter from the same network, or when entries arrive faster than a person clicking, so that an administrator can look. These are indicators, not conclusions, and nothing about them is automated: no signal disqualifies anyone, blocks an entry or restricts an account. We do not fingerprint your browser or device, do not use identity documents, facial recognition or biometrics, do not consult data brokers or people-search services, and do not track you across other sites.</p>
+
+    <h3>Entry review and disqualification</h3>
+    <p class="u-a2aae0fb">The platform enforces one entry per verified account per giveaway. It cannot verify that one account is one person, and it does not collect identity documents to try. If we have reason to think entries are not honest, an administrator — not an algorithm — may place an entry under review or disqualify it, and must record a written reason for doing so. Your entry is never deleted: the record that you entered, when, and under which account is preserved whatever the outcome, and a decision can be reversed with its own recorded reason.</p>
+    <p class="u-a2aae0fb">You can see the status of your own entry on the giveaway page and on your dashboard, together with the reason given if a decision was made about it. You will not be shown how the concern was detected, or anything about any other account.</p>
+
     <h3>What hosts see</h3>
     <p class="u-a2aae0fb">If you enter a giveaway, the host sees your display name and ticket number. Hosts never see your email address, your password, or anything about other giveaways you have entered.</p>
     <p class="u-a2aae0fb">If you win, nothing further is shared unless you choose to share it. On the claim page you decide whether to provide delivery details, and only if you explicitly consent are they passed to that one host — and only the fields needed to deliver something. We record which version of the consent wording you agreed to and when. If you do not claim, no delivery details exist and the host receives nothing.</p>
@@ -65,6 +71,8 @@
       <li><strong>Account, giveaway and entry data:</strong> retained while your account is active. A defined period after account closure is <em>to be confirmed</em>.</li>
       <li><strong>Host applications and advertising enquiries:</strong> retained for follow-up; a defined period is <em>to be confirmed</em>.</li>
       <li><strong>Payment records for advertising:</strong> retained as long as required for accounting and tax purposes — the applicable period is <em>to be confirmed</em>.</li>
+      <li><strong>Entry integrity signals</strong> (the hashed network indicator described above): deleted after 30 days by default, and the hash stops matching across periods regardless. Provisional.</li>
+      <li><strong>Entry integrity decisions</strong> (a review, a disqualification, a reinstatement, and the reason given): retained with the entry, because a decision about you that nobody can look back at is a decision you cannot contest.</li>
     </ul>
 
     <h3>Who else processes your data</h3>

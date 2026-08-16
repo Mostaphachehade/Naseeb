@@ -240,6 +240,112 @@ async function init() {
       UNIQUE(giveaway_id, user_id)
     );
 
+    -- Entry integrity.
+    --
+    -- The UNIQUE above is the whole of what this platform can enforce about
+    -- fairness: one entry per verified account per giveaway. It cannot enforce
+    -- one entry per human, because it has no way to know that two verified
+    -- accounts are two people — and the product does not collect identity
+    -- documents to find out. Everything below exists because "we cannot prove
+    -- it" and "we cannot review it" are different problems, and only the first
+    -- one is unavoidable.
+    --
+    -- An entry is never deleted to remove it from a draw. Deleting one destroys
+    -- the record that somebody entered, when, and under which account — which
+    -- is exactly the evidence a disputed disqualification turns on. The entry
+    -- stays; a status beside it decides whether it is drawn.
+    ALTER TABLE entries ADD COLUMN IF NOT EXISTS integrity_status TEXT NOT NULL DEFAULT 'eligible';
+    ALTER TABLE entries ADD COLUMN IF NOT EXISTS integrity_status_reason TEXT;
+    ALTER TABLE entries ADD COLUMN IF NOT EXISTS integrity_status_changed_at TIMESTAMPTZ;
+    ALTER TABLE entries ADD COLUMN IF NOT EXISTS integrity_status_changed_by TEXT REFERENCES users(id);
+
+    -- Only rows that predate the column, and only if something left the value
+    -- NULL. Deliberately not a blanket UPDATE: re-running this migration must
+    -- never restore a disqualified entry to the draw pool, and a WHERE clause
+    -- that matches every row would do exactly that on the next deploy.
+    UPDATE entries SET integrity_status = 'eligible' WHERE integrity_status IS NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_entries_integrity
+      ON entries(giveaway_id, integrity_status);
+
+    -- Append-only history of every integrity decision.
+    --
+    -- Holds a reason code for machines and a written reason for people. The
+    -- metadata column is for non-sensitive supporting facts only — signal
+    -- categories and counts. Never an IP address, never a session identifier,
+    -- never anything from a delivery address.
+    CREATE TABLE IF NOT EXISTS entry_integrity_events (
+      id TEXT PRIMARY KEY,
+      entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+      giveaway_id TEXT NOT NULL REFERENCES giveaways(id),
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      reason_code TEXT NOT NULL,
+      reason TEXT,
+      actor_user_id TEXT REFERENCES users(id),
+      actor_role TEXT NOT NULL,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_entry_integrity_events_entry
+      ON entry_integrity_events(entry_id, created_at);
+
+    -- Risk signals: indicators, never verdicts.
+    --
+    -- Nothing in this table changes an entry's status. It exists so a human has
+    -- something to look at, and it is built to hold as little as it can:
+    -- network_hmac is a keyed hash of a *normalised* address (an IPv4 /24 or an
+    -- IPv6 /48), salted with the current retention window, so the same address
+    -- hashes differently after the window turns over and rows from different
+    -- windows cannot be joined. The raw address is never written here, or
+    -- anywhere else — see server/lib/riskSignals.js.
+    CREATE TABLE IF NOT EXISTS entry_risk_signals (
+      id TEXT PRIMARY KEY,
+      entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+      giveaway_id TEXT NOT NULL REFERENCES giveaways(id),
+      signal_code TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'info',
+      network_hmac TEXT,
+      window_id TEXT,
+      detail JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_entry_risk_signals_entry ON entry_risk_signals(entry_id);
+    CREATE INDEX IF NOT EXISTS idx_entry_risk_signals_expiry ON entry_risk_signals(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_entry_risk_signals_network
+      ON entry_risk_signals(network_hmac, created_at) WHERE network_hmac IS NOT NULL;
+
+    -- An integrity case is a piece of work for an administrator.
+    --
+    -- Post-draw cases are the reason this is a table rather than a status: once
+    -- a winner exists, a report of abuse must not quietly replace them. The case
+    -- pauses fulfilment, records what was alleged and what was decided, and
+    -- leaves the winner and their claim exactly where they were.
+    CREATE TABLE IF NOT EXISTS entry_integrity_cases (
+      id TEXT PRIMARY KEY,
+      giveaway_id TEXT NOT NULL REFERENCES giveaways(id),
+      entry_id TEXT REFERENCES entries(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'open',
+      post_draw BOOLEAN NOT NULL DEFAULT FALSE,
+      opened_reason TEXT NOT NULL,
+      opened_by TEXT REFERENCES users(id),
+      opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolution TEXT,
+      resolution_reason TEXT,
+      resolved_by TEXT REFERENCES users(id),
+      resolved_at TIMESTAMPTZ
+    );
+    -- One open case per entry, and one open unattached case per giveaway.
+    -- Opening the same case twice is then a no-op rather than a duplicate queue
+    -- item, which is what makes the endpoint idempotent under a double-click.
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_integrity_case_open_entry
+      ON entry_integrity_cases(entry_id) WHERE status = 'open' AND entry_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_integrity_case_open_giveaway
+      ON entry_integrity_cases(giveaway_id) WHERE status = 'open' AND entry_id IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_integrity_cases_open
+      ON entry_integrity_cases(giveaway_id, status);
+
     -- Applications to host during the private beta.
     --
     -- This table used to be lead capture for three paid plans that were
@@ -327,7 +433,69 @@ async function init() {
         ALTER TABLE host_applications ADD CONSTRAINT host_applications_status_valid
           CHECK (status IN ('pending', 'approved', 'rejected', 'withdrawn'));
       END IF;
+      -- The draw reads integrity_status = 'eligible'. An invented sixth value
+      -- would silently drop entries out of the pool with nothing to notice it,
+      -- so the set is closed in the database too.
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entries_integrity_status_valid') THEN
+        ALTER TABLE entries ADD CONSTRAINT entries_integrity_status_valid
+          CHECK (integrity_status IN ('eligible', 'under_review', 'disqualified'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_integrity_events_status_valid') THEN
+        ALTER TABLE entry_integrity_events ADD CONSTRAINT entry_integrity_events_status_valid
+          CHECK (
+            to_status IN ('eligible', 'under_review', 'disqualified')
+            AND (from_status IS NULL OR from_status IN ('eligible', 'under_review', 'disqualified'))
+          );
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_integrity_events_actor_valid') THEN
+        ALTER TABLE entry_integrity_events ADD CONSTRAINT entry_integrity_events_actor_valid
+          CHECK (actor_role IN ('admin', 'system'));
+      END IF;
+      -- A restrictive decision or a reinstatement without a written reason is
+      -- unreviewable later, so the requirement is a constraint rather than a
+      -- validation somebody can forget to call. 'system' rows are the automatic
+      -- ones and carry a code instead.
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_integrity_events_reason_required') THEN
+        ALTER TABLE entry_integrity_events ADD CONSTRAINT entry_integrity_events_reason_required
+          CHECK (actor_role <> 'admin' OR (reason IS NOT NULL AND length(btrim(reason)) >= 3));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_risk_signals_severity_valid') THEN
+        ALTER TABLE entry_risk_signals ADD CONSTRAINT entry_risk_signals_severity_valid
+          CHECK (severity IN ('info', 'review'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_integrity_cases_status_valid') THEN
+        ALTER TABLE entry_integrity_cases ADD CONSTRAINT entry_integrity_cases_status_valid
+          CHECK (
+            status IN ('open', 'resolved')
+            AND (
+              status = 'open'
+              OR (resolution IN ('reinstated', 'upheld', 'no_action')
+                  AND resolution_reason IS NOT NULL
+                  AND length(btrim(resolution_reason)) >= 3)
+            )
+          );
+      END IF;
     END $$;
+
+    -- The integrity history cannot be rewritten, and that is enforced here
+    -- rather than by convention. Application code that never issues an UPDATE is
+    -- one refactor away from issuing one; a trigger is not.
+    --
+    -- UPDATE only. A row can still disappear, but only by cascade from the entry
+    -- it describes — so the trail and the thing it is a trail of live and die
+    -- together, and erasing an account cannot leave orphaned findings about it.
+    -- Nothing in the application deletes an entry.
+    CREATE OR REPLACE FUNCTION entry_integrity_events_append_only()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      RAISE EXCEPTION 'entry_integrity_events is append-only; % is not permitted', TG_OP;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS entry_integrity_events_no_update ON entry_integrity_events;
+    CREATE TRIGGER entry_integrity_events_no_update
+      BEFORE UPDATE ON entry_integrity_events
+      FOR EACH ROW EXECUTE FUNCTION entry_integrity_events_append_only();
 
     -- Backfill: accounts that were already hosting when approval was introduced.
     --

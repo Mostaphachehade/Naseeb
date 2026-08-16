@@ -7,7 +7,11 @@ There is no payment flow anywhere in this codebase, by design. Every giveaway mu
 - disclose who is funding the prize (`funded_by`, shown publicly — the point is that the
   prize is a marketing/promotional cost carried by the host, not something paid for by entrants)
 - draw a winner only after the entry deadline, uniformly at random from all entries
-- limit each person to one entry, so no one can pay or otherwise "buy" better odds
+- limit each **verified account** to one entry per giveaway, so no one can pay or otherwise
+  "buy" better odds. That is what the database enforces; it is not a claim that one account
+  is one person, and the product does not collect identity documents to find out. Suspected
+  multi-accounting is reviewed by an administrator, with a reason, on the record — see
+  `docs/ENTRY_INTEGRITY.md`.
 
 **Hosting is a closed beta.** Entering is open to anyone with a verified email; publishing a
 giveaway is not. An account must be approved by an administrator, and access can be suspended
@@ -123,6 +127,9 @@ naseeb/
     lib/claimRescue.js         # admin takeover of a suspended host's open claims
     lib/securityHeaders.js     # THE CSP and every other security header — see docs/CSP.md
     lib/mediaUrls.js           # media origin allowlist, shared by URL validation and img-src
+    lib/entryIntegrity.js      # entry status, decisions and the draw pool — see docs/ENTRY_INTEGRITY.md
+    lib/riskSignals.js         # privacy-minimised abuse indicators; never a verdict
+    lib/proxyTrust.js          # how much of X-Forwarded-For is believed
     routes/config.js           # exposes non-secret Cloudinary config to the frontend
   public/
     index.html            # browse giveaways
@@ -248,7 +255,7 @@ Two suites hold this in place, and they check different things:
 
 ```bash
 npm test                                   # includes the static + validator guards
-TEST_DATABASE_URL=… node test/browser-hostile-data.js   # real Chromium, hostile data
+TEST_DATABASE_URL=… npm run test:browser-security          # real Chromium, hostile data
 ```
 
 The second seeds a fabricated payload into **every** field a person can type into — 43
@@ -261,6 +268,42 @@ still reports red before trusting it when it reports green.
 `docs/CSP.md` is the whole policy: every external origin and why it is there, the other
 seven security headers, the media-URL rejection rules, how to add an asset without
 weakening anything, and the limitations that stand.
+
+## Entry integrity
+
+**One entry per verified account per giveaway.** That is a `UNIQUE` index and it is
+enforced. It is **not** one entry per person: nothing here can tell two verified accounts
+apart from two people, and the product does not collect identity documents to find out.
+Every public page now says the enforceable thing rather than the flattering one.
+
+What exists for the gap between those two statements:
+
+- `entries.integrity_status` — `eligible` / `under_review` / `disqualified`, closed by a
+  CHECK constraint. **An entry is never deleted to disqualify it**; the row, its time, its
+  account and its giveaway survive every outcome.
+- An append-only history (`entry_integrity_events`, `BEFORE UPDATE` trigger) recording the
+  previous and new status, a reason code, the written reason, the actor and a timestamp.
+- Only a database-confirmed administrator decides, re-read from `users.is_admin` inside
+  the transaction. A role, actor id or risk score in the request body is ignored. A host
+  may *flag* an entry on their own giveaway; they cannot change its status.
+- The draw uses eligible entries only, and **fails closed** with `409` while any entry is
+  under review or any integrity case is open.
+- After a winner exists, an allegation opens a case that **pauses fulfilment**. The winner
+  and their claim are preserved. Replacing or redrawing a winner is not implemented and
+  needs the owner and counsel before it is.
+
+Risk signals are indicators for a human and **never disqualify anybody**. No raw IP
+address is stored: a coarse prefix (IPv4 /24, IPv6 /48) is HMAC'd with
+`INTEGRITY_SIGNAL_SECRET` and the current retention window, so the value cannot be
+reversed and stops matching once the window turns over. No fingerprinting, no identity
+documents, no data brokers, no cross-site tracking.
+
+`TRUSTED_PROXY_HOPS` decides how much of `X-Forwarded-For` is believed — `0` by default,
+`1` on Render, validated at startup. Too high and every rate limit becomes spoofable.
+
+`docs/ENTRY_INTEGRITY.md` has the audit of what the system guaranteed before, the exact
+transition rules, the draw and locking behaviour, the post-draw model, the signal
+definitions and retention, and what is still open.
 
 ## Environment variables
 

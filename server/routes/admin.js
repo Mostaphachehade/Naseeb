@@ -6,6 +6,8 @@ const { getAllSettings, setSetting } = require('../lib/settings');
 const { HOST_STATUS, ADMIN_SETTABLE, setHostStatus } = require('../lib/hostAccess');
 const sessions = require('../lib/sessions');
 const { validateMediaUrl, validateExternalLinkUrl } = require('../lib/mediaUrls');
+const integrity = require('../lib/entryIntegrity');
+const riskSignals = require('../lib/riskSignals');
 
 // Account status is authentication; host status is authorization. Two columns,
 // two routes, and deliberately no path that changes one as a side effect of the
@@ -778,6 +780,307 @@ router.get('/revenue', requireAdmin, async (req, res) => {
       by_month: byMonth.rows.map((r) => ({ month: r.month, bookings: r.bookings, revenue_aed: Number(r.revenue) })),
       recent_bookings: recentBookings.rows,
     });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Entry integrity
+// ---------------------------------------------------------------------------
+
+// The queue: what needs a decision, and nothing else.
+//
+// Carries no network hash, no email address, no session or CSRF token, no
+// delivery detail, and no free text an entrant wrote. Signal *categories* and a
+// count — enough to decide which row to open, not enough to be a surveillance
+// screen somebody leaves up all day.
+router.get('/integrity/queue', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         e.id AS entry_id,
+         e.ticket_number,
+         e.integrity_status,
+         e.created_at AS entered_at,
+         g.id AS giveaway_id,
+         g.title AS giveaway_title,
+         g.status AS giveaway_status,
+         (g.winner_entry_id = e.id) AS is_winner,
+         u.id AS account_id,
+         u.created_at AS account_created_at,
+         c.id AS case_id,
+         c.status AS case_status,
+         c.post_draw AS case_post_draw,
+         c.opened_at AS case_opened_at,
+         COALESCE(
+           (SELECT json_agg(DISTINCT s.signal_code)
+              FROM entry_risk_signals s
+             WHERE s.entry_id = e.id AND s.severity = 'review'),
+           '[]'::json
+         ) AS signal_categories
+       FROM entries e
+       JOIN giveaways g ON g.id = e.giveaway_id
+       JOIN users u ON u.id = e.user_id
+       LEFT JOIN entry_integrity_cases c ON c.entry_id = e.id AND c.status = 'open'
+      WHERE e.integrity_status <> 'eligible'
+         OR c.id IS NOT NULL
+         OR EXISTS (
+              SELECT 1 FROM entry_risk_signals s2
+               WHERE s2.entry_id = e.id AND s2.severity = 'review'
+            )
+      ORDER BY (c.id IS NOT NULL) DESC, e.created_at DESC
+      LIMIT 200`
+    );
+
+    res.json(
+      result.rows.map((row) => ({
+        entry_id: row.entry_id,
+        ticket_number: row.ticket_number,
+        status: row.integrity_status,
+        entered_at: row.entered_at,
+        giveaway_id: row.giveaway_id,
+        giveaway_title: row.giveaway_title,
+        giveaway_status: row.giveaway_status,
+        is_winner: Boolean(row.is_winner),
+        // An account reference, not an identity. The queue never carries the
+        // entrant's name or email; opening the entry is what shows who it is.
+        account_ref: String(row.account_id).slice(0, 8),
+        account_age_days: Math.floor(
+          (Date.now() - new Date(row.account_created_at).getTime()) / 86400000
+        ),
+        signal_categories: row.signal_categories,
+        case_id: row.case_id,
+        case_open: Boolean(row.case_id),
+        case_post_draw: Boolean(row.case_post_draw),
+        case_opened_at: row.case_opened_at,
+      }))
+    );
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// One entry, opened deliberately. Never part of a list response.
+//
+// This is where the detail lives: the account behind the entry, the full signal
+// list, the decision history. `no-store` because it is exactly the sort of
+// screen that should not sit in a shared browser cache or a proxy.
+router.get('/integrity/entries/:entryId', requireAdmin, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+
+    const entryRes = await pool.query(
+      `SELECT e.*, g.title AS giveaway_title, g.status AS giveaway_status,
+              g.winner_entry_id, u.name AS account_name, u.email AS account_email,
+              u.created_at AS account_created_at, u.email_verified
+         FROM entries e
+         JOIN giveaways g ON g.id = e.giveaway_id
+         JOIN users u ON u.id = e.user_id
+        WHERE e.id = $1`,
+      [req.params.entryId]
+    );
+    const entry = entryRes.rows[0];
+    if (!entry) return res.status(404).json({ error: 'That entry does not exist.' });
+
+    const [signalsRes, historyRes, casesRes] = await Promise.all([
+      pool.query(
+        `SELECT signal_code, severity, detail, created_at, expires_at
+           FROM entry_risk_signals WHERE entry_id = $1 ORDER BY created_at DESC`,
+        [req.params.entryId]
+      ),
+      pool.query(
+        `SELECT ev.from_status, ev.to_status, ev.reason_code, ev.reason, ev.actor_role,
+                ev.metadata, ev.created_at, actor.name AS actor_name
+           FROM entry_integrity_events ev
+           LEFT JOIN users actor ON actor.id = ev.actor_user_id
+          WHERE ev.entry_id = $1 ORDER BY ev.created_at`,
+        [req.params.entryId]
+      ),
+      pool.query(
+        `SELECT id, status, post_draw, opened_reason, opened_at, resolution,
+                resolution_reason, resolved_at
+           FROM entry_integrity_cases WHERE entry_id = $1 ORDER BY opened_at DESC`,
+        [req.params.entryId]
+      ),
+    ]);
+
+    res.json({
+      entry: {
+        id: entry.id,
+        ticket_number: entry.ticket_number,
+        entered_at: entry.created_at,
+        status: entry.integrity_status,
+        status_reason: entry.integrity_status_reason,
+        is_winner: entry.winner_entry_id === entry.id,
+      },
+      giveaway: {
+        id: entry.giveaway_id,
+        title: entry.giveaway_title,
+        status: entry.giveaway_status,
+      },
+      account: {
+        name: entry.account_name,
+        email: entry.account_email,
+        email_verified: entry.email_verified,
+        created_at: entry.account_created_at,
+      },
+      // The network hash is never in this response. It is a join key, and a join
+      // key handed to a browser is a correlation tool nobody asked for; the
+      // count it produced is the part an administrator can actually use.
+      signals: signalsRes.rows.map((s) => ({
+        code: s.signal_code,
+        severity: s.severity,
+        detail: s.detail,
+        observed_at: s.created_at,
+        expires_at: s.expires_at,
+      })),
+      history: historyRes.rows,
+      cases: casesRes.rows,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// The decision. One route for all three outcomes, because they are the same
+// act with a different destination and should share every guard.
+router.post('/integrity/entries/:entryId/status', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    // Only the destination and the reason are read from the body. A role, an
+    // actor id or a risk score sent by the client is ignored — the actor is the
+    // session, and the administrator check is a fresh read of users.is_admin
+    // inside this transaction.
+    const { status, reason } = req.body || {};
+
+    await client.query('BEGIN');
+    const result = await integrity.setStatus(client, {
+      entryId: req.params.entryId,
+      toStatus: status,
+      reason,
+      actorUserId: req.userId,
+    });
+    await client.query('COMMIT');
+
+    res.json({
+      entry_id: req.params.entryId,
+      status: result.status,
+      changed: result.changed,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err instanceof integrity.IntegrityError) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
+  }
+});
+
+// Opening a case after a winner exists.
+//
+// This is the whole post-draw story: it does not replace the winner, does not
+// redraw, and does not touch the claim. It pauses fulfilment and puts the
+// decision in front of a person. Replacing a winner is a policy this codebase
+// does not have, and inventing one here would be inventing it for the owner.
+router.post('/integrity/cases', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { giveaway_id: giveawayId, entry_id: entryId, reason } = req.body || {};
+    if (!giveawayId) {
+      return res.status(400).json({ error: 'A giveaway is required.', code: 'GIVEAWAY_REQUIRED' });
+    }
+
+    await client.query('BEGIN');
+
+    const giveawayRes = await client.query(
+      'SELECT id, status, winner_entry_id FROM giveaways WHERE id = $1 FOR UPDATE',
+      [giveawayId]
+    );
+    const giveaway = giveawayRes.rows[0];
+    if (!giveaway) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'That giveaway does not exist.' });
+    }
+
+    if (entryId) {
+      const entryRes = await client.query(
+        'SELECT id FROM entries WHERE id = $1 AND giveaway_id = $2',
+        [entryId, giveawayId]
+      );
+      if (!entryRes.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'That entry is not part of this giveaway.' });
+      }
+    }
+
+    const opened = await integrity.openCase(client, {
+      giveawayId,
+      entryId: entryId || null,
+      reason,
+      actorUserId: req.userId,
+      postDraw: giveaway.status === 'drawn',
+    });
+
+    await client.query('COMMIT');
+    res.status(opened.created ? 201 : 200).json({
+      case: opened.case,
+      created: opened.created,
+      // Said explicitly in the response so nobody has to infer it from silence.
+      winner_unchanged: true,
+      fulfilment_paused: true,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err instanceof integrity.IntegrityError) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/integrity/cases/:caseId/resolve', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { resolution, reason } = req.body || {};
+
+    await client.query('BEGIN');
+    const result = await integrity.resolveCase(client, {
+      caseId: req.params.caseId,
+      resolution,
+      reason,
+      actorUserId: req.userId,
+    });
+    await client.query('COMMIT');
+
+    res.json({ case: result.case, changed: result.changed });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err instanceof integrity.IntegrityError) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
+  }
+});
+
+// Retention, on demand. Idempotent: running it twice deletes nothing the second
+// time. There is no scheduler behind it yet — see docs/ENTRY_INTEGRITY.md §9.
+router.post('/integrity/signals/purge', requireAdmin, async (req, res) => {
+  try {
+    const removed = await riskSignals.purgeExpiredSignals(pool);
+    res.json({ removed, retention_days: riskSignals.retentionDays() });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });

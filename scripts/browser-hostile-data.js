@@ -13,16 +13,18 @@
 // Every payload family carries a distinct marker, so a hit names the field it
 // came from rather than "something somewhere executed".
 //
-// Not part of `npm test`: it drives a browser and takes minutes. Run it against
-// the isolated database with
+// Not part of `npm test`, and deliberately outside test/ so the node test
+// runner does not pick it up: it drives a browser and takes minutes. CI runs it
+// as its own required job. Run it against the isolated database with
 //
-//   TEST_DATABASE_URL=… node test/browser-hostile-data.js
+//   TEST_DATABASE_URL=… npm run test:browser-security
 //
 // Everything it writes is fabricated and deleted afterwards.
 const http = require('http');
 const crypto = require('node:crypto');
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 const ROOT = path.join(__dirname, '..');
 const { configureTestEnv } = require(path.join(ROOT, 'testEnv'));
@@ -43,7 +45,34 @@ const { encryptDeliveryDetails } = require(path.join(ROOT, 'server', 'lib', 'cla
 
 const APP_PORT = 45021;
 const PROXY_PORT = 45022;
-const CHROME = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
+// Resolved rather than hard-coded, so the same command works on a developer's
+// machine and on a CI runner that installed a pinned Playwright Chromium.
+// headless_shell is preferred over the full chrome binary: --dump-dom on full
+// Chrome needs an explicit --headless=new and produces an empty document
+// without it, which reads exactly like a crashed page.
+function resolveChrome() {
+  if (process.env.CHROME_PATH) return { bin: process.env.CHROME_PATH, needsHeadlessFlag: true };
+  const roots = [process.env.PLAYWRIGHT_BROWSERS_PATH, '/opt/pw-browsers'].filter(Boolean);
+  const found = [];
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    for (const dir of fs.readdirSync(root).filter((d) => d.startsWith('chromium'))) {
+      for (const name of ['headless_shell', 'chrome']) {
+        const candidate = path.join(root, dir, 'chrome-linux', name);
+        if (fs.existsSync(candidate)) found.push({ bin: candidate, needsHeadlessFlag: name === 'chrome' });
+      }
+    }
+  }
+  const shell = found.find((f) => !f.needsHeadlessFlag);
+  const chosen = shell || found[0];
+  if (!chosen) {
+    throw new Error(
+      'No Chromium found. Set CHROME_PATH, or install one with: npx playwright install chromium'
+    );
+  }
+  return chosen;
+}
+const { bin: CHROME, needsHeadlessFlag: CHROME_NEEDS_HEADLESS } = resolveChrome();
 
 // ---------------------------------------------------------------------------
 // Payload families
@@ -261,6 +290,7 @@ function proxyRequest(req, res) {
 function visit(url, clickSelectors) {
   return new Promise((resolve) => {
     const child = spawn(CHROME, [
+      ...(CHROME_NEEDS_HEADLESS ? ['--headless=new'] : []),
       '--no-sandbox', '--disable-gpu', '--no-proxy-server',
       // No egress from this container. Failing external fetches fast keeps the
       // load event from waiting on a timeout; a payload aimed at our own
@@ -638,6 +668,42 @@ async function unseed() {
   console.log(`unexpected requests: ${beaconHits.length}`);
   console.log(`CSP violations: ${results.reduce((n, r) => n + ((r.report && r.report.violations) || []).length, 0)}`);
   console.log(`JavaScript errors: ${results.reduce((n, r) => n + ((r.report && r.report.errors) || []).length, 0)}`);
+
+  // Diagnostics, only when something failed, and only what this harness
+  // produced: page labels, probe reports, console refusals and beacon paths.
+  // No cookie, no CSRF token, no claim token and no delivery detail ever passes
+  // through here — the cookies live in a local variable that is never printed,
+  // and every value seeded is fabricated.
+  if (failures) {
+    const dir = path.join(ROOT, '.browser-security');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'report.json'),
+      JSON.stringify(
+        {
+          generated_from: 'test/browser-hostile-data.js',
+          note: 'Fabricated data only. Contains no credentials, tokens or delivery details.',
+          surfaces: planted.map((p) => ({ surface: p.surface, family: p.family })),
+          pages: results.map((r) => ({
+            label: r.label,
+            // Path only. The query strings and fragments here hold fabricated
+            // payloads rather than real tokens, but an artifact containing the
+            // literal text "token=…" is one somebody has to read carefully
+            // before believing, and that is a cost with no benefit.
+            path: r.urlPath.split(/[?#]/)[0],
+            dom_bytes: r.domBytes,
+            payloads_rendered: r.visible,
+            report: r.report,
+            console: r.consoleRefusals,
+            beacons: r.newBeacons,
+          })),
+        },
+        null,
+        2
+      )
+    );
+    console.log(`\nDiagnostics written to ${path.relative(ROOT, dir)}/report.json`);
+  }
 
   await unseed();
   server.close();

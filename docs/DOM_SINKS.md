@@ -9,7 +9,7 @@ node scripts/dom-sink-inventory.js --json   # machine-readable
 ```
 
 `test/dom-safety.test.js` is what fails if a forbidden sink reappears;
-`test/browser-hostile-data.js` is what proves the pages actually behave that way
+`scripts/browser-hostile-data.js` is what proves the pages actually behave that way
 with hostile data in every field.
 
 ---
@@ -44,7 +44,7 @@ built server-side in `server/app.js` with `<` escaped to `<`.
 
 The sinks are gone, but the data did not become less hostile, so this is the
 list of what now flows into `textContent` and the validators. Every one of these
-is exercised with a distinct marker by `test/browser-hostile-data.js`.
+is exercised with a distinct marker by `scripts/browser-hostile-data.js`.
 
 | Surface | Source | Rendered by | Context |
 |---|---|---|---|
@@ -166,7 +166,7 @@ so a row written before the validation existed cannot be honoured later.
 ## 5. What is still true after all this
 
 - **An injected element still cannot execute, and an executing script still acts
-  as the user.** The self-test in `test/browser-hostile-data.js` injects live
+  as the user.** The self-test in `scripts/browser-hostile-data.js` injects live
   markup on purpose: the element appears, the form appears, a beacon request
   fires — and the inline `onerror` is refused by `script-src-attr 'none'`. Two
   independent layers, and the run reports which one caught it.

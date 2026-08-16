@@ -19,13 +19,21 @@ const claimRoutes = require('./routes/claims');
 const { csrfProtection } = require('./lib/csrf');
 const { securityHeaders } = require('./lib/securityHeaders');
 const { isRenderableMediaUrl } = require('./lib/mediaUrls');
+const { resolveTrustProxy } = require('./lib/proxyTrust');
 
 const app = express();
 
-// Render terminates TLS and proxies every request — without this, req.ip
-// collapses to the proxy's address for all traffic, and the rate limiters
-// end up sharing one bucket across every visitor instead of per-IP.
-app.set('trust proxy', 1);
+// How many proxies sit in front of this process, and therefore how much of
+// X-Forwarded-For may be believed.
+//
+// This used to be a hard-coded 1, which is correct on Render and wrong
+// everywhere else: run the same code with no proxy in front and a client can
+// write its own X-Forwarded-For, mint a fresh rate-limit identity per request,
+// and walk through every limiter on the site. The number is now configuration
+// with a fail-closed default of 0, validated at startup. See
+// server/lib/proxyTrust.js for the arithmetic and docs/ENTRY_INTEGRITY.md §7.
+const trustProxy = resolveTrustProxy();
+app.set('trust proxy', trustProxy.value);
 
 // Every security header, on every response this process produces — including
 // API errors, the 404 page and the dynamically rendered giveaway page. Mounted

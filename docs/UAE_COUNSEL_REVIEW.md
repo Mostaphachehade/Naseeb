@@ -113,6 +113,43 @@ cannot verify one account per person. **We need advice on whether that is an ade
 fairness statement**, or whether stronger identity controls are required — and whether
 those controls would themselves create data-protection obligations.
 
+**Added in the entry-integrity phase.** There is now a review-and-disqualification
+workflow: an administrator, never an algorithm, may place an entry under review or
+disqualify it, with a written reason, and the entry itself is preserved whatever the
+outcome. Three questions follow from that:
+
+- **Is a written administrator reason, shown to the entrant, an adequate basis for
+  excluding them from a prize draw** under UAE consumer-protection expectations — or is
+  something more formal (notice period, appeal route, defined evidential standard)
+  required?
+- **What must happen when abuse is credibly alleged after a winner has been drawn?** The
+  platform deliberately does *not* replace a winner, cancel a prize or redraw: it pauses
+  fulfilment, records the case and waits for a human decision. **We need advice on
+  whether any replacement or redraw policy is lawful here at all**, and if so what notice
+  and evidence it requires, before such a policy is written.
+- **Does the review workflow itself need to be described in the Terms**, and in what
+  words, so that "entries obtained by holding several accounts may be voided" is
+  enforceable rather than decorative?
+
+### B9a. Entry-integrity signals and PDPL
+When somebody enters a giveaway, the platform stores a one-way keyed hash of a coarsened
+network address (IPv4 /24, IPv6 /48) beside the entry. The raw address is never written
+anywhere. The hash is keyed with a dedicated secret and with the current retention window,
+so it cannot be reversed and stops matching across windows; the default retention is 30
+days. It feeds two indicators — several recently created accounts on one network, and
+unusually rapid entries — which surface an entry to an administrator and nothing else. No
+automated decision is taken from them.
+
+**We need advice on:**
+
+- whether a keyed, window-scoped hash of a coarsened network prefix is **personal data**
+  in this context, and if so what lawful basis and notice apply;
+- whether 30 days is a defensible retention period for it;
+- whether the "no automated decision-making" position is correctly maintained given that
+  a signal is what puts a human in front of the entry;
+- whether the privacy-policy wording added for this (draft, "What we collect" and "Entry
+  review and disqualification") is adequate.
+
 ### B10. Age
 The Terms require entrants to be 18+, but signup does not currently ask for or record an
 age confirmation. **We need advice on what confirmation is required**, and whether

@@ -11,7 +11,8 @@
     "test:db:start": "scripts/test-db.sh start",
     "test:db:stop": "scripts/test-db.sh stop",
     "test:db:destroy": "scripts/test-db.sh destroy",
-    "db:init": "node -e \"require('./server/db').init().then(() => process.exit(0))\""
+    "db:init": "node -e \"require('./server/db').init().then(() => process.exit(0))\"",
+    "test:browser-security": "node scripts/browser-hostile-data.js"
   },
   "dependencies": {
     "@sentry/node": "^10.68.0",

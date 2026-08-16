@@ -21,6 +21,8 @@ const { isAdsCheckoutEnabled, areClaimsEnabled } = require('./lib/featureFlags')
 const { isConfigured: isClaimEncryptionConfigured } = require('./lib/claimCrypto');
 const claimScheduler = require('./lib/claimScheduler');
 const sessions = require('./lib/sessions');
+const riskSignals = require('./lib/riskSignals');
+const { resolveTrustProxy } = require('./lib/proxyTrust');
 
 // A rejected promise nobody awaited terminates the process on modern Node.
 // Most of this codebase awaits everything, but a background send or a
@@ -103,9 +105,45 @@ function assertSessionConfiguration() {
   console.error(`WARNING: ${message}`);
 }
 
+// The integrity signal secret keys the network hashes. A missing or weak one in
+// production would make those hashes guessable, which turns "we cannot reverse
+// this" into "anybody who knows the scheme can test addresses against it". The
+// proxy configuration is checked in the same breath because a limiter that can
+// be given a new identity per request is not a limiter.
+function assertIntegrityConfiguration() {
+  const problems = [];
+
+  try {
+    riskSignals.assertSignalSecret();
+  } catch (err) {
+    problems.push(err.message);
+  }
+
+  try {
+    const trust = resolveTrustProxy();
+    if (process.env.NODE_ENV === 'production' && trust.source === 'default') {
+      console.log(
+        `Proxy trust: ${trust.description} (TRUSTED_PROXY_HOPS is unset; 1 is the value Render needs).`
+      );
+    }
+  } catch (err) {
+    problems.push(err.message);
+  }
+
+  if (problems.length === 0) return;
+
+  const message = `Entry-integrity configuration is not safe:\n  - ${problems.join('\n  - ')}`;
+  if (process.env.NODE_ENV === 'production') {
+    console.error(`${message}\nRefusing to start.`);
+    process.exit(1);
+  }
+  console.error(`WARNING: ${message}`);
+}
+
 assertPaymentConfiguration();
 assertClaimConfiguration();
 assertSessionConfiguration();
+assertIntegrityConfiguration();
 
 // Runs after init(), which is what creates the constraint when it can. If it
 // still isn't there afterwards, the migration declined to add it — almost

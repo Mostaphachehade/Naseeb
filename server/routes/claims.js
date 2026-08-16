@@ -15,6 +15,7 @@ const claimEvents = require('../lib/claimEvents');
 const { isConfigured: isEncryptionConfigured } = require('../lib/claimCrypto');
 const { areClaimsEnabled } = require('../lib/featureFlags');
 const notifications = require('../lib/claimNotifications');
+const integrity = require('../lib/entryIntegrity');
 const { runMaintenanceOnce } = require('../lib/claimScheduler');
 
 const router = express.Router();
@@ -340,6 +341,21 @@ router.post('/:id/transition', claimActionLimiter, requireAuth, async (req, res)
       return res.status(403).json({ error: "You don't have access to this claim." });
     }
 
+    // Fulfilment pauses while an integrity case is open on this giveaway.
+    //
+    // The winner is not replaced, the claim is not cancelled and nothing is
+    // redrawn — the delivery simply does not advance until a human has decided.
+    // Raising a dispute stays available on purpose: pausing the process must not
+    // also mute the person waiting on it.
+    if (to !== STATES.DISPUTED && (await integrity.hasOpenCase(client, existing.giveaway_id))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error:
+          'This giveaway is under integrity review. Delivery steps are paused until an administrator resolves it — the winner and this claim are unchanged.',
+        code: 'INTEGRITY_REVIEW_OPEN',
+      });
+    }
+
     // A dispute and an admin resolution both have to say why. An unexplained
     // dispute is unresolvable, and an unexplained resolution is unauditable.
     const needsReason =
@@ -605,7 +621,23 @@ router.post('/:id/rescue/transition', claimActionLimiter, requireAdmin, async (r
 
     // Throws 403/409 with a code. Does not consult the queue: a queue row is
     // work to do, not a permission.
-    await rescue.assertRescueAllowed(client, { claimId: req.params.id, adminUserId: req.userId });
+    const allowed = await rescue.assertRescueAllowed(client, {
+      claimId: req.params.id,
+      adminUserId: req.userId,
+    });
+
+    // The rescue path is a fulfilment step too, so an open integrity case pauses
+    // it for the same reason it pauses the host's own steps. An administrator
+    // acting for an absent host is still shipping a prize that is under review.
+    const claimRow = await claims.getClaimById(client, req.params.id);
+    if (claimRow && (await integrity.hasOpenCase(client, claimRow.giveaway_id))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error:
+          'This giveaway is under integrity review. Fulfilment is paused until an administrator resolves it.',
+        code: 'INTEGRITY_REVIEW_OPEN',
+      });
+    }
 
     const { claim } = await claims.transition(client, {
       claimId: req.params.id,

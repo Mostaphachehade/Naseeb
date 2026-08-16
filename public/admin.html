@@ -25,6 +25,7 @@
     <nav class="admin-nav">
       <a href="#overview">Overview</a>
       <a href="#applications">Applications</a>
+      <a href="#integrity">Entry integrity</a>
       <a href="#rescue">Suspended-host claims</a>
       <a href="#ad-inquiries">Ad inquiries</a>
       <a href="#ads-section">Ads</a>
@@ -97,6 +98,20 @@
          out. Deliberately shows the minimum — what it is, how old, and what
          needs doing. Delivery details are NOT in this list; opening an
          individual case fetches them separately. -->
+    <!-- Entries that need a decision: anything already under review or
+         disqualified, anything with an open case, and anything a signal
+         suggested looking at. Signals are indicators, never verdicts — nothing
+         on this platform disqualifies anybody automatically, and the queue
+         shows categories rather than the detection data behind them. Opening a
+         row is a deliberate act and fetches the detail separately. -->
+    <div class="section-head" id="integrity">
+      <div>
+        <h2>Entry integrity</h2>
+        <p>The platform enforces one entry per verified account per giveaway. It cannot tell whether two verified accounts are two people, and it does not collect identity documents to find out — so anything beyond that constraint is a judgement you make, with a reason, on the record. Disqualifying an entry never deletes it.</p>
+      </div>
+    </div>
+    <div id="integrity-content" class="u-1e0e3812"><p>Loading…</p></div>
+
     <!-- Opened automatically inside the suspension transaction. A winner is
          never expected to notice that their host went away, and is never asked
          to raise a dispute to get a delivery moving again. No delivery details

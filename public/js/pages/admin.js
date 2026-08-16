@@ -1100,8 +1100,275 @@
     }
   }
 
+  // ------------------------------------------------------------------
+  // Entry integrity
+  // ------------------------------------------------------------------
+
+  const INTEGRITY_STATUS_LABELS = {
+    eligible: 'Eligible',
+    under_review: 'Under review',
+    disqualified: 'Disqualified',
+  };
+
+  // What each signal category means in words, next to the signal itself, so a
+  // reviewer is reminded that a shared network is usually a household.
+  const SIGNAL_LABELS = {
+    shared_network_new_accounts: 'Several new accounts, one network',
+    rapid_entry_velocity: 'Rapid entries from one network',
+  };
+
+  function integrityRow(r) {
+    const detailCell = el('td', { colSpan: 6 });
+    const detailRow = el('tr', { class: 'u-c8be1ccb is-hidden' }, detailCell);
+
+    const openBtn = el('button', {
+      class: 'btn ghost u-51820e15',
+      text: 'Open',
+      on: { click: () => openIntegrityEntry(r.entry_id, detailRow, detailCell) },
+    });
+
+    const signals = (r.signal_categories || []).map((code) =>
+      pill(SIGNAL_LABELS[code] || code)
+    );
+
+    return [
+      el('tr', {}, [
+        tdNode([
+          r.giveaway_title,
+          el('br'),
+          el('span', {
+            class: 'u-a76e0798',
+            text: `ticket #${r.ticket_number} · account ${r.account_ref} · ${r.account_age_days}d old`,
+          }),
+        ]),
+        tdNode([
+          pill(INTEGRITY_STATUS_LABELS[r.status] || r.status),
+          r.is_winner ? ' ' : null,
+          r.is_winner ? pill('winner', 'company') : null,
+        ]),
+        tdNode(signals.length ? spaced(signals) : el('span', { class: 'u-a2aae0fb', text: '—' })),
+        td(new Date(r.entered_at).toLocaleDateString()),
+        tdNode(
+          r.case_open
+            ? pill(r.case_post_draw ? 'case open · post-draw' : 'case open')
+            : el('span', { class: 'u-a2aae0fb', text: '—' })
+        ),
+        tdNode(openBtn, 'u-a9efa544'),
+      ]),
+      detailRow,
+    ];
+  }
+
+  async function openIntegrityEntry(entryId, row, cell) {
+    if (!row.classList.contains('is-hidden')) {
+      row.classList.add('is-hidden');
+      clear(cell);
+      return;
+    }
+    row.classList.remove('is-hidden');
+    setText(cell, 'Loading…');
+
+    let data;
+    try {
+      data = await api(`/admin/integrity/entries/${encodeURIComponent(entryId)}`);
+    } catch (err) {
+      mount(cell, el('span', { class: 'form-error show', text: err.message }));
+      return;
+    }
+
+    const reasonInput = el('textarea', {
+      class: 'js-spaced-input',
+      maxLength: 1000,
+      placeholder: 'Why? Recorded against the decision, and shown to the entrant.',
+    });
+    const error = el('p', { class: 'form-error' });
+
+    const decide = (status, label, className) => el('button', {
+      class: className,
+      text: label,
+      on: {
+        click: async (e) => {
+          const btn = e.currentTarget;
+          error.classList.remove('show');
+          if (!reasonInput.value.trim()) {
+            error.textContent = 'A reason is required — it is recorded against the decision.';
+            error.classList.add('show');
+            return;
+          }
+          btn.disabled = true;
+          try {
+            await api(`/admin/integrity/entries/${encodeURIComponent(entryId)}/status`, {
+              method: 'POST',
+              body: JSON.stringify({ status, reason: reasonInput.value.trim() }),
+            });
+            loadIntegrity();
+          } catch (err) {
+            error.textContent = err.message;
+            error.classList.add('show');
+            btn.disabled = false;
+          }
+        },
+      },
+    });
+
+    const actions = [];
+    if (data.entry.status !== 'under_review') {
+      actions.push(decide('under_review', 'Place under review', 'btn ghost u-51820e15'));
+    }
+    if (data.entry.status !== 'disqualified' && !data.entry.is_winner) {
+      actions.push(decide('disqualified', 'Disqualify', 'btn ghost u-54750247'));
+    }
+    if (data.entry.status !== 'eligible') {
+      actions.push(decide('eligible', 'Reinstate', 'btn primary u-14da4875'));
+    }
+
+    // A drawn winner cannot be disqualified from here. Replacing a winner is a
+    // policy decision this platform does not make automatically.
+    const winnerNote = data.entry.is_winner
+      ? el('p', {
+          class: 'hint u-b1ecc496',
+          text: 'This entry won. It cannot be disqualified here — open an integrity case instead, which pauses fulfilment and leaves the winner in place.',
+        })
+      : null;
+
+    const caseBtn = el('button', {
+      class: 'btn ghost u-51820e15',
+      text: 'Open integrity case (pauses fulfilment)',
+      on: {
+        click: async (e) => {
+          const btn = e.currentTarget;
+          error.classList.remove('show');
+          if (!reasonInput.value.trim()) {
+            error.textContent = 'A reason is required to open a case.';
+            error.classList.add('show');
+            return;
+          }
+          btn.disabled = true;
+          try {
+            await api('/admin/integrity/cases', {
+              method: 'POST',
+              body: JSON.stringify({
+                giveaway_id: data.giveaway.id,
+                entry_id: data.entry.id,
+                reason: reasonInput.value.trim(),
+              }),
+            });
+            loadIntegrity();
+          } catch (err) {
+            error.textContent = err.message;
+            error.classList.add('show');
+            btn.disabled = false;
+          }
+        },
+      },
+    });
+
+    const openCase = (data.cases || []).find((c) => c.status === 'open');
+    const resolveButtons = openCase
+      ? ['reinstated', 'upheld', 'no_action'].map((resolution) =>
+          el('button', {
+            class: 'btn ghost u-51820e15',
+            text:
+              resolution === 'reinstated'
+                ? 'Resolve: reinstate and resume'
+                : resolution === 'upheld'
+                  ? 'Resolve: uphold'
+                  : 'Resolve: no action',
+            on: {
+              click: async (e) => {
+                const btn = e.currentTarget;
+                error.classList.remove('show');
+                if (!reasonInput.value.trim()) {
+                  error.textContent = 'A reason is required to resolve a case.';
+                  error.classList.add('show');
+                  return;
+                }
+                btn.disabled = true;
+                try {
+                  await api(`/admin/integrity/cases/${encodeURIComponent(openCase.id)}/resolve`, {
+                    method: 'POST',
+                    body: JSON.stringify({ resolution, reason: reasonInput.value.trim() }),
+                  });
+                  loadIntegrity();
+                } catch (err) {
+                  error.textContent = err.message;
+                  error.classList.add('show');
+                  btn.disabled = false;
+                }
+              },
+            },
+          })
+        )
+      : [];
+
+    mount(cell, el('div', { class: 'u-1b074808' }, [
+      el('p', { class: 'u-a353e69c' }, [
+        el('strong', { text: data.account.name }),
+        ` · ${data.account.email}`,
+        data.account.email_verified ? ' · verified' : ' · unverified',
+      ]),
+      el('p', {
+        class: 'u-3e786f67',
+        text: `Account created ${new Date(data.account.created_at).toLocaleDateString()} · entered ${new Date(data.entry.entered_at).toLocaleString()} · ticket #${data.entry.ticket_number}`,
+      }),
+
+      el('p', { class: 'u-5bf9ad33', text: 'Signals' }),
+      data.signals.length
+        ? el('div', { class: 'js-history' }, data.signals.map((sig) =>
+            el('div', {
+              text: `${SIGNAL_LABELS[sig.code] || sig.code} · ${sig.severity} · seen ${new Date(sig.observed_at).toLocaleString()} · expires ${new Date(sig.expires_at).toLocaleDateString()}`,
+            })
+          ))
+        : el('p', { class: 'hint js-flush', text: 'No signals recorded for this entry.' }),
+      el('p', {
+        class: 'hint u-b1ecc496',
+        text: 'Signals are indicators, not proof. A shared network is a household, an office or a phone carrier far more often than it is abuse — nothing here has disqualified anybody, and nothing will unless you do it.',
+      }),
+
+      el('p', { class: 'u-5bf9ad33', text: 'History' }),
+      data.history.length
+        ? el('div', { class: 'js-history' }, data.history.map((ev) =>
+            el('div', {
+              text: `${new Date(ev.created_at).toLocaleString()} — ${ev.from_status || 'new'} → ${ev.to_status} (${ev.reason_code}) by ${ev.actor_name || ev.actor_role}${ev.reason ? `: ${ev.reason}` : ''}`,
+            })
+          ))
+        : el('p', { class: 'hint js-flush', text: 'No decisions recorded yet.' }),
+
+      openCase
+        ? el('p', {
+            class: 'js-mint-box',
+            text: `Case open since ${new Date(openCase.opened_at).toLocaleString()}${openCase.post_draw ? ' (post-draw — fulfilment is paused)' : ''}: ${openCase.opened_reason}`,
+          })
+        : null,
+
+      winnerNote,
+      reasonInput,
+      el('div', { class: 'js-button-row' }, spaced([...actions, openCase ? null : caseBtn, ...resolveButtons])),
+      error,
+    ]));
+  }
+
+  async function loadIntegrity() {
+    const content = document.getElementById('integrity-content');
+    try {
+      const rows = await api('/admin/integrity/queue');
+      if (!rows.length) {
+        mount(content, emptyNode('Nothing to review. Entries appear here when a signal fires, a case is opened, or a decision has been made.'));
+        return;
+      }
+      mount(content, dataTable(
+        ['Giveaway / entry', 'Status', 'Signals', 'Entered', 'Case', 'Actions'],
+        rows.flatMap(integrityRow),
+        'Nothing to review.'
+      ));
+    } catch (err) {
+      mount(content, emptyNode(err.message));
+    }
+  }
+
   ready.then(() => {
     loadStats();
+    loadIntegrity();
     loadClaims();
     loadRescueQueue();
     loadMissingClaims();

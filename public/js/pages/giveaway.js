@@ -42,6 +42,12 @@
       const eyebrow = document.getElementById('status-eyebrow');
       eyebrow.textContent = g.status === 'drawn' ? t('detail.winnerDrawn').toUpperCase() : timeLeft(g.entry_deadline).toUpperCase();
 
+      // The viewer's own entry status, and nobody else's. Coarse by design: the
+      // signals that prompted a review are never shown to the person being
+      // reviewed, and the reason shown is only the one an administrator wrote
+      // for them.
+      renderMyEntryStatus(g.my_entry);
+
       const enterBtn = document.getElementById('enter-btn');
       const drawBtn = document.getElementById('draw-btn');
       const isHost = user && user.id === g.host_id;
@@ -86,6 +92,25 @@
       document.getElementById('title').textContent = t('detail.notFound');
       document.getElementById('description').textContent = err.message;
     }
+  }
+
+  const ENTRY_STATUS_TEXT = {
+    entered: null,
+    under_review: 'Your entry is under review. Nothing has been decided, and it has not been removed — an administrator is looking at it.',
+    disqualified: 'This entry has been disqualified and will not be included in the draw.',
+  };
+
+  function renderMyEntryStatus(myEntry) {
+    const box = document.getElementById('entry-status');
+    if (!box) return;
+    const message = myEntry ? ENTRY_STATUS_TEXT[myEntry.status] : null;
+    if (!message) {
+      box.classList.add('is-hidden');
+      clear(box);
+      return;
+    }
+    box.classList.remove('is-hidden');
+    mount(box, [message, myEntry.reason ? el('br') : null, myEntry.reason ? `Reason given: ${myEntry.reason}` : null]);
   }
 
   async function enterGiveaway() {
