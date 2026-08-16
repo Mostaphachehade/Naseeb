@@ -267,3 +267,10 @@
 .u-77148b4e.u-77148b4e.u-77148b4e { width:70%; height:1.15rem; }
 .u-3801d6f9.u-3801d6f9.u-3801d6f9 { width:90%; }
 .u-91bb8b7c.u-91bb8b7c.u-91bb8b7c { width:60px; margin:0; }
+
+/* The age attestation row on signup, and the same shape in the account centre.
+ * A checkbox beside its label, aligned to the first line of text. */
+.u-age-attest.u-age-attest.u-age-attest { display:flex; gap:10px; align-items:flex-start; margin:14px 0 4px; font-weight:400; }
+.u-age-attest input.u-age-attest-box, .u-age-attest input[type="checkbox"] { width:auto; margin:3px 0 0; flex:0 0 auto; }
+.u-rights-grid.u-rights-grid.u-rights-grid { display:grid; gap:18px; margin-bottom:32px; }
+.u-request-row.u-request-row.u-request-row { border-top:1px solid rgba(11,59,54,0.12); padding:12px 0; }

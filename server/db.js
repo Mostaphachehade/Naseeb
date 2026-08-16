@@ -1001,6 +1001,139 @@ async function init() {
       UNIQUE(user_id, policy_id, policy_version)
     );
     CREATE INDEX IF NOT EXISTS idx_policy_acceptances_user ON policy_acceptances(user_id);
+    -- Which acceptance this was: the exact effective date the version carried at
+    -- the moment somebody agreed to it. Stored rather than looked up later,
+    -- because the constants file can change and a record of consent must not.
+    ALTER TABLE policy_acceptances ADD COLUMN IF NOT EXISTS policy_effective_date DATE;
+    ALTER TABLE policy_acceptances ADD COLUMN IF NOT EXISTS acceptance_kind TEXT;
+    -- Minimal audit metadata. Deliberately NOT an IP address and not a user
+    -- agent string: what matters is that the person was signed in and clicked,
+    -- not what they were holding.
+    ALTER TABLE policy_acceptances ADD COLUMN IF NOT EXISTS source TEXT;
+
+    -- Product eligibility, kept apart from policy acceptance on purpose.
+    --
+    -- "I am 18 or older" is an attestation about the person, not agreement to a
+    -- document. Conflating them would mean a future policy version silently
+    -- re-asking an age question, or an age prompt implying agreement to terms
+    -- that are not even effective yet.
+    --
+    -- This is SELF-ATTESTATION. It is not identity verification, not age
+    -- verification, and no date of birth or document is collected — see
+    -- docs/PRIVACY_AND_RIGHTS.md §3 and the counsel checklist.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS age_attestation_status TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS age_attestation_version TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS age_attested_at TIMESTAMPTZ;
+
+    -- Changing the address an account is reached at is a security event, not a
+    -- profile edit. The new address is held here, unverified, until somebody
+    -- proves they can receive mail at it; the account's own email is untouched
+    -- until then.
+    CREATE TABLE IF NOT EXISTS email_change_requests (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      -- Never the token itself. A SHA-256 of it, the same shape as sessions.
+      token_hash TEXT NOT NULL,
+      new_email TEXT NOT NULL,
+      previous_email TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      completed_at TIMESTAMPTZ,
+      cancelled_at TIMESTAMPTZ,
+      cancelled_reason TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_email_change_token ON email_change_requests(token_hash);
+    -- One pending change per account. A second request supersedes the first
+    -- deliberately rather than racing it.
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_email_change_pending
+      ON email_change_requests(user_id) WHERE status = 'pending';
+
+    -- Privacy requests: access, correction, deletion, objection.
+    --
+    -- A request is a request. Nothing here erases anything on its own, and
+    -- nothing is marked complete without a recorded action — see
+    -- docs/PRIVACY_AND_RIGHTS.md §7.
+    CREATE TABLE IF NOT EXISTS privacy_requests (
+      id TEXT PRIMARY KEY,
+      reference TEXT NOT NULL UNIQUE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      request_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'submitted',
+      -- What the person asked, in their words. Shown back to them; never shown
+      -- to another user.
+      user_message TEXT,
+      -- The outcome sentence the requester reads, chosen from an allowlist in
+      -- code — the same split the entry-integrity phase established.
+      outcome_code TEXT,
+      -- Administrator working notes. Internal, mandatory on a decision, and
+      -- never in a user-facing or list response.
+      admin_notes TEXT,
+      blockers JSONB,
+      version INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      closed_at TIMESTAMPTZ,
+      closed_by TEXT REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_privacy_requests_user ON privacy_requests(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_privacy_requests_open
+      ON privacy_requests(status, created_at);
+
+    -- Append-only, on the same terms as the entry-integrity history and for the
+    -- same reason: a record of what was decided about somebody's rights is not
+    -- ours to rewrite. No foreign keys, so nothing cascades it away.
+    CREATE TABLE IF NOT EXISTS privacy_request_events (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      outcome_code TEXT,
+      admin_notes TEXT,
+      actor_user_id TEXT,
+      actor_role TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_privacy_request_events_request
+      ON privacy_request_events(request_id, created_at);
+
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_age_attestation_valid') THEN
+        ALTER TABLE users ADD CONSTRAINT users_age_attestation_valid
+          CHECK (age_attestation_status IN ('unknown', 'confirmed'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'email_change_status_valid') THEN
+        ALTER TABLE email_change_requests ADD CONSTRAINT email_change_status_valid
+          CHECK (status IN ('pending', 'completed', 'cancelled', 'expired'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'privacy_requests_type_valid') THEN
+        ALTER TABLE privacy_requests ADD CONSTRAINT privacy_requests_type_valid
+          CHECK (request_type IN ('access', 'correction', 'deletion', 'objection'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'privacy_requests_status_valid') THEN
+        ALTER TABLE privacy_requests ADD CONSTRAINT privacy_requests_status_valid
+          CHECK (status IN ('submitted', 'in_review', 'awaiting_information', 'completed', 'declined', 'unable_to_complete'));
+      END IF;
+      -- A closed request must say what happened, and an administrator must have
+      -- written down why. Neither the route nor the constraint is the only thing
+      -- standing between here and an unexplained refusal.
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'privacy_requests_closure_explained') THEN
+        ALTER TABLE privacy_requests ADD CONSTRAINT privacy_requests_closure_explained
+          CHECK (
+            status NOT IN ('completed', 'declined', 'unable_to_complete')
+            OR (outcome_code IS NOT NULL
+                AND admin_notes IS NOT NULL
+                AND length(btrim(admin_notes)) >= 3)
+          );
+      END IF;
+    END $$;
+
+    DROP TRIGGER IF EXISTS privacy_request_events_immutable ON privacy_request_events;
+    CREATE TRIGGER privacy_request_events_immutable
+      BEFORE UPDATE OR DELETE ON privacy_request_events
+      FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only();
   `);
 
   // Separate from the batch above because it has to inspect existing data and

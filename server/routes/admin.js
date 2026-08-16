@@ -8,6 +8,7 @@ const sessions = require('../lib/sessions');
 const { validateMediaUrl, validateExternalLinkUrl } = require('../lib/mediaUrls');
 const integrity = require('../lib/entryIntegrity');
 const riskSignals = require('../lib/riskSignals');
+const rights = require('../lib/accountRights');
 
 // Account status is authentication; host status is authorization. Two columns,
 // two routes, and deliberately no path that changes one as a side effect of the
@@ -1127,6 +1128,154 @@ router.post('/integrity/signals/purge', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Privacy requests
+// ---------------------------------------------------------------------------
+
+// The queue: a reference, a type, an age, a status, what is blocking it, and
+// what can be done. No name, no email address, no message text, no
+// administrator notes — a list is a screen that gets left open, and none of
+// those fields help decide which row to open.
+router.get('/privacy-requests', requireAdmin, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const result = await pool.query(
+      `SELECT id, reference, request_type, status, blockers, created_at, updated_at, version,
+              user_id
+         FROM privacy_requests
+        ORDER BY (status IN ('submitted', 'in_review', 'awaiting_information')) DESC, created_at DESC
+        LIMIT 200`
+    );
+
+    res.json(
+      result.rows.map((row) => ({
+        id: row.id,
+        reference: row.reference,
+        type: row.request_type,
+        status: row.status,
+        age_days: Math.floor((Date.now() - new Date(row.created_at).getTime()) / 86400000),
+        created_at: row.created_at,
+        version: row.version,
+        // An account reference, not an identity. Opening the row is what shows
+        // who it is.
+        account_ref: String(row.user_id).slice(0, 8),
+        // Categories only.
+        blocking: Array.isArray(row.blockers) ? row.blockers.map((b) => b.category) : [],
+        actions: rights.CLOSED_STATUSES.includes(row.status)
+          ? []
+          : ['in_review', 'awaiting_information', 'completed', 'declined', 'unable_to_complete'],
+      }))
+    );
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// One request, opened deliberately. This is where the account, the message and
+// the internal notes live.
+router.get('/privacy-requests/:id', requireAdmin, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const result = await pool.query(
+      `SELECT r.*, u.name AS account_name, u.email AS account_email, u.created_at AS account_created_at
+         FROM privacy_requests r JOIN users u ON u.id = r.user_id
+        WHERE r.id = $1`,
+      [req.params.id]
+    );
+    const row = result.rows[0];
+    if (!row) return res.status(404).json({ error: 'That request does not exist.' });
+
+    const [history, blockers] = await Promise.all([
+      pool.query(
+        `SELECT ev.from_status, ev.to_status, ev.outcome_code, ev.admin_notes,
+                ev.actor_role, ev.created_at, actor.name AS actor_name
+           FROM privacy_request_events ev
+           LEFT JOIN users actor ON actor.id = ev.actor_user_id
+          WHERE ev.request_id = $1 ORDER BY ev.created_at`,
+        [req.params.id]
+      ),
+      // Recomputed rather than read from the row: the row's copy is from when
+      // the request was made, and a claim may have closed since.
+      rights.deletionBlockers(pool, row.user_id),
+    ]);
+
+    res.json({
+      request: {
+        id: row.id,
+        reference: row.reference,
+        type: row.request_type,
+        status: row.status,
+        version: row.version,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        user_message: row.user_message,
+        outcome_code: row.outcome_code,
+        admin_notes: row.admin_notes,
+        // What the requester currently reads, so an administrator can check the
+        // wording rather than guess at it.
+        requester_sees: row.outcome_code ? rights.OUTCOME_COPY[row.outcome_code] || null : null,
+      },
+      account: {
+        name: row.account_name,
+        email: row.account_email,
+        created_at: row.account_created_at,
+      },
+      blockers,
+      outcome_codes: rights.OUTCOMES_FOR_STATUS,
+      outcome_copy: rights.OUTCOME_COPY,
+      history: history.rows,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+router.post('/privacy-requests/:id/decision', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    res.set('Cache-Control', 'no-store');
+    const { status, outcome_code: outcomeCode, admin_notes: adminNotes, version } = req.body || {};
+
+    await client.query('BEGIN');
+    const result = await rights.decideRequest(client, {
+      requestId: req.params.id,
+      toStatus: status,
+      outcomeCode,
+      adminNotes,
+      actorUserId: req.userId,
+      expectedVersion: version,
+    });
+    await client.query('COMMIT');
+
+    res.json({
+      request: {
+        reference: result.request.reference,
+        status: result.request.status,
+        outcome_code: result.request.outcome_code,
+        version: result.request.version,
+      },
+      previous_status: result.previousStatus,
+      // Stated in the response because it is the thing most likely to be
+      // misread: closing a deletion request has deleted nothing by itself.
+      records_deleted: false,
+      note: 'No records were deleted by this decision. Any erasure or anonymisation is a separate, deliberate action — see docs/PRIVACY_AND_RIGHTS.md §8.',
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err instanceof rights.RightsError) {
+      return res
+        .status(err.status)
+        .json({ error: err.message, code: err.code, current: err.details || null });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
   }
 });
 

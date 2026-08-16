@@ -130,6 +130,11 @@ naseeb/
     lib/entryIntegrity.js      # entry status, decisions and the draw pool — see docs/ENTRY_INTEGRITY.md
     lib/riskSignals.js         # privacy-minimised abuse indicators; never a verdict
     lib/proxyTrust.js          # how much of X-Forwarded-For is believed
+    routes/account.js          # the account centre — see docs/PRIVACY_AND_RIGHTS.md
+    lib/accountRights.js       # email change, privacy requests, deletion blockers
+    lib/eligibility.js         # the 18+ self-declaration. Not age verification
+    lib/dataExport.js          # what a person may download about themselves
+    lib/policies.js            # policy status/version/effective date. Inert by design
     routes/config.js           # exposes non-secret Cloudinary config to the frontend
   public/
     index.html            # browse giveaways
@@ -138,6 +143,8 @@ naseeb/
     dashboard.html          # your hosted giveaways + your entries
     host-apply.html          # apply to the private hosting beta (individual or company)
     admin.html                # admin-only: review applications, grant/suspend host access
+    account.html              # your data, your corrections, your privacy requests
+    verify-email-change.html   # confirms a new address from a token in the fragment
     verify.html / forgot-password.html / reset-password.html
     login.html / signup.html
     about.html / pricing.html / terms.html / privacy.html
@@ -147,7 +154,7 @@ naseeb/
     css/utilities.css        # the classes that replaced 317 inline style="" attributes
     css/pages.css            # the three former inline <style> blocks
     js/app.js               # shared auth/session helpers + rendering
-    js/dom.js                # escaping tagged template, safe URL + media helpers
+    js/dom.js                # DOM construction + four context-specific URL validators
     js/pages/*.js            # one file per page — every former inline <script>
 ```
 
@@ -316,6 +323,48 @@ documents, no data brokers, no cross-site tracking.
 `docs/ENTRY_INTEGRITY.md` has the audit of what the system guaranteed before, the exact
 transition rules, the draw and locking behaviour, the post-draw model, the signal
 definitions and retention, and what is still open.
+
+## Privacy, account rights and age attestation
+
+`/account.html`, signed in, is where somebody reaches their own data: see what is held,
+correct their display name, change their email address, download a copy, end every
+session, and raise an access, correction, deletion or objection request. Every response on
+`/api/account/*` is `Cache-Control: no-store`. An export and an email change each ask for
+the password again — a live session shows somebody signed in once, not who is at the
+keyboard now.
+
+**Age is a self-declaration and nothing else.** Signup has an unticked, required checkbox
+reading exactly *"I confirm that I am 18 years of age or older."*, recorded with a version
+and a timestamp. No date of birth, identity document or biometric is collected anywhere,
+and a test asserts no such column exists in the schema. Accounts created before this are
+`unknown` — never backfilled — and are prompted before entering a giveaway, creating one
+or applying to host. They are **never** blocked from finishing an open claim, confirming
+delivery, raising a dispute, exporting their data or making a privacy request.
+
+**Policy acceptance is built and deliberately inert.** A policy can be accepted only when
+its status is `effective`, it carries an explicit effective date, and that date has
+passed. Terms and Privacy are both `draft` with `effectiveDate: null`, so
+`policy_acceptances` is empty and stays empty. Activation is a reviewed edit to
+`server/lib/policies.js` — that file reads no environment variable, and a test greps it to
+prove it. Nothing is inferred from signup, continued use or a deployment date.
+
+**A deletion request deletes nothing.** It opens a case for a person; the response says
+so, and closing it returns `records_deleted: false`. Open claims, hosted giveaways,
+disputes and integrity cases are reported as blocking categories, and a `completed`
+outcome is refused with `409` while any of them stands. What could be erased, anonymised
+or must be retained is designed in `docs/PRIVACY_AND_RIGHTS.md` §8 and awaits counsel — no
+statutory deadline is stated anywhere, because none has been established.
+
+An email change is a security event: password first, a 32-byte token stored only as
+SHA-256, two hours, single-use by the `UPDATE` that claims the row, uniqueness re-checked
+inside the completion transaction, the token in a URL fragment and in exactly one email to
+the **new** address, a warning with no completing link to the old one, and every session
+revoked on completion.
+
+`docs/DATA_INVENTORY.md` is the full table-by-table inventory — fields, purpose, access,
+classification, retention implemented vs. awaiting decision, and external processors.
+`docs/PRIVACY_AND_RIGHTS.md` has the request state machine, the email-change design and
+the deletion/anonymisation proposal.
 
 ## Environment variables
 
@@ -581,9 +630,21 @@ environment variable, so no deploy can quietly make an unreviewed document live.
   blank rather than invented.
 - `docs/LEGAL_COPY_INVENTORY.md` — every claim that was removed, softened or kept, and
   why.
+- `docs/DATA_INVENTORY.md` — what is stored, who can reach it, and which retention
+  periods are implemented versus undecided.
+- `docs/PRIVACY_AND_RIGHTS.md` — the request workflow, and the deletion/anonymisation
+  design that has not been implemented on purpose.
 - `test/legal-copy.test.js` — fails the build if a prohibited claim reappears.
 
-Retention periods in the product are **provisional** and pending that review.
+Retention periods in the product are **provisional** and pending that review. A UUID, an
+account reference and a keyed network hash are treated throughout as personal data, not as
+anonymous — removing a name from a row does not make the row anonymous.
+
+Two scheduled jobs are missing and are operational gaps rather than legal ones: expired
+sessions and expired risk signals both have cleanup code, and neither has a scheduler.
+Sentry's `captureConsoleIntegration` sends the text of any `console.error` off-platform;
+error paths are written not to carry personal data, but nothing enforces that
+automatically.
 
 ## Deploying to Render
 

@@ -37,6 +37,15 @@
       <input id="password" type="password" minlength="8" required />
       <p class="hint">At least 8 characters.</p>
 
+      <!-- Not pre-ticked, and required. A self-declaration: no date of birth is
+           asked for and no document is collected. Wording is pending counsel
+           review — see docs/PRIVACY_AND_RIGHTS.md. -->
+      <label class="u-age-attest" for="age_confirmed">
+        <input id="age_confirmed" type="checkbox" required />
+        <span>I confirm that I am 18 years of age or older.</span>
+      </label>
+      <p class="hint">This is your own declaration. We do not ask for your date of birth or any identity document, and we cannot verify it.</p>
+
       <button class="btn primary" type="submit">Create account</button>
       <p class="form-error" id="error"></p>
     </form>

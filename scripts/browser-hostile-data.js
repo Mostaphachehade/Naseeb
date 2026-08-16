@@ -313,7 +313,7 @@ function visit(url, clickSelectors) {
 // Seeding
 // ---------------------------------------------------------------------------
 
-const cleanup = { users: [], giveaways: [], ads: [], inquiries: [], claims: [], settings: [] };
+const cleanup = { users: [], giveaways: [], ads: [], inquiries: [], claims: [], settings: [], privacyRequests: [] };
 
 async function seed() {
   const suffix = Date.now().toString(36);
@@ -472,6 +472,39 @@ async function seed() {
     [adId, plant('ad_business_name'), plantUrl('ad_image_url'), plantUrl('ad_target_url')]
   );
 
+  // The account centre reads back three things the person or an administrator
+  // typed: a display name, the message on a privacy request, and the address on
+  // a pending email change. All three land on /account.html.
+  const requestId = crypto.randomUUID();
+  cleanup.privacyRequests.push(requestId);
+  await pool.query(
+    `INSERT INTO privacy_requests
+       (id, reference, user_id, request_type, status, user_message, outcome_code, admin_notes, blockers)
+     VALUES ($1, $2, $3, 'correction', 'declined', $4, 'not_possible', $5, $6)`,
+    [
+      requestId,
+      `PR-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+      winnerId,
+      plant('privacy_request_message'),
+      // Internal notes. These must not appear in the DOM at all — the page has
+      // no field for them, and the harness reports every payload it can see.
+      plant('privacy_request_admin_notes'),
+      JSON.stringify([{ category: 'audit_records', count: null, note: plant('privacy_blocker_note') }]),
+    ]
+  );
+  await pool.query(
+    `INSERT INTO email_change_requests
+       (id, user_id, token_hash, new_email, previous_email, status, expires_at)
+     VALUES ($1, $2, $3, $4, $5, 'pending', NOW() + interval '2 hours')`,
+    [
+      crypto.randomUUID(),
+      winnerId,
+      crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex'),
+      `hostile-newaddr-${suffix}@example.com`,
+      `hostile-winner-${suffix}@example.com`,
+    ]
+  );
+
   // Owner-configured text.
   for (const [key, value] of [
     ['maintenance_message', plant('owner_maintenance_message')],
@@ -499,7 +532,11 @@ async function unseed() {
   await pool.query('DELETE FROM ad_inquiries WHERE id = ANY($1)', [cleanup.inquiries]);
   await pool.query('DELETE FROM host_status_events WHERE user_id = ANY($1) OR changed_by = ANY($1)', [cleanup.users]);
   await pool.query('DELETE FROM host_applications WHERE user_id = ANY($1)', [cleanup.users]);
+  await pool.query('DELETE FROM email_change_requests WHERE user_id = ANY($1)', [cleanup.users]);
+  await pool.query('DELETE FROM privacy_requests WHERE id = ANY($1)', [cleanup.privacyRequests]);
+  // privacy_request_events is append-only and is left alone on purpose.
   await pool.query('DELETE FROM sessions WHERE user_id = ANY($1)', [cleanup.users]);
+  await pool.query('DELETE FROM session_families WHERE user_id = ANY($1)', [cleanup.users]);
   await pool.query('DELETE FROM users WHERE id = ANY($1)', [cleanup.users]);
   await pool.query('DELETE FROM site_settings WHERE key = ANY($1)', [cleanup.settings]);
 }
@@ -559,6 +596,9 @@ async function unseed() {
     ['admin application review', '/admin.html', adminCookie],
     ['admin rescue queue + suspension controls', '/admin.html', adminCookie],
     ['owner page', '/owner.html', adminCookie],
+    ['account centre (hostile name, request and pending change)', '/account.html', winnerCookie],
+    ['email-change confirmation by fragment', `/verify-email-change.html#token=${frag}`, null],
+    ['admin privacy queue', '/admin.html', adminCookie],
     ['advertising inquiry / availability', '/advertise.html', null],
     ['login with hostile redirect', `/login.html?redirect=${qs}`, null],
     ['signup with hostile redirect', `/signup.html?redirect=${qs}`, null],
@@ -591,10 +631,15 @@ async function unseed() {
     // Which planted payloads actually reached this page, as inert text. A page
     // that renders none of them proves nothing, so this is reported alongside
     // the failures rather than left implicit.
-    const visible = planted.filter((p) => {
-      const marker = p.value.match(/[A-Za-z_]+-(?:BREAKOUT|CLOSE)|[a-z_]+_[a-z_]+/);
-      return marker && dom.includes(marker[0]);
-    }).length;
+    //
+    // Matched on the surface name, which every family embeds verbatim. The
+    // previous version regexed a marker out of the payload value and, for three
+    // of the eleven families, extracted `__beacon` or `__pwn` — both of which are
+    // in the injected probe on EVERY page. That inflated this count by a fixed
+    // baseline on pages that render nothing hostile at all. It never affected a
+    // pass/fail decision (those come from executions, beacons and violations),
+    // but it made a diagnostic number mean less than it appeared to.
+    const visible = planted.filter((p) => dom.includes(p.surface)).length;
 
     results.push({
       label, urlPath, report, consoleRefusals, newBeacons, domBytes: dom.length, visible,

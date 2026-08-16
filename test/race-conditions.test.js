@@ -47,8 +47,8 @@ async function createVerifiedUser(tag) {
   const password = 'correcthorse123';
   await pool.query(
     // Approved to host: these tests exercise concurrency, not the host-access gate.
-    `INSERT INTO users (id, name, email, password_hash, email_verified, host_status)
-     VALUES ($1, $2, $3, $4, TRUE, 'approved')`,
+    `INSERT INTO users (id, name, email, password_hash, email_verified, host_status, age_attestation_status, age_attestation_version)
+     VALUES ($1, $2, $3, $4, TRUE, 'approved', 'confirmed', '2026-08-eligibility-18')`,
     [id, `Race Test ${tag}`, email, bcrypt.hashSync(password, 4)]
   );
   createdUserIds.push(id);

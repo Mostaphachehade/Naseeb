@@ -290,4 +290,46 @@ function claimStatusHtml({ recipientName, giveawayTitle, status, message, giveaw
 </body></html>`;
 }
 
-module.exports = { winnerEmailHtml, entryEmailHtml, claimInvitationHtml, hostClaimNotificationHtml, claimStatusHtml };
+// The address on an account is about to change, and this goes to the OLD one.
+//
+// Deliberately carries no token and no link that completes anything: if this
+// message is the first the account holder hears of it, the correct action is to
+// secure the account, not to click something in an email they did not expect.
+function emailChangeNoticeHtml({ name, newEmailMasked, appUrl }) {
+  return `
+    <p>Hello ${escapeHtmlForEmail(name || 'there')},</p>
+    <p>Someone asked to change the email address on your Naseeb account to
+       <strong>${escapeHtmlForEmail(newEmailMasked)}</strong>.</p>
+    <p>The change is not done yet. It only takes effect once the new address is
+       confirmed. This message contains no link to confirm it — that link went to
+       the new address only.</p>
+    <p><strong>If this was not you</strong>, change your password now at
+       ${escapeHtmlForEmail(appUrl)}/forgot-password.html and the pending change
+       will not complete.</p>
+    <p>If it was you, nothing more to do here.</p>
+  `;
+}
+
+// Goes to the NEW address, and is the only place the token ever appears.
+function emailChangeConfirmHtml({ name, confirmUrl, expiresAt }) {
+  return `
+    <p>Hello ${escapeHtmlForEmail(name || 'there')},</p>
+    <p>Confirm this address to finish changing the email on your Naseeb account:</p>
+    <p><a href="${escapeHtmlForEmail(confirmUrl)}">Confirm this email address</a></p>
+    <p>The link works once and expires ${escapeHtmlForEmail(new Date(expiresAt).toUTCString())}.</p>
+    <p>You will be signed out everywhere once it is done, and will need to sign in
+       again with the new address.</p>
+    <p>If you did not ask for this, you can ignore this message — nothing changes
+       until the link is used.</p>
+  `;
+}
+
+module.exports = {
+  emailChangeNoticeHtml,
+  emailChangeConfirmHtml,
+  winnerEmailHtml,
+  entryEmailHtml,
+  claimInvitationHtml,
+  hostClaimNotificationHtml,
+  claimStatusHtml,
+};

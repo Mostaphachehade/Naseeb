@@ -63,8 +63,8 @@ async function createUser(tag, { admin = false, hostStatus = HOST_STATUS.NOT_REQ
   const id = uuid();
   const email = `test-hostaccess-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status, age_attestation_status, age_attestation_version)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed', '2026-08-eligibility-18')`,
     [id, `Host Access ${tag}`, email, bcrypt.hashSync(PASSWORD, 4), verified, admin, hostStatus]
   );
   createdUserIds.push(id);
@@ -104,6 +104,7 @@ test('a brand new account starts as not_requested and holds no host access', asy
     name: 'Fresh Signup',
     email: `test-hostaccess-fresh-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`,
     password: PASSWORD,
+    age_confirmed: true,
   });
   assert.equal(res.status, 201);
   createdUserIds.push(res.body.user.id);

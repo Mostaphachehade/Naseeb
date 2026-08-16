@@ -19,7 +19,7 @@ test('signup creates an account and establishes a cookie session, not a token', 
   const email = uniqueEmail('signup');
   const res = await api()
     .post('/api/auth/signup')
-    .send({ name: 'Test User', email, password: 'correcthorse123' });
+    .send({ name: 'Test User', email, password: 'correcthorse123', age_confirmed: true });
 
   assert.equal(res.status, 201);
   // No token in the body. The session is an HttpOnly cookie; what comes back is
@@ -36,12 +36,12 @@ test('signup rejects a duplicate email', async () => {
   const email = uniqueEmail('dupe');
   const first = await api()
     .post('/api/auth/signup')
-    .send({ name: 'A', email, password: 'correcthorse123' });
+    .send({ name: 'A', email, password: 'correcthorse123', age_confirmed: true });
   createdUserIds.push(first.body.user.id);
 
   const second = await api()
     .post('/api/auth/signup')
-    .send({ name: 'B', email, password: 'anotherpassword123' });
+    .send({ name: 'B', email, password: 'anotherpassword123', age_confirmed: true });
 
   assert.equal(second.status, 409);
 });
@@ -49,7 +49,7 @@ test('signup rejects a duplicate email', async () => {
 test('signup rejects a password under 8 characters', async () => {
   const res = await api()
     .post('/api/auth/signup')
-    .send({ name: 'A', email: uniqueEmail('shortpw'), password: '1234567' });
+    .send({ name: 'A', email: uniqueEmail('shortpw'), password: '1234567', age_confirmed: true });
 
   assert.equal(res.status, 400);
 });
@@ -57,7 +57,7 @@ test('signup rejects a password under 8 characters', async () => {
 test('signup rejects an invalid email address', async () => {
   const res = await api()
     .post('/api/auth/signup')
-    .send({ name: 'A', email: 'not-an-email', password: 'correcthorse123' });
+    .send({ name: 'A', email: 'not-an-email', password: 'correcthorse123', age_confirmed: true });
 
   assert.equal(res.status, 400);
 });
@@ -65,7 +65,9 @@ test('signup rejects an invalid email address', async () => {
 test('login succeeds with correct credentials', async () => {
   const email = uniqueEmail('login');
   const password = 'correcthorse123';
-  const signup = await api().post('/api/auth/signup').send({ name: 'Login Test', email, password });
+  const signup = await api()
+    .post('/api/auth/signup')
+    .send({ name: 'Login Test', email, password, age_confirmed: true });
   createdUserIds.push(signup.body.user.id);
 
   const res = await api().post('/api/auth/login').send({ email, password });
@@ -80,7 +82,7 @@ test('login rejects an incorrect password', async () => {
   const email = uniqueEmail('wrongpw');
   const signup = await api()
     .post('/api/auth/signup')
-    .send({ name: 'X', email, password: 'correcthorse123' });
+    .send({ name: 'X', email, password: 'correcthorse123', age_confirmed: true });
   createdUserIds.push(signup.body.user.id);
 
   const res = await api().post('/api/auth/login').send({ email, password: 'wrongpassword' });

@@ -51,8 +51,8 @@ async function createAccount(tag, { admin = false, accountStatus = 'active' } = 
   const id = uuid();
   const email = uniqueEmail(`session-${tag}`);
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, account_status)
-     VALUES ($1, $2, $3, $4, TRUE, $5, $6)`,
+    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, account_status, age_attestation_status, age_attestation_version)
+     VALUES ($1, $2, $3, $4, TRUE, $5, $6, 'confirmed', '2026-08-eligibility-18')`,
     [id, `Session ${tag}`, email, bcrypt.hashSync(PASSWORD, 4), admin, accountStatus]
   );
   createdUserIds.push(id);

@@ -270,16 +270,36 @@ test('the privacy policy names every provider that actually processes data', () 
 test('the privacy policy does not claim capabilities that do not exist', () => {
   const privacy = read('public/privacy.html');
 
-  // The original said users could "review or correct your account details at any
-  // time by signing in". No such screen exists.
-  assert.ok(
-    !/review or correct your account details at any time by signing in/i.test(privacy),
-    'must not claim a self-service profile screen that does not exist'
+  // A self-service account centre now exists (Phase 2.3B), so the page may
+  // describe one. What it must still not claim is the thing that does NOT
+  // exist: deletion. A deletion request opens a case for a person to review and
+  // erases nothing, and the page has to say that rather than implying a button.
+  assert.match(
+    privacy,
+    /request for a person to review, not an erase button|not an erase button/i,
+    'must say plainly that a deletion request is not an erasure'
   );
   assert.match(
     privacy,
-    /no self-service screen|handled manually|planned work/i,
-    'must say plainly that data requests are manual today'
+    /Nothing is deleted when you send one/i,
+    'must say that submitting a request deletes nothing'
+  );
+  assert.match(
+    privacy,
+    /has not been decided|to be confirmed/i,
+    'must say that what happens after approval is undecided'
+  );
+
+  // And it must not promise a response deadline nobody has established.
+  assert.ok(
+    !/within\s+(\d+|thirty|sixty|ninety)\s+(days?|hours?)/i.test(privacy),
+    'must not invent a statutory response deadline'
+  );
+
+  // Nor call a pseudonymous record anonymous.
+  assert.ok(
+    !/\banonymou?s(ly)?\b/i.test(privacy.replace(/We do not describe those as anonymous[^<]*/i, '')),
+    'must not describe identifiable records as anonymous'
   );
 });
 

@@ -89,8 +89,8 @@ async function createUser(tag, { admin = false, hostStatus = HOST_STATUS.NOT_REQ
   const id = uuid();
   const email = `test-rescue-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status)
-     VALUES ($1, $2, $3, $4, TRUE, $5, $6)`,
+    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status, age_attestation_status, age_attestation_version)
+     VALUES ($1, $2, $3, $4, TRUE, $5, $6, 'confirmed', '2026-08-eligibility-18')`,
     [id, `Rescue ${tag}`, email, bcrypt.hashSync(PASSWORD, 4), admin, hostStatus]
   );
   createdUserIds.push(id);

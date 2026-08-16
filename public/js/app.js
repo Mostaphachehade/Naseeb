@@ -13,7 +13,9 @@ const { el, frag, mount, append, clear, setText } = NaseebDom;
   // erased before this file loads, but analytics scripts read location, title
   // and referrer, and a third-party script on a page whose whole purpose is a
   // one-time credential is a risk with nothing on the other side of it.
-  if (window.location.pathname === '/claim.html') return;
+  // Same reasoning for the account centre and the email-change confirmation:
+  // one shows an export, the other holds a single-use token in its fragment.
+  if (['/claim.html', '/account.html', '/verify-email-change.html'].includes(window.location.pathname)) return;
   fetch(`${API}/config`)
     .then((r) => r.json())
     .then((config) => {
@@ -217,6 +219,7 @@ function renderHeader() {
       navLink('/winners.html', t('nav.winners')),
       navLink('/about.html', t('nav.about')),
       navLink('/dashboard.html', t('nav.myGiveaways')),
+      navLink('/account.html', 'Account'),
       navLink('/pricing.html', t('nav.pricing')),
       user.is_admin ? navLink('/admin.html', t('nav.admin')) : null,
       user.is_admin ? navLink('/owner.html', t('nav.owner')) : null,

@@ -53,7 +53,16 @@ const ANALYTICS_IMG_ORIGINS = ['https://www.google-analytics.com', 'https://www.
 // fragment; the admin and owner panels handle everything else. public/js/app.js
 // already refuses to initialise analytics on them — this makes that a policy the
 // browser enforces rather than a decision our own script makes about itself.
-const NO_THIRD_PARTY_PATHS = [/^\/claim\.html/, /^\/admin\.html/, /^\/owner\.html/];
+const NO_THIRD_PARTY_PATHS = [
+  /^\/claim\.html/,
+  /^\/admin\.html/,
+  /^\/owner\.html/,
+  // The account centre shows an email address, a request history and, on
+  // request, a whole data export. The email-change page carries a single-use
+  // token in its fragment, exactly like the claim page.
+  /^\/account\.html/,
+  /^\/verify-email-change\.html/,
+];
 
 function analyticsEnabled(pathname) {
   if (!process.env.GA_MEASUREMENT_ID) return false;

@@ -28,7 +28,8 @@ async function createVerifiedUser(tag, { admin = false } = {}) {
   const email = `test-owner-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   const password = 'correcthorse123';
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin) VALUES ($1, $2, $3, $4, TRUE, $5)`,
+    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, age_attestation_status, age_attestation_version)
+     VALUES ($1, $2, $3, $4, TRUE, $5, 'confirmed', '2026-08-eligibility-18')`,
     [id, `Owner Test ${tag}`, email, bcrypt.hashSync(password, 4), admin]
   );
   createdUserIds.push(id);

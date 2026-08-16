@@ -16,6 +16,7 @@ const adminRoutes = require('./routes/admin');
 const configRoutes = require('./routes/config');
 const webhookRoutes = require('./routes/webhooks');
 const claimRoutes = require('./routes/claims');
+const accountRoutes = require('./routes/account');
 const { csrfProtection } = require('./lib/csrf');
 const { securityHeaders } = require('./lib/securityHeaders');
 const { isRenderableMediaUrl } = require('./lib/mediaUrls');
@@ -85,6 +86,7 @@ app.use('/api/host-applications', hostApplicationRoutes);
 app.use('/api/ad-inquiries', adInquiryRoutes);
 app.use('/api/ads', adsRoutes);
 app.use('/api/claims', claimRoutes);
+app.use('/api/account', accountRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/config', configRoutes);
 

@@ -553,8 +553,8 @@ test('the owner panel rejects prices that cannot be charged exactly', async () =
   const adminId = uuid();
   const bcrypt = require('bcryptjs');
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, is_admin, email_verified)
-     VALUES ($1, 'Pricing Admin', $2, $3, TRUE, TRUE)`,
+    `INSERT INTO users (id, name, email, password_hash, is_admin, email_verified, age_attestation_status, age_attestation_version)
+     VALUES ($1, 'Pricing Admin', $2, $3, TRUE, TRUE, 'confirmed', '2026-08-eligibility-18')`,
     [adminId, adminEmail, bcrypt.hashSync('correcthorse123', 4)]
   );
 

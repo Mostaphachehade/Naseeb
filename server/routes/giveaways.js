@@ -13,6 +13,7 @@ const notifications = require('../lib/claimNotifications');
 const { areClaimsEnabled } = require('../lib/featureFlags');
 const integrity = require('../lib/entryIntegrity');
 const riskSignals = require('../lib/riskSignals');
+const eligibility = require('../lib/eligibility');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
@@ -215,6 +216,17 @@ router.get('/:id', optionalAuth, async (req, res) => {
 // is ever added, administrators must stay exempt — see test/host-access.test.js.
 router.post('/', requireAuth, requireHostAccess, async (req, res) => {
   try {
+    const me = await pool.query(
+      'SELECT age_attestation_status, age_attestation_version FROM users WHERE id = $1',
+      [req.userId]
+    );
+    if (eligibility.blocksAction(me.rows[0], 'create_giveaway')) {
+      return res.status(403).json({
+        error: eligibility.WORDING + ' Please confirm this before publishing a giveaway.',
+        code: 'AGE_ATTESTATION_REQUIRED',
+        wording: eligibility.WORDING,
+      });
+    }
     const {
       title,
       description,
@@ -314,12 +326,25 @@ router.post('/', requireAuth, requireHostAccess, async (req, res) => {
 router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
   const client = await pool.connect();
   try {
-    const userRes = await client.query('SELECT name, email, email_verified FROM users WHERE id = $1', [
-      req.userId,
-    ]);
+    const userRes = await client.query(
+      `SELECT name, email, email_verified, age_attestation_status, age_attestation_version
+         FROM users WHERE id = $1`,
+      [req.userId]
+    );
     const enteringUser = userRes.rows[0];
     if (!enteringUser || !enteringUser.email_verified) {
       return res.status(403).json({ error: 'Please verify your email before entering a giveaway.' });
+    }
+    // Accounts that existed before the attestation was introduced are marked
+    // `unknown` rather than assumed, so they are asked once, here, before a NEW
+    // entry. Nothing already in progress is blocked by this — see
+    // server/lib/eligibility.js NEVER_GATED_ACTIONS.
+    if (eligibility.blocksAction(enteringUser, 'enter_giveaway')) {
+      return res.status(403).json({
+        error: eligibility.WORDING + ' Please confirm this before entering.',
+        code: 'AGE_ATTESTATION_REQUIRED',
+        wording: eligibility.WORDING,
+      });
     }
 
     await client.query('BEGIN');

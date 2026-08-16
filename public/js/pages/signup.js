@@ -15,6 +15,9 @@
           name: document.getElementById('name').value,
           email: document.getElementById('email').value,
           password: document.getElementById('password').value,
+          // Only true counts. The server refuses anything else, so an
+          // unticked box cannot become an attestation on the way through.
+          age_confirmed: document.getElementById('age_confirmed').checked === true,
         }),
       });
       adoptSession(result);

@@ -151,9 +151,39 @@ automated decision is taken from them.
   review and disqualification") is adequate.
 
 ### B10. Age
-The Terms require entrants to be 18+, but signup does not currently ask for or record an
-age confirmation. **We need advice on what confirmation is required**, and whether
-anything more than self-declaration is expected.
+The Terms require entrants to be 18+. Signup now asks for, and records, an explicit
+self-declaration — an unticked, required checkbox reading exactly *"I confirm that I am
+18 years of age or older."* — stored with a version (`2026-08-eligibility-18`) and a
+timestamp. Accounts created before this exists are recorded as `unknown` and are prompted
+before entering a giveaway, creating one, or applying to host. They are never blocked from
+finishing an open claim.
+
+**This is self-declaration and nothing more.** No date of birth, identity document or
+biometric is collected, and none is planned. **We need advice on whether self-declaration
+is sufficient**, whether the wording above is adequate, and what (if anything) is
+required beyond it. Collecting identity data about every entrant to close the gap is a
+much larger decision with its own PDPL weight, and should not be made without advice.
+
+### B10a. Retaining pseudonymous records after an erasure request
+Several tables hold no name and no address but do hold a `user_id`, an `entry_id` and a
+timestamp — integrity events and cases, privacy-request events, host-status events,
+claim-transition history. They are append-only by design and survive the deletion of the
+account they describe.
+
+**"No name or email" does not mean "not personal data."** Each of these rows identifies a
+person to anybody holding the rest of the database. **We need advice on** whether they
+may be retained after an erasure request, whether the identifiers must be severed or
+tokenised, and how that is reconciled with an audit trail whose value depends on not
+being editable. The full category-by-category proposal is in
+`docs/PRIVACY_AND_RIGHTS.md` §8 and is explicitly a proposal, not a decision.
+
+### B10b. Error reporting can carry text off-platform
+`Sentry.init` is configured with `captureConsoleIntegration({ levels: ['error'] })`, so
+every `console.error` in the codebase becomes a Sentry event when `SENTRY_DSN` is set.
+Error paths are written not to interpolate personal data and message bodies carrying a
+live link are suppressed from logs entirely — but that is a convention held up by review,
+not a mechanism. **We need a decision** on whether to install a scrubbing hook, drop the
+console integration, or accept the risk with a processing agreement in place.
 
 ### B11. Advertising terms and refunds
 Terms §9 states that a placement we fail to run is refunded or rescheduled at the
@@ -162,9 +192,30 @@ confirmation this is enforceable**, and whether any cooling-off right applies.
 
 ### B12. Policy acceptance
 No account has ever been shown a versioned policy, and we record no historical
-acceptance. Acceptance capture at signup is planned but not built. **We need advice on
-what is required, whether existing users must be asked to accept afresh, and how a
-material change should be communicated.**
+acceptance. The `policy_acceptances` table is **empty**, and will stay empty for as long
+as both documents are drafts.
+
+The mechanism to record an acceptance now exists and is deliberately inert: a policy can
+be accepted only when its status is `effective` **and** it carries an explicit effective
+date **and** that date has passed. Draft and approved-but-not-effective are both refused.
+Activation is a reviewed edit to `server/lib/policies.js` — no environment variable and
+no calendar date can perform it. Terms acceptance and privacy acknowledgement stay
+distinct records with distinct labels.
+
+**We still need advice on** what is required, whether existing users must be asked to
+accept afresh once a document is in force, and how a material change should be
+communicated. Nothing has been backfilled and nothing will be.
+
+### B13. Response timescale for a privacy request
+The request workflow is built (`docs/PRIVACY_AND_RIGHTS.md` §7) and tells requesters that
+no deadline has been published. **We need the applicable UAE timescale confirmed** before
+any figure is stated anywhere. No number is currently written into any wording, and a
+test asserts that.
+
+### B14. Retention of a former email address
+An email change now keeps the previous address on the `email_change_requests` row so the
+history of address changes is auditable. That former address is personal data about the
+same person. **We need advice on** how long it may be kept.
 
 ---
 
@@ -196,10 +247,22 @@ will not imply it.
       who approved them and when
 - [ ] A deliberate, separate transition from `approved` to `effective` with an explicit
       effective date — not inferred from a version number or a calendar date
-- [ ] Acceptance capture built, so a version and timestamp exist per account, from that
-      point forward and never backdated
-- [ ] Data access, correction and deletion workflows built (they are manual today, and
-      the Privacy Policy says so)
+- [x] Acceptance capture built, so a version and timestamp exist per account, from that
+      point forward and never backdated — **built and deliberately inert.** It refuses
+      every policy that is not genuinely effective, which today is all of them, and the
+      table is empty. Turning it on is still the separate transition two boxes above
+- [x] Data access, correction and deletion workflows built — **partly.** Access (a
+      self-service export and an access request), correction (self-service display name,
+      a verified email change, and a correction request) and a request workflow for
+      deletion and objection all exist. **Deletion itself is designed, not built:** a
+      deletion request opens a case for a person, deletes nothing, and says so. See
+      `docs/PRIVACY_AND_RIGHTS.md` §8
+- [ ] Retention and anonymisation decided per category, and the deletion design in
+      `docs/PRIVACY_AND_RIGHTS.md` §8 either implemented or revised on advice
+- [ ] B10a answered: whether pseudonymous audit rows may survive an erasure request
+- [ ] B13 answered: the response timescale for a privacy request
+- [ ] The two missing scheduled jobs run somewhere — expired-session cleanup and
+      expired risk-signal purge. Both have code; neither has a scheduler
 - [x] A decision recorded on whether host paid plans are offered at all, given that they
       were advertised but not enforced — **answered for today only**: the three plans
       (free pilot, AED 250 / 3 listings, AED 900 per month) have been removed rather than

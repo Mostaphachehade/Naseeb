@@ -69,8 +69,8 @@ async function makeUser(tag, { admin = false, hostStatus = 'not_requested' } = {
   const id = crypto.randomUUID();
   const email = uniqueEmail(`integ-${tag}`);
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status)
-     VALUES ($1, $2, $3, $4, TRUE, $5, $6)`,
+    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status, age_attestation_status, age_attestation_version)
+     VALUES ($1, $2, $3, $4, TRUE, $5, $6, 'confirmed', '2026-08-eligibility-18')`,
     [id, `Integrity ${tag}`, email, bcrypt.hashSync(PASSWORD, 4), admin, hostStatus]
   );
   created.users.push(id);

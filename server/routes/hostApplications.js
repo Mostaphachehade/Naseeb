@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { applicationLimiter } = require('../middleware/rateLimit');
 const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
 const { HOST_STATUS, resolveHostAccess, setHostStatus } = require('../lib/hostAccess');
+const eligibility = require('../lib/eligibility');
 
 const router = express.Router();
 const ADMIN_NOTIFY_EMAIL = process.env.ADMIN_NOTIFY_EMAIL;
@@ -38,6 +39,19 @@ router.post('/', applicationLimiter, requireAuth, async (req, res) => {
       return res.status(403).json({
         error: 'Please verify your email before applying to host.',
         code: 'EMAIL_VERIFICATION_REQUIRED',
+      });
+    }
+    // Asked once, before a new hosting action. Accounts predating the
+    // attestation are `unknown`, never assumed.
+    const me = await client.query(
+      'SELECT age_attestation_status, age_attestation_version FROM users WHERE id = $1',
+      [req.userId]
+    );
+    if (eligibility.blocksAction(me.rows[0], 'apply_to_host')) {
+      return res.status(403).json({
+        error: eligibility.WORDING + ' Please confirm this before applying to host.',
+        code: 'AGE_ATTESTATION_REQUIRED',
+        wording: eligibility.WORDING,
       });
     }
     if (access.status === HOST_STATUS.APPROVED) {

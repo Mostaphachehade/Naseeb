@@ -7,6 +7,7 @@ const { requireAuth } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimit');
 const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
 const sessions = require('../lib/sessions');
+const eligibility = require('../lib/eligibility');
 const { tokenForFamily } = require('../lib/csrf');
 
 const router = express.Router();
@@ -76,7 +77,7 @@ async function sendVerificationEmail(user, token) {
 
 router.post('/signup', authLimiter, async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, age_confirmed: ageConfirmed } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are all required.' });
@@ -95,6 +96,16 @@ router.post('/signup', authLimiter, async (req, res) => {
     if (password.length > 72) {
       return res.status(400).json({ error: 'Password must be 72 characters or fewer.' });
     }
+    // Explicit, and only `true` counts. A missing field, a string, or anything
+    // truthy-but-not-true is a box that was not ticked — and the box is not
+    // pre-ticked on the form either. This is a self-declaration: no date of
+    // birth is asked for and no document is collected.
+    if (ageConfirmed !== true) {
+      return res.status(400).json({
+        error: eligibility.WORDING + ' Please confirm this to create an account.',
+        code: 'AGE_ATTESTATION_REQUIRED',
+      });
+    }
 
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [
       email.toLowerCase().trim(),
@@ -109,9 +120,14 @@ router.post('/signup', authLimiter, async (req, res) => {
     const verificationExpires = new Date(Date.now() + VERIFY_TTL_MS);
     const cleanEmail = email.toLowerCase().trim();
     await pool.query(
-      `INSERT INTO users (id, name, email, password_hash, email_verified, verification_token, verification_token_expires)
-       VALUES ($1, $2, $3, $4, FALSE, $5, $6)`,
-      [id, name.trim(), cleanEmail, password_hash, verificationToken, verificationExpires]
+      `INSERT INTO users
+         (id, name, email, password_hash, email_verified, verification_token, verification_token_expires,
+          age_attestation_status, age_attestation_version, age_attested_at)
+       VALUES ($1, $2, $3, $4, FALSE, $5, $6, $7, $8, NOW())`,
+      [
+        id, name.trim(), cleanEmail, password_hash, verificationToken, verificationExpires,
+        eligibility.STATUS.CONFIRMED, eligibility.CURRENT_VERSION,
+      ]
     );
 
     const user = { id, name: name.trim(), email: cleanEmail, is_admin: false, email_verified: false };

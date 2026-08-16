@@ -215,6 +215,10 @@ const REVOCATION = {
   PASSWORD_RESET: 'password_reset',
   ACCOUNT_SUSPENDED: 'account_suspended',
   ADMIN_REVOKED: 'admin_revoked',
+  // The address the account is reached at changed. Every existing sign-in ends,
+  // including the one that made the change: the whole risk being defended
+  // against is a stolen session quietly moving the recovery address.
+  EMAIL_CHANGED: 'email_changed',
 };
 
 // Deliberately stores no IP address and no user-agent string.

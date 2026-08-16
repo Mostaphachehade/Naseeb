@@ -38,8 +38,8 @@ after(async () => {
 async function createUser() {
   const id = uuid();
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, email_verified)
-     VALUES ($1, 'Policy Test User', $2, $3, TRUE)`,
+    `INSERT INTO users (id, name, email, password_hash, email_verified, age_attestation_status, age_attestation_version)
+     VALUES ($1, 'Policy Test User', $2, $3, TRUE, 'confirmed', '2026-08-eligibility-18')`,
     [id, `test-policy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`, bcrypt.hashSync('correcthorse123', 4)]
   );
   createdUserIds.push(id);

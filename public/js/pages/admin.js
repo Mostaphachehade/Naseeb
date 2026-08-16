@@ -1394,6 +1394,229 @@
     ]));
   }
 
+  // ------------------------------------------------------------------
+  // Privacy requests
+  // ------------------------------------------------------------------
+
+  const PRIVACY_TYPE_LABELS = {
+    access: 'Access',
+    correction: 'Correction',
+    deletion: 'Deletion',
+    objection: 'Objection',
+  };
+
+  const PRIVACY_STATUS_LABELS = {
+    submitted: 'Submitted',
+    in_review: 'In review',
+    awaiting_information: 'Awaiting information',
+    completed: 'Completed',
+    declined: 'Declined',
+    unable_to_complete: 'Unable to complete',
+  };
+
+  const BLOCKER_LABELS = {
+    open_prize_claim: 'Open prize claim',
+    active_giveaway_hosted: 'Hosting an open giveaway',
+    open_dispute: 'Open dispute',
+    open_integrity_case: 'Open integrity case',
+    audit_records: 'Audit records',
+  };
+
+  function privacyRow(r) {
+    const detailCell = el('td', { colSpan: 6 });
+    const detailRow = el('tr', { class: 'u-c8be1ccb is-hidden' }, detailCell);
+
+    const openBtn = el('button', {
+      class: 'btn ghost u-51820e15',
+      text: 'Open',
+      on: { click: () => openPrivacyRequest(r.id, detailRow, detailCell) },
+    });
+
+    return [
+      el('tr', {}, [
+        tdNode([
+          el('strong', { text: r.reference }),
+          el('br'),
+          el('span', { class: 'u-a76e0798', text: `account ${r.account_ref}` }),
+        ]),
+        td(PRIVACY_TYPE_LABELS[r.type] || r.type),
+        tdNode(pill(PRIVACY_STATUS_LABELS[r.status] || r.status)),
+        td(`${r.age_days}d`),
+        tdNode(
+          (r.blocking || []).length
+            ? spaced(r.blocking.map((c) => pill(BLOCKER_LABELS[c] || c)))
+            : el('span', { class: 'u-a2aae0fb', text: '—' })
+        ),
+        tdNode(openBtn, 'u-a9efa544'),
+      ]),
+      detailRow,
+    ];
+  }
+
+  async function openPrivacyRequest(requestId, row, cell) {
+    if (!row.classList.contains('is-hidden')) {
+      row.classList.add('is-hidden');
+      clear(cell);
+      return;
+    }
+    row.classList.remove('is-hidden');
+    setText(cell, 'Loading…');
+
+    let data;
+    try {
+      data = await api(`/admin/privacy-requests/${encodeURIComponent(requestId)}`);
+    } catch (err) {
+      mount(cell, el('span', { class: 'form-error show', text: err.message }));
+      return;
+    }
+
+    const req = data.request;
+    const error = el('p', { class: 'form-error' });
+    const preview = el('p', { class: 'hint js-flush' });
+
+    // Same two-field split as entry integrity, for the same reason: the notes
+    // are the internal record and may name another account or an open dispute;
+    // the code chooses a fixed sentence the requester reads.
+    const notesInput = el('textarea', {
+      class: 'js-spaced-input',
+      maxLength: 4000,
+      placeholder: 'Administrator notes — internal. What you checked, what you decided, why. The requester never sees this.',
+    });
+
+    const statusSelect = el('select', { class: 'js-spaced-input' });
+    ['in_review', 'awaiting_information', 'completed', 'declined', 'unable_to_complete'].forEach((s) => {
+      statusSelect.appendChild(el('option', { value: s, text: PRIVACY_STATUS_LABELS[s] }));
+    });
+
+    const codeSelect = el('select', { class: 'js-spaced-input' });
+    function fillCodes() {
+      const codes = data.outcome_codes[statusSelect.value] || [];
+      clear(codeSelect);
+      if (!codes.length) {
+        codeSelect.appendChild(el('option', { value: '', text: '— no outcome for this status —' }));
+        setText(preview, 'The requester will not be given an outcome sentence for this status.');
+        return;
+      }
+      codes.forEach((code) => {
+        codeSelect.appendChild(el('option', { value: code, text: code.replace(/_/g, ' ') }));
+      });
+      setText(preview, 'The requester will read: ' + (data.outcome_copy[codeSelect.value] || ''));
+    }
+    statusSelect.addEventListener('change', fillCodes);
+    codeSelect.addEventListener('change', () => {
+      setText(preview, 'The requester will read: ' + (data.outcome_copy[codeSelect.value] || ''));
+    });
+    fillCodes();
+
+    const submit = el('button', {
+      class: 'btn primary u-51820e15',
+      text: 'Record decision',
+      on: {
+        click: async (e) => {
+          const btn = e.currentTarget;
+          error.classList.remove('show');
+          if (!notesInput.value.trim()) {
+            error.textContent = 'Administrator notes are required — they are the record of this decision.';
+            error.classList.add('show');
+            return;
+          }
+          btn.disabled = true;
+          try {
+            await api(`/admin/privacy-requests/${encodeURIComponent(requestId)}/decision`, {
+              method: 'POST',
+              body: JSON.stringify({
+                status: statusSelect.value,
+                outcome_code: codeSelect.value || null,
+                admin_notes: notesInput.value,
+                // Read from the detail fetch. A screen left open while somebody
+                // else decided is refused with a 409 rather than overwriting it.
+                version: req.version,
+              }),
+            });
+            row.classList.add('is-hidden');
+            clear(cell);
+            loadPrivacyRequests();
+          } catch (err) {
+            error.textContent = err.message;
+            error.classList.add('show');
+            btn.disabled = false;
+          }
+        },
+      },
+    });
+
+    const blockers = (data.blockers || []).map((b) =>
+      el('li', { text: `${BLOCKER_LABELS[b.category] || b.category}${b.count ? ` (${b.count})` : ''} — ${b.note}` })
+    );
+
+    const history = (data.history || []).map((h) =>
+      el('p', { class: 'u-a76e0798' }, [
+        `${new Date(h.created_at).toLocaleString()} · ${h.from_status || '—'} → ${h.to_status}`,
+        h.actor_name ? ` · ${h.actor_name}` : ` · ${h.actor_role}`,
+        h.admin_notes ? el('br') : null,
+        h.admin_notes ? h.admin_notes : null,
+      ])
+    );
+
+    mount(cell, el('div', { class: 'u-1b074808' }, [
+      el('p', {}, [
+        el('strong', { text: req.reference }),
+        ` · ${PRIVACY_TYPE_LABELS[req.type] || req.type} · ${PRIVACY_STATUS_LABELS[req.status] || req.status} · opened ${new Date(req.created_at).toLocaleString()}`,
+      ]),
+      el('p', { class: 'u-a76e0798', text: `${data.account.name} · ${data.account.email} · account created ${new Date(data.account.created_at).toLocaleDateString()}` }),
+      req.user_message
+        ? el('p', { class: 'js-mint-box', text: `They wrote: ${req.user_message}` })
+        : el('p', { class: 'u-a2aae0fb', text: 'They did not add a message.' }),
+
+      blockers.length
+        ? el('div', {}, [
+            el('p', { class: 'u-5bf9ad33', text: 'What currently stands in the way of erasure' }),
+            el('ul', { class: 'u-a2aae0fb' }, blockers),
+          ])
+        : null,
+
+      req.requester_sees
+        ? el('p', { class: 'hint', text: `Currently shown to them: ${req.requester_sees}` })
+        : null,
+
+      el('label', { class: 'u-1964b55e', text: 'Administrator notes (internal — never shown to the requester)' }),
+      notesInput,
+      el('label', { class: 'u-1964b55e', text: 'Status' }),
+      statusSelect,
+      el('label', { class: 'u-1964b55e', text: 'Outcome the requester will be given' }),
+      codeSelect,
+      preview,
+      // Said on the screen where the mistake would be made.
+      el('p', {
+        class: 'hint',
+        text: 'Recording a decision here changes the status and writes the history. It does not delete or anonymise any record — that is a separate, deliberate action.',
+      }),
+      el('div', { class: 'js-button-row' }, submit),
+      error,
+      history.length
+        ? el('div', { class: 'u-680b5a65' }, [el('p', { class: 'u-5bf9ad33', text: 'History' }), history])
+        : null,
+    ]));
+  }
+
+  async function loadPrivacyRequests() {
+    const content = document.getElementById('privacy-content');
+    try {
+      const rows = await api('/admin/privacy-requests');
+      if (!rows.length) {
+        mount(content, emptyNode('No privacy requests.'));
+        return;
+      }
+      mount(content, dataTable(
+        ['Reference', 'Type', 'Status', 'Age', 'Blockers', 'Actions'],
+        rows.flatMap(privacyRow),
+        'No privacy requests.'
+      ));
+    } catch (err) {
+      mount(content, emptyNode(err.message));
+    }
+  }
+
   async function loadIntegrity() {
     const content = document.getElementById('integrity-content');
     try {
@@ -1417,6 +1640,7 @@
     loadIntegrity();
     loadClaims();
     loadRescueQueue();
+    loadPrivacyRequests();
     loadMissingClaims();
     load();
     loadAdInquiries();
