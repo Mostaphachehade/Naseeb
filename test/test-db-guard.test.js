@@ -116,9 +116,9 @@ test('configureTestEnv keeps an explicitly test-mode Stripe key', () => {
   delete process.env.STRIPE_SECRET_KEY;
 });
 
-test('configureTestEnv never signs tokens with the real JWT_SECRET', () => {
-  process.env.JWT_SECRET = 'a-secret-that-looks-like-the-production-one';
+test('configureTestEnv never signs anything with a real secret', () => {
+  process.env.SESSION_SECRET = 'a-secret-that-looks-like-the-production-one';
   configureTestEnv();
-  assert.notEqual(process.env.JWT_SECRET, 'a-secret-that-looks-like-the-production-one');
-  assert.match(process.env.JWT_SECRET, /test-only/);
+  assert.notEqual(process.env.SESSION_SECRET, 'a-secret-that-looks-like-the-production-one');
+  assert.match(process.env.SESSION_SECRET, /test-only/);
 });

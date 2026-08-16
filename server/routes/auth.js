@@ -7,7 +7,7 @@ const { requireAuth } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimit');
 const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
 const sessions = require('../lib/sessions');
-const { tokenForSession } = require('../lib/csrf');
+const { tokenForFamily } = require('../lib/csrf');
 
 const router = express.Router();
 
@@ -54,7 +54,7 @@ async function establishSession(res, user) {
 
     return {
       user: accountView(user),
-      csrf_token: tokenForSession(session.id),
+      csrf_token: tokenForFamily(session.familyId),
       session_expires_at: new Date(session.expiresAt).toISOString(),
     };
   } catch (err) {
@@ -183,7 +183,7 @@ router.get('/session', async (req, res) => {
     return res.json({
       authenticated: true,
       user: accountView(result.user),
-      csrf_token: tokenForSession(result.session.id),
+      csrf_token: tokenForFamily(result.session.familyId),
       session_expires_at: new Date(result.session.expiresAt).toISOString(),
     });
   } catch (err) {
@@ -202,9 +202,24 @@ router.post('/logout', async (req, res) => {
   try {
     const token = sessions.tokenFromRequest(req);
     if (token) {
+      // Revokes the whole family, not the row that happened to send this
+      // request. A rotation leaves a predecessor authenticating for a grace
+      // window, so "this session" is a chain of rows, and ending only one of
+      // them left the others working — including, if a rotation committed at
+      // the wrong instant, a successor nobody had asked for.
       const result = await sessions.authenticate(token);
       if (result.ok) {
-        await sessions.revokeSession(pool, result.session.id, sessions.REVOCATION.LOGOUT);
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          await sessions.revokeFamily(client, result.session.familyId, sessions.REVOCATION.LOGOUT);
+          await client.query('COMMIT');
+        } catch (err) {
+          await client.query('ROLLBACK').catch(() => {});
+          throw err;
+        } finally {
+          client.release();
+        }
       }
     }
   } catch (err) {

@@ -123,12 +123,14 @@ function configureTestEnv() {
   // secret strength, and hard-coding them means the suite can never fall back
   // to a real one and mint credentials that would be valid in production.
   //
-  // SESSION_SECRET signs CSRF tokens. JWT_SECRET is set only so that anything
-  // still reading it fails loudly against a value that is obviously not real —
-  // browser authentication no longer uses a JWT at all.
+  // SESSION_SECRET signs CSRF tokens. Note this value would be REFUSED by
+  // assertSessionSecret in production — it matches the "test-only" placeholder
+  // pattern on purpose, so a suite value can never be mistaken for a real one.
   process.env.SESSION_SECRET =
     'test-only-session-secret-not-valid-outside-the-test-suite-0123456789';
-  process.env.JWT_SECRET = 'test-only-jwt-secret-not-valid-outside-the-test-suite';
+  // JWT_SECRET is gone along with the jsonwebtoken dependency. Deleted rather
+  // than set, so anything that starts reading it again fails loudly.
+  delete process.env.JWT_SECRET;
   process.env.APP_URL = process.env.APP_URL || 'http://localhost:3000';
   // Tests speak plain http to an in-process server; a Secure cookie would never
   // be sent back. Production cannot make this choice — see

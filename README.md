@@ -110,7 +110,7 @@ naseeb/
     index.js               # Express app entry point
     db.js                   # Postgres schema (users, giveaways, entries, host_applications)
     lib/email.js             # Resend wrapper — logs to console if RESEND_API_KEY isn't set
-    middleware/auth.js        # JWT auth middleware (requireAuth, optionalAuth, requireAdmin)
+    middleware/auth.js        # cookie-session auth (requireAuth, optionalAuth, requireAdmin)
     middleware/rateLimit.js   # rate limiters for auth, entry, and application endpoints
     routes/auth.js            # signup / login / logout / session bootstrap / verification / reset
     middleware/auth.js        # cookie session -> req.userId. No bearer path exists.
@@ -154,11 +154,23 @@ Three things to know before deploying:
 2. **Everyone signs in once** after this ships. Old localStorage tokens are cleared on sight and
    are never exchanged for a session — that is deliberate, not an oversight.
 3. **Local development** runs over plain http, so `COOKIE_SECURE` stays `false` there. Production
-   cannot make that choice; it is checked at startup.
+   cannot make that choice; it is checked at startup, along with the secret itself — production
+   refuses to boot on a missing, short, placeholder, low-entropy or borrowed `SESSION_SECRET`.
+   Only the variable name ever appears in that message.
 
-`docs/SESSIONS.md` has the whole model: cookie attributes and why `SameSite=Lax`, the rotation
-and renewal policy, every revocation trigger, the single Stripe-webhook CSRF exclusion, and what
-is still open (notably: **this is not XSS hardening — there is still no CSP**).
+Still outstanding: **nothing sweeps expired sessions on a schedule.** Expired sessions are
+refused regardless, but the tables grow until a platform-scheduled maintenance job calls
+`deleteExpiredSessions()`. See `docs/SESSIONS.md` §9b — session maintenance is not complete.
+
+A **rotation chain is one logical session.** Every login creates a `session_families` row;
+rotation stays inside it; logging out with any member — the current token or a predecessor still
+inside its grace window — ends the whole family. Two partial unique indexes make that a database
+guarantee rather than a convention.
+
+`docs/SESSIONS.md` has the whole model: cookie attributes and why `SameSite=Lax`, the family and
+rotation invariants, every revocation trigger, the single Stripe-webhook CSRF exclusion,
+production secret validation, and what is still open (notably: **this is not XSS hardening —
+there is still no CSP**).
 
 ## Environment variables
 

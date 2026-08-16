@@ -26,7 +26,7 @@ const {
 } = require('../testHelpers');
 
 const sessions = require('../server/lib/sessions');
-const { tokenForSession, CSRF_HEADER } = require('../server/lib/csrf');
+const { tokenForFamily, CSRF_HEADER } = require('../server/lib/csrf');
 
 const createdUserIds = [];
 const createdGiveawayIds = [];
@@ -106,14 +106,15 @@ test('the CSRF token comes from an authenticated no-store endpoint and carries n
   assert.ok(res.body.csrf_token.length >= 32, 'and it is high-entropy');
 
   // The session token is not in it, in any field.
-  const row = await pool.query('SELECT token_hash, id FROM sessions WHERE user_id = $1', [account.id]);
+  const row = await pool.query('SELECT token_hash, id, family_id FROM sessions WHERE user_id = $1', [account.id]);
   const body = JSON.stringify(res.body);
   assert.ok(!body.includes(row.rows[0].token_hash));
   assert.equal(res.body.token, undefined);
   assert.equal(res.body.session_token, undefined);
 
-  // It is derived from the session, so it is not a second secret to store.
-  assert.equal(res.body.csrf_token, tokenForSession(row.rows[0].id));
+  // It is derived from the session family, so it is not a second secret to
+  // store — and a rotation inside the family does not invalidate it.
+  assert.equal(res.body.csrf_token, tokenForFamily(row.rows[0].family_id));
 });
 
 test('an anonymous caller is told so plainly and gets no token', async () => {

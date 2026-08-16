@@ -268,15 +268,17 @@ test('missing, malformed, unknown, expired and revoked sessions are all refused'
     assert.equal(res.status, 401, `${label} must be refused`);
   }
 
-  // Expired.
-  await pool.query("UPDATE sessions SET expires_at = NOW() - INTERVAL '1 minute' WHERE id = $1", [
-    sessionId,
-  ]);
+  // Expired. The family's absolute expiry is the authority, so that is what is
+  // moved — a per-row copy could not extend or shorten anything on its own.
+  await pool.query(
+    "UPDATE session_families SET absolute_expires_at = NOW() - INTERVAL '1 minute' WHERE id = (SELECT family_id FROM sessions WHERE id = $1)",
+    [sessionId]
+  );
   assert.equal((await session.get('/api/giveaways/mine/entered')).status, 401, 'expired');
 
   // Revoked (and un-expired again, so only the revocation is being tested).
   await pool.query(
-    "UPDATE sessions SET expires_at = NOW() + INTERVAL '1 hour', revoked_at = NOW(), revocation_reason = 'test' WHERE id = $1",
+    "UPDATE session_families SET absolute_expires_at = NOW() + INTERVAL '1 hour', revoked_at = NOW(), revocation_reason = 'test' WHERE id = (SELECT family_id FROM sessions WHERE id = $1)",
     [sessionId]
   );
   assert.equal((await session.get('/api/giveaways/mine/entered')).status, 401, 'revoked');
@@ -285,9 +287,10 @@ test('missing, malformed, unknown, expired and revoked sessions are all refused'
 test('a refused session clears the cookie so the browser stops presenting it', async () => {
   const account = await createAccount('clears');
   const session = await signIn(account.email, PASSWORD);
-  await pool.query("UPDATE sessions SET revoked_at = NOW(), revocation_reason = 'test' WHERE user_id = $1", [
-    account.id,
-  ]);
+  await pool.query(
+    "UPDATE session_families SET revoked_at = NOW(), revocation_reason = 'test' WHERE user_id = $1",
+    [account.id]
+  );
 
   const res = await session.get('/api/giveaways/mine/entered');
   assert.equal(res.status, 401);
@@ -478,14 +481,18 @@ test('rotation issues one successor, invalidates the old token, and keeps the ex
   const account = await createAccount('rotate');
   const res = await login(account.email);
   const oldToken = cookieAttributes(res.headers['set-cookie']).value;
-  const before = await pool.query('SELECT id, expires_at FROM sessions WHERE user_id = $1', [account.id]);
+  const before = await pool.query(
+    'SELECT s.id, s.family_id, f.absolute_expires_at FROM sessions s JOIN session_families f ON f.id = s.family_id WHERE s.user_id = $1',
+    [account.id]
+  );
 
   const rotated = await sessions.rotateSession(before.rows[0].id);
   assert.ok(rotated, 'a successor is issued');
   assert.notEqual(rotated.token, oldToken);
+  assert.equal(rotated.familyId, before.rows[0].family_id, 'the successor stays inside the family');
   assert.equal(
     new Date(rotated.expiresAt).getTime(),
-    new Date(before.rows[0].expires_at).getTime(),
+    new Date(before.rows[0].absolute_expires_at).getTime(),
     'rotation shortens a token’s life, it does not extend the session'
   );
 
@@ -769,7 +776,8 @@ test('expired sessions can be swept without touching live ones', async () => {
   const live = await signIn(account.email, PASSWORD);
 
   await pool.query(
-    "UPDATE sessions SET expires_at = NOW() - INTERVAL '60 days' WHERE user_id = $1 AND id = (SELECT id FROM sessions WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1)",
+    `UPDATE session_families SET absolute_expires_at = NOW() - INTERVAL '60 days'
+      WHERE id = (SELECT family_id FROM sessions WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1)`,
     [account.id]
   );
 

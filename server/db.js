@@ -116,6 +116,30 @@ async function init() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status_reason TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status_changed_by TEXT REFERENCES users(id);
 
+    -- One login, one family.
+    --
+    -- A session's token is rotated periodically, and for a grace window the
+    -- replaced token still authenticates so that browser tabs mid-request are
+    -- not signed out. That made "the session" ambiguous: revoking the row that
+    -- happened to send a request could leave a sibling alive. A rotation that
+    -- committed between a logout resolving its session and revoking it left the
+    -- successor working — demonstrated, then fixed by this table.
+    --
+    -- The family is the logical session. It is what login creates, what logout
+    -- revokes, and what holds the absolute expiry, so no amount of rotation can
+    -- extend the life of one sign-in.
+    CREATE TABLE IF NOT EXISTS session_families (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      -- Set once, at login. Nothing moves it.
+      absolute_expires_at TIMESTAMPTZ NOT NULL,
+      revoked_at TIMESTAMPTZ,
+      revocation_reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_session_families_user
+      ON session_families(user_id) WHERE revoked_at IS NULL;
+
     -- Browser sessions.
     --
     -- Authentication used to be a 30-day JWT in localStorage: readable by any
@@ -152,6 +176,34 @@ async function init() {
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id) WHERE revoked_at IS NULL;
     CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+
+    -- Which login this row belongs to. Every rotation stays inside its family.
+    ALTER TABLE sessions ADD COLUMN IF NOT EXISTS family_id TEXT
+      REFERENCES session_families(id) ON DELETE CASCADE;
+
+    -- Any row written before families existed becomes a family of one. This
+    -- table has never been deployed, so in practice there are none — but a
+    -- migration that only works on an empty table is not a migration.
+    INSERT INTO session_families (id, user_id, absolute_expires_at, created_at, revoked_at, revocation_reason)
+    SELECT s.id, s.user_id, s.expires_at, s.created_at, s.revoked_at, s.revocation_reason
+      FROM sessions s
+     WHERE s.family_id IS NULL
+    ON CONFLICT (id) DO NOTHING;
+    UPDATE sessions SET family_id = id WHERE family_id IS NULL;
+    ALTER TABLE sessions ALTER COLUMN family_id SET NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_sessions_family ON sessions(family_id);
+
+    -- The two guarantees that must not depend on application code being right.
+    --
+    -- One predecessor can have at most one successor: a second rotation of the
+    -- same row cannot insert a rival, so a chain cannot branch.
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_session_successor
+      ON sessions (rotated_from_session_id) WHERE rotated_from_session_id IS NOT NULL;
+    -- And a family has at most one live member. Rotation therefore has to
+    -- revoke the predecessor BEFORE inserting the successor — which is what
+    -- makes a revoked family impossible to revive by racing a rotation.
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_session_family_live
+      ON sessions (family_id) WHERE revoked_at IS NULL;
 
     -- Intentionally no price/amount/payment columns on giveaways or entries.
     -- Entry into a giveaway must always be free; prizes are funded by the host

@@ -40,15 +40,21 @@ function signingKey() {
   return secret;
 }
 
-// The token is an HMAC over the session id, not a random value stored beside
-// it. That ties it cryptographically to one session with nothing extra
-// persisted: a token issued for session A cannot validate against session B,
-// and when a session is revoked or rotated its id stops resolving, so every
+// The token is an HMAC over the session FAMILY id, not a random value stored
+// beside it and not the id of one rotated row. That ties it cryptographically
+// to one logical sign-in with nothing extra persisted: a token issued for one
+// login cannot validate against another, and when that login is revoked every
 // token derived from it stops working at the same instant.
-function tokenForSession(sessionId) {
+//
+// Binding to the family rather than the row also means a rotation does not
+// invalidate the token a page is holding — the browser's session continues, so
+// its CSRF token should too. The alternative was accepting the predecessor's
+// and the successor's tokens during a grace window, which is two valid values
+// where there should be one.
+function tokenForFamily(familyId) {
   const key = signingKey();
-  if (!key || !sessionId) return null;
-  return crypto.createHmac('sha256', key).update(`csrf:${sessionId}`).digest('base64url');
+  if (!key || !familyId) return null;
+  return crypto.createHmac('sha256', key).update(`csrf:${familyId}`).digest('base64url');
 }
 
 function matches(expected, provided) {
@@ -167,9 +173,7 @@ async function verifyAgainstSession(req, res, next) {
   try {
     const { sessionToken, provided } = req.csrfCheck;
     const result = await pool.query(
-      `SELECT id, expires_at, revoked_at, replaced_by_session_id, revocation_reason,
-              rotation_grace_until
-         FROM sessions WHERE token_hash = $1`,
+      `SELECT family_id FROM sessions WHERE token_hash = $1`,
       [hashToken(sessionToken)]
     );
     const row = result.rows[0];
@@ -186,15 +190,11 @@ async function verifyAgainstSession(req, res, next) {
       });
     }
 
-    // A token minted for the session this cookie names. During a rotation grace
-    // window the successor's token is the live one, so both are accepted —
-    // otherwise a tab that rotated a moment ago would fail CSRF on its next
-    // request while holding a perfectly good session.
-    const candidates = [tokenForSession(row.id)];
-    if (row.replaced_by_session_id) candidates.push(tokenForSession(row.replaced_by_session_id));
-
-    const ok = candidates.some((expected) => matches(expected, provided));
-    if (!ok) {
+    // One expected value, for the login this cookie belongs to. A predecessor
+    // and its successor share a family, so a tab that rotated mid-page keeps a
+    // working token — and a token from any other login, of this user or anyone
+    // else, does not match.
+    if (!matches(tokenForFamily(row.family_id), provided)) {
       return res.status(403).json({
         error: 'Your page is out of date. Reload and try again.',
         code: 'CSRF_TOKEN_INVALID',
@@ -216,7 +216,7 @@ module.exports = {
   CSRF_HEADER,
   UNSAFE_METHODS,
   csrfProtection,
-  tokenForSession,
+  tokenForFamily,
   originAllowed,
   configuredOrigin,
 };

@@ -149,7 +149,7 @@ function runServer(extraEnv) {
         NODE_ENV: 'test',
         DATABASE_URL: process.env.DATABASE_URL,
         DATABASE_SSL: 'false',
-        JWT_SECRET: 'startup-check-secret-not-a-real-credential',
+        SESSION_SECRET: 'startup-check-secret-not-a-real-credential',
         // 0 lets the OS pick a free port, so these never collide with anything.
         PORT: '0',
         ...extraEnv,

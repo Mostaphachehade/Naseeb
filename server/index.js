@@ -88,14 +88,7 @@ function assertClaimConfiguration() {
 // all, so every state-changing request would be refused — better to say so at
 // boot than to have the site half-work. Only variable names appear here.
 function assertSessionConfiguration() {
-  const problems = sessions.assertCookieSecurity();
-
-  const secret = process.env.SESSION_SECRET || '';
-  if (!secret) {
-    problems.push('SESSION_SECRET is not set — CSRF tokens cannot be signed.');
-  } else if (secret.length < 32) {
-    problems.push('SESSION_SECRET is shorter than 32 characters.');
-  }
+  const problems = [...sessions.assertCookieSecurity(), ...sessions.assertSessionSecret()];
 
   if (problems.length === 0) return;
 

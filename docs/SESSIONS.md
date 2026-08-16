@@ -76,8 +76,9 @@ naseeb_session=<token>; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200[; Secure]
   non-https `APP_URL`.
 - **Path=/**, and cleared with the same attributes it was set with — a
   mismatched Path or SameSite leaves the original cookie in place.
-- **Max-Age** derived from the row's `expires_at`, so the browser stops sending
-  a token at the same moment the server stops honouring it.
+- **Max-Age** derived from the family's absolute expiry, so the browser stops
+  sending a token at the same moment the server stops honouring it — and a
+  rotation mid-session does not push it outwards.
 
 ### Lifetime
 
@@ -96,9 +97,17 @@ it ends.
 
 ## 3. The schema
 
-`sessions`: `id`, `user_id` (ON DELETE CASCADE), `token_hash` (unique),
-`created_at`, `last_used_at`, `expires_at`, `revoked_at`, `revocation_reason`,
-`replaced_by_session_id`, `rotated_from_session_id`, `rotation_grace_until`.
+`session_families` — one row per login: `id`, `user_id` (ON DELETE CASCADE),
+`created_at`, `absolute_expires_at`, `revoked_at`, `revocation_reason`.
+
+`sessions` — one row per token: `id`, `family_id` (ON DELETE CASCADE),
+`user_id`, `token_hash` (unique), `created_at`, `last_used_at`, `expires_at`,
+`revoked_at`, `revocation_reason`, `replaced_by_session_id`,
+`rotated_from_session_id`, `rotation_grace_until`.
+
+Two partial unique indexes carry the invariants that must not depend on
+application code: `uniq_session_successor` on `(rotated_from_session_id)` and
+`uniq_session_family_live` on `(family_id) WHERE revoked_at IS NULL`. See §4.
 
 **No IP address and no user-agent string**, deliberately. Nothing in this
 application reads them — there is no device list, no anomaly detection — so
@@ -116,8 +125,9 @@ not a database write.
 | No cookie | 401, no cookie cleared |
 | Malformed value | 401 (rejected before any query) |
 | Unknown hash | 401, cookie cleared |
-| `expires_at` passed | 401, cookie cleared |
-| `revoked_at` set | 401, cookie cleared |
+| family's `absolute_expires_at` passed | 401, cookie cleared |
+| family `revoked_at` set | 401, cookie cleared |
+| row `revoked_at` set, outside a rotation grace window | 401, cookie cleared |
 | User row missing | 401, cookie cleared |
 | `account_status != 'active'` | 401, cookie cleared |
 | **Database error** | **503**, cookie left alone |
@@ -129,7 +139,7 @@ same way.
 
 ---
 
-## 4. Fixation and rotation
+## 4. Fixation, families and rotation
 
 **Fixation** is prevented by construction, not by a check. Login never looks at,
 adopts or extends the session cookie the browser arrived with: it mints a new
@@ -137,44 +147,94 @@ token with a new row, and `Set-Cookie` overwrites whatever was there. A planted
 cookie value stops being meaningful the moment the victim signs in, and never
 becomes a session at all.
 
-**Rotation policy.** A session's token is swapped for a fresh one on the first
-request after `SESSION_ROTATE_AFTER_MINUTES` (default 240) since it was created.
-The expiry does **not** move — rotation shortens how long any one captured token
-is worth something; it is not a way to keep a session alive by using it.
+### A rotation chain is one logical session
 
-Rotation happens at most once per session: the row is locked, and a second
-concurrent attempt sees `replaced_by_session_id` already set and returns without
-minting a rival token.
+Rotation replaces a token and leaves the predecessor authenticating for a grace
+window, so "the session" is a *chain* of rows rather than a row. The first cut
+of this phase revoked whichever row sent the request, and that was not enough.
+The hole was real and was reproduced before it was fixed:
+
+```
+logout step 1: authenticate(token) -> session A
+another request: rotate A -> B          (commits in the gap)
+logout step 2: revoke A                 -> 0 rows (A is already revoked-as-rotated)
+B: still valid.
+```
+
+Measured, before the fix: `logout revoked a row? false` / `successor token after
+logout -> 200 *** STILL VALID ***` / `live session rows after logout: 1`.
+
+`session_families` is the fix. **One login, one family.** It is what login
+creates, what logout revokes, and what carries the absolute expiry.
+
+| Guarantee | How |
+|---|---|
+| A predecessor has at most one successor | `UNIQUE (rotated_from_session_id) WHERE NOT NULL` |
+| A family has at most one live member | `UNIQUE (family_id) WHERE revoked_at IS NULL` |
+| Concurrent rotations cannot branch | both of the above, plus `SELECT … FOR UPDATE` on the family row |
+| A revoked family cannot be revived | rotation and every revocation lock the **same family row** first, in the same order |
+| Every member keeps the original expiry | it lives on `session_families.absolute_expires_at`; `authenticate` reads the family, not the row |
+| Rotation never extends a sign-in | there is no code path that writes `absolute_expires_at` after login |
+
+The first two are partial unique indexes, so they hold regardless of what the
+application code does. The ordering rule is what closes the race: whichever of a
+rotation and a revocation takes the family lock first wins, and the loser sees
+the winner's committed state rather than a stale snapshot.
+
+That ordering also dictates the three statements inside `rotateSession`, in this
+order: revoke the predecessor, insert the successor, then set the back-pointer.
+The predecessor must be revoked first or the live-member index rejects the
+insert; the back-pointer must be set last because it references a row that does
+not exist until the insert.
+
+### Renewal policy
+
+A session's token is swapped for a fresh one on the first request after
+`SESSION_ROTATE_AFTER_MINUTES` (default 240) since it was created. Rotation
+shortens how long any one captured token is worth something; it is not a way to
+keep a session alive by using it.
 
 **Multi-tab safety.** A replaced token keeps working for a 60-second grace
-window, authenticating as its successor. Without it, two tabs firing at the
-instant a rotation is due would race and one would be signed out through no
-fault of anyone's. A test ages a session past the threshold and fires ten
-simultaneous requests: all ten succeed, and exactly one rotation happens.
+window, authenticating as the family's current live member — resolved by
+querying the family rather than by following one link in the chain, so it holds
+however many rotations have happened. A request whose own rotation attempt loses
+the race falls back to that same grace path instead of being signed out. Tested
+with ten simultaneous requests across a due rotation: all ten succeed, exactly
+one rotation happens, and the family still has exactly one live member.
 
 Deliberately **not** rotated on every request: that would turn every
 multi-request page load into a race, and buys little when the session already
 has a short absolute life.
 
----
-
 ## 5. Revocation
 
-One implementation, `revokeAllForUser`, behind every case — so none of them can
-quietly do less than the others.
+Revocation operates on **families**, never on single rows. One implementation,
+`revokeFamily`, is behind every case — so none of them can quietly do less than
+the others, and none can leave a sibling alive.
 
 | Trigger | Scope | Reason recorded |
 |---|---|---|
-| `POST /api/auth/logout` | this session | `logout` |
-| `POST /api/auth/logout-all` | all of the user's | `admin_revoked` |
-| `POST /api/auth/reset-password` | all of the user's | `password_reset` |
-| `POST /api/admin/users/:id/account-status` (≠ active) | all of that user's | `account_suspended` |
-| `POST /api/admin/users/:id/revoke-sessions` | all of that user's | `admin_revoked` |
-| Rotation | the replaced token | `rotated` |
+| `POST /api/auth/logout` | this family, whichever member asked | `logout` |
+| `POST /api/auth/logout-all` | every family of the user | `admin_revoked` |
+| `POST /api/auth/reset-password` | every family of the user | `password_reset` |
+| `POST /api/admin/users/:id/account-status` (≠ active) | every family of that user | `account_suspended` |
+| `POST /api/admin/users/:id/revoke-sessions` | every family of that user | `admin_revoked` |
+| Rotation | the replaced row only | `rotated` |
 
-A revoked session stops working on the next request, even though the browser
-still holds a well-formed, unexpired cookie. That is the thing a JWT could not
-do, and the reason sessions are a table.
+**Logout ends the whole family**, whether the caller presents the current token
+or a predecessor still inside its grace window. Afterwards: the predecessor
+fails, the successor fails, every other rotated member fails, CSRF tokens tied to
+that login fail, the cookie is cleared, and no concurrent rotation can produce a
+new valid successor — it locks the same family row and finds it revoked.
+
+`revokeFamily` records the act on the family row (`revoked_at`,
+`revocation_reason`) and sweeps the members. A member already revoked by a
+rotation **keeps its own** `revocation_reason`, so the chain stays readable; what
+it loses is its grace window. Nothing about this requires storing a plaintext
+token: the audit is timestamps, reasons and hashes.
+
+`sessions_revoked` in these responses counts **logical sessions**, not rows — a
+family that rotated five times is one session a person would recognise.
 
 Password reset and revocation are **one transaction**. Somebody resetting a
 password is very often somebody who thinks another person has their account;
@@ -211,20 +271,19 @@ covers login CSRF too, which the token check cannot reach.
 **2. Token.** Every unsafe request that carries a session cookie must send a
 matching `X-CSRF-Token` header.
 
-- The token is `HMAC-SHA256(SESSION_SECRET, "csrf:" + sessionId)`, base64url.
-  Tied cryptographically to one session with nothing extra persisted: a token
-  minted for session A cannot validate against session B, and when a session is
-  revoked or rotated its id stops resolving so every token derived from it dies
-  at the same instant.
+- The token is `HMAC-SHA256(SESSION_SECRET, "csrf:" + familyId)`, base64url.
+  Tied cryptographically to one **login** with nothing extra persisted: a token
+  minted for one sign-in cannot validate against another, of this user or anyone
+  else, and when that family is revoked every token derived from it dies at the
+  same instant. Binding to the family rather than to a rotated row also means a
+  rotation does not invalidate the token a page is holding — one valid value at
+  a time, instead of accepting both sides of a grace window.
 - Compared with `timingSafeEqual`.
 - **Header only.** Never a URL (it would reach access logs, Referer headers,
   browser history and shared links), never a form field, never `localStorage` —
   the frontend holds it in a module variable that dies with the page.
 - Obtained from `GET /api/auth/session`, which is `Cache-Control: no-store` and
   returns no session token in any field.
-- During a rotation grace window both the old and new session's tokens are
-  accepted, so a tab that rotated a moment ago does not fail CSRF while holding
-  a perfectly good session.
 - A failure to verify is a **503**, not a pass.
 
 ### Exclusions
@@ -296,29 +355,73 @@ hand-built `Authorization` header.
 
 ## 9. Production startup validation
 
-`server/index.js` refuses to start in production when:
+`server/index.js` refuses to start in production when any of these hold. Only
+variable **names** ever appear in the output — no value is echoed, hashed into a
+message, or length-reported beyond "shorter than 32 characters".
 
-- `SESSION_SECRET` is missing or shorter than 32 characters, or
-- `COOKIE_SECURE=false`, or
-- `APP_URL` is not an `https://` origin.
+**Cookies** (`assertCookieSecurity`):
+- `COOKIE_SECURE=false`
+- `APP_URL` is not an `https://` origin
+
+**The secret** (`assertSessionSecret`) — `SESSION_SECRET` signs every CSRF token,
+so a guessable one is the whole defence gone:
+- missing
+- shorter than 32 characters
+- matches a placeholder pattern (`change-this…`, `your-secret…`, `secret`,
+  `test-only…`, and similar)
+- fewer than 8 distinct characters — a long run of one character passes a length
+  check and is not a secret
+- equal to `JWT_SECRET`, `APP_URL`, `DATABASE_URL`, `STRIPE_SECRET_KEY` or
+  `CLAIM_ENCRYPTION_KEY`; a secret shared with a less-protected variable is not
+  one
+
+There is **no default and no fallback.** A built-in value would be a secret every
+deployment shares, and falling back to another variable would be a public value
+signing a private thing. When `SESSION_SECRET` is absent, `csrf.js` mints no
+token at all and every state-changing request is refused — failing closed rather
+than failing open on a guessable key. A test greps the source to prove no
+`SESSION_SECRET ||` fallback and no `JWT_SECRET` reference exists there.
 
 Outside production the same problems are a warning, so local development works
-over plain http. Only variable **names** ever appear in that output.
+over plain http.
+
+`.env.example` and the README carry the variable name and this generation
+command, and no value:
+
+```
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
 
 ---
+
+## 9b. Operational requirements (not yet met)
+
+**Session maintenance is not complete**, and should not be described as such.
+
+`deleteExpiredSessions()` exists, is tested, and **nothing calls it on a
+schedule.** Expired families are refused by `authenticate` regardless, so this is
+housekeeping rather than a control — but it is housekeeping somebody has to
+schedule, and until they do, `sessions` and `session_families` grow without
+bound. It belongs with the other deployment-time obligation already recorded for
+claim retention: a platform-scheduled job that keeps working through web-service
+sleep, restart and scaling, rather than an in-process timer.
+
+Until that job exists, this is an open operational requirement, deferred to the
+operations phase by agreement.
 
 ## 10. Still open
 
 - **No CSP, and inline scripts everywhere.** An injected script can still act as
   the user within their session, and can still read the in-memory CSRF token.
   What it can no longer do is exfiltrate a durable credential. Phase 2.2B.
-- **No expired-session sweep runs automatically.** `deleteExpiredSessions()`
-  exists and is tested but nothing calls it on a schedule; the table grows until
-  someone does. Expired rows are refused regardless, so this is housekeeping.
+- **No expired-session sweep runs automatically** — see §9b. This is an open
+  operational requirement, not finished work.
 - **No "your other sessions" screen.** `logout-all` exists as an endpoint but no
   page offers it, and there is no device list — which is also why no device
   metadata is stored.
 - **Session lifetime is a judgement, not a measurement.** Twelve hours may prove
   annoying in practice. It is configurable for exactly that reason.
-- **`jsonwebtoken` is still a dependency** although nothing in the server uses
-  it for authentication any more. Removing it is a separate, trivial change.
+- **A grace window is a 60-second replay window.** A predecessor token captured
+  in the instant before its rotation is usable for up to a minute. That is the
+  price of not signing out browser tabs mid-request, and it is bounded, single
+  -family and revocable — but it is not nothing.
