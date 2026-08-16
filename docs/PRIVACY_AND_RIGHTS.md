@@ -221,26 +221,34 @@ not reach an access log, a proxy, or a `Referer` header on the way in.
 ### States
 
 ```
-                    ┌──────────────┐
-                    │  submitted   │  ← the person raises it
-                    └──────┬───────┘
-                           │
-          ┌────────────────┼──────────────────┐
-          ▼                ▼                  ▼
-   ┌─────────────┐  ┌──────────────────┐  ┌───────────┐
-   │  in_review  │─▶│awaiting_          │  │ declined  │
-   └──────┬──────┘  │information       │  └───────────┘
-          │         └────────┬─────────┘
-          │                  │
-          ▼                  ▼
-   ┌─────────────┐   ┌────────────────────┐
-   │  completed  │   │ unable_to_complete │
-   └─────────────┘   └────────────────────┘
+                       ┌──────────────┐
+                       │  submitted   │  ← the person raises it
+                       └──────┬───────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+ ┌─────────────┐   ┌──────────────────────┐   ┌───────────┐
+ │  in_review  │──▶│ awaiting_information │   │ declined  │
+ └──────┬──────┘   └──────────┬───────────┘   └───────────┘
+        │                     │
+        │   ┌─────────────────▼──────┐
+        ├──▶│    awaiting_policy     │  open, not terminal —
+        │   └─────────────────┬──────┘  the only honest resting
+        │                     │          place for a deletion today
+        ▼                     ▼
+ ┌─────────────┐   ┌────────────────────┐
+ │  completed  │   │ unable_to_complete │
+ └─────────────┘   └────────────────────┘
+   requires an
+   execution row
 ```
 
 `completed`, `declined` and `unable_to_complete` are terminal. A closed request
 cannot be reopened by a later decision — the attempt returns 409
-`REQUEST_CLOSED`.
+`REQUEST_CLOSED`. `awaiting_policy` is **not** terminal: the request stays open,
+stays in the administrator queue, and still requires follow-up.
+
+**A deletion request cannot reach `completed` at all.** See §7a.
 
 ### Rules
 
@@ -270,6 +278,67 @@ cannot be reopened by a later decision — the attempt returns 409
 - **Administrator authorization is re-read from Postgres on every request.**
   Removing the flag mid-session stops the next call; suspending the account
   stops it at authentication.
+
+### 7a. A request is completed only when something was done
+
+The first version of this workflow let an administrator mark a deletion request
+`completed` once no blocker stood, and reported `records_deleted: false` in the
+same response. Both statements were accurate on their own and the pair was a lie:
+a person reading "completed" against their erasure request reasonably concludes
+their data is gone, and reasonably stops asking. That is worse than a refusal.
+
+**No deletion request can be completed.** `decideRequest` refuses it with 409
+`DELETION_NOT_IMPLEMENTED` before any other check, the queue does not offer the
+action, the detail screen says why, and the database refuses it independently
+through the `privacy_requests_no_phantom_deletion` CHECK constraint. Three layers,
+because the first two are each one edit away from not being there.
+
+A deletion request may move only to:
+
+| Status | Meaning |
+| --- | --- |
+| `in_review` | Somebody is looking at it. |
+| `awaiting_information` | We need something from the requester. |
+| `awaiting_policy` | **Open, not closed.** We cannot act because the retention and anonymisation rules do not exist. Stays in the queue; follow-up still required. |
+| `unable_to_complete` | An open claim, payment or audit obligation stands in the way. |
+| `declined` | We are not going to do it, and have said why. |
+
+The single switch is `DELETION_EXECUTION_IMPLEMENTED = false` in
+`server/lib/accountRights.js`. Turning it on is one reviewed edit, and it must not
+be turned on until (1) the category rules in §8 are approved by the owner and by
+qualified UAE counsel, (2) an engine exists that actually erases and anonymises
+and writes down what it did, and (3) the CHECK constraint is dropped in a
+deliberate migration.
+
+**Access, correction and objection requests are held to the same standard.**
+`completed` requires an `execution_evidence` payload, validated by
+`assertExecutionEvidence` and written to `privacy_request_executions` inside the
+same transaction as the decision. An access or correction completion needs a
+summary of what was actually provided or changed; the request is refused with
+`EXECUTION_SUMMARY_REQUIRED` without one.
+
+### Execution evidence
+
+`privacy_request_executions` is the record that a completion rests on. It is
+append-only — `BEFORE UPDATE OR DELETE` rejects both — because evidence that can
+be edited afterwards is not evidence.
+
+| Column | What it records |
+| --- | --- |
+| `action_kind` | `erasure` / `anonymisation` / `access_response` / `correction` |
+| `categories_erased` | Which data categories were actually erased |
+| `categories_anonymised` | Which were anonymised |
+| `categories_retained` | `[{ category, reason }]` — **every** retained category carries its own legal or operational reason |
+| `summary` | What was provided, sent or changed |
+| `executed_at` | When it ran |
+| `executed_by` / `executed_by_job` | Exactly one: a person, or a named job. A CHECK constraint enforces the "exactly" |
+
+Two refusals worth naming, because they are the ones that make this more than a
+form: a retained category with no reason is rejected
+(`RETENTION_REASON_REQUIRED`), and an erasure that erased and anonymised nothing
+is rejected (`EXECUTION_EVIDENCE_EMPTY`). Attribution comes from the
+authenticated session, never from the request body — a test asserts that a
+client naming somebody else is ignored.
 
 ### Timing
 
@@ -361,14 +430,57 @@ Nothing in this phase weakened the append-only integrity history to make a
 future deletion easier. If that history has to change, it should change as a
 deliberate decision with legal advice behind it, not as a side effect.
 
-### The one pre-existing route that removes an account
+### There is no way to hard-delete an account
 
-`DELETE /api/admin/users/:id` predates this phase. It removes a user row and is
-refused by Postgres foreign keys the moment the account has a giveaway, an entry
-or an application — so in practice it works only on an account that has done
-nothing. It is **not reachable from the privacy-request workflow**, and a test
-asserts both that the decision handler contains no delete and that this route
-refuses an account with activity. It is listed here rather than pretended away.
+`DELETE /api/admin/users/:id` used to remove a user row whenever Postgres's
+foreign keys allowed it — which is to say, on any account that had not yet done
+anything. It is disabled: the route stays mounted and answers **405
+`ACCOUNT_DELETION_DISABLED`**, so an old bookmark or a stale cached page gets an
+explanation rather than looking like a routing bug. The button that called it is
+gone from the admin page, not hidden.
+
+It was removed because it was a second, unreviewed erasure path sitting beside
+this workflow and answering to none of its rules: no recorded reason, no notes,
+no append-only event, no blocker check, nothing said to the person, and no way to
+establish afterwards that it happened or who did it. An erasure that leaves no
+trace is exactly what the workflow next door exists to prevent.
+
+What replaces it:
+
+| Reason somebody reached for delete | What to use instead |
+| --- | --- |
+| Abuse or a security problem | Suspend the account — `POST /api/admin/users/:id/account-status`. Recorded, reversible, explained. |
+| A compromised session | `POST /api/admin/users/:id/revoke-sessions` |
+| "They asked to be deleted" | This workflow, which weighs open claims, payments and audit obligations first |
+| A test or junk account | A database operation under a runbook — see below |
+
+A test asserts that no file under `server/routes/` contains `DELETE FROM users`,
+that no page script issues a `DELETE` against an account route, and that the
+delete button's class no longer exists anywhere.
+
+### Database-level operations are outside normal application behaviour
+
+There is no supported in-app path that hard-deletes an account, and deliberately
+no hidden one. If an account genuinely has to be removed at the database level —
+a court order, a regulator's instruction, an incident — that is an **emergency
+operation requiring a separately approved runbook**, not a feature.
+
+That runbook does not exist yet. When it is written it has to cover, at minimum:
+
+- who may authorise the operation, and who may execute it (not the same person);
+- what is recorded before it runs, and where that record lives given that the
+  account it describes is about to stop existing;
+- how the append-only tables are reconciled. `entry_integrity_events`,
+  `entry_integrity_case_events`, `privacy_request_events` and
+  `privacy_request_executions` carry **no foreign keys**, so they survive a
+  `DELETE FROM users` untouched. That is by design — an audit trail that
+  evaporates when its subject is removed is not an audit trail — but it means a
+  database-level deletion leaves pseudonymous rows behind, and somebody has to
+  decide deliberately whether that is the intended outcome;
+- what is verified afterwards, and by whom.
+
+This document is not that runbook, and neither is the comment in
+`server/routes/admin.js`.
 
 ---
 
@@ -381,12 +493,19 @@ refuses an account with activity. It is listed here rather than pretended away.
 3. **No data processing agreement exists** with Resend, Cloudinary, Sentry,
    Stripe or Render, because the contracting entity does not exist yet.
 4. **Deletion and anonymisation are designed, not built.** §8 is a
-   specification.
+   specification, and §7a is why no deletion request can be marked done.
 5. **Retention periods are undecided** for almost every category in
    `docs/DATA_INVENTORY.md`.
 6. **Two scheduled jobs are missing**: expired-session cleanup and expired
    risk-signal purge. Both have the code; neither has a scheduler.
-7. **Sentry's console integration** can carry any text passed to
-   `console.error` off-platform. No scrubbing hook is installed.
+7. **No emergency runbook exists** for a database-level account removal. The
+   application path is closed; the operational path is undefined.
 8. **Age is self-declared.** There is no verification, and adding one is a much
    larger decision with its own legal weight.
+
+Resolved by the Phase 2.3B safety fix, and no longer open: a deletion request
+could be marked completed while nothing was deleted (§7a); an administrator
+could hard-delete an account outside this workflow (§8); and Sentry's console
+integration could carry arbitrary logged text off-platform — that integration is
+removed, `sendDefaultPii` is off, and a `beforeSend` scrubber redacts
+recursively. See `server/lib/errorReporting.js`.

@@ -509,27 +509,12 @@
       },
     });
 
-    const deleteBtn = u.is_admin
-      ? el('span', { class: 'u-c2238623', text: '—' })
-      : el('button', {
-          class: 'btn ghost user-delete-btn u-54750247',
-          text: 'Delete',
-          on: {
-            click: async (e) => {
-              const btn = e.currentTarget;
-              if (!confirm('Delete this host account? This cannot be undone.')) return;
-              btn.disabled = true;
-              try {
-                await api(`/admin/users/${encodeURIComponent(u.id)}`, { method: 'DELETE' });
-                loadUsers();
-                loadStats();
-              } catch (err) {
-                alert(err.message);
-                btn.disabled = false;
-              }
-            },
-          },
-        });
+    // There is no delete control, and the route behind the one that used to be
+    // here is gone. Removing an account is not an administrative convenience:
+    // it sidesteps the reviewed privacy workflow, and it is the one action on
+    // this page that cannot be undone or explained afterwards. Suspension,
+    // session revocation and a privacy request cover every legitimate reason
+    // somebody reached for it. See docs/PRIVACY_AND_RIGHTS.md §8.
 
     return el('tr', {}, [
       tdNode([u.name, u.is_admin ? ' ' : null, u.is_admin ? pill('admin', 'company') : null]),
@@ -538,7 +523,7 @@
       td(shortDate(u.created_at)),
       tdNode(verifiedToggle),
       tdNode(hostStatusCell(u)),
-      tdNode(spaced([hostActions(u), deleteBtn]), 'u-a9efa544'),
+      tdNode(hostActions(u), 'u-a9efa544'),
     ]);
   }
 
@@ -1409,6 +1394,7 @@
     submitted: 'Submitted',
     in_review: 'In review',
     awaiting_information: 'Awaiting information',
+    awaiting_policy: 'Awaiting retention policy',
     completed: 'Completed',
     declined: 'Declined',
     unable_to_complete: 'Unable to complete',
@@ -1420,6 +1406,7 @@
     open_dispute: 'Open dispute',
     open_integrity_case: 'Open integrity case',
     audit_records: 'Audit records',
+    deletion_policy_pending: 'Retention rules not approved',
   };
 
   function privacyRow(r) {
@@ -1483,10 +1470,74 @@
       placeholder: 'Administrator notes — internal. What you checked, what you decided, why. The requester never sees this.',
     });
 
+    // Offered by the server, not assumed here. A deletion request has a shorter
+    // list while erasure is not implemented, and showing a "Completed" option
+    // that the next call refuses with a 409 teaches an administrator to ignore
+    // refusals.
     const statusSelect = el('select', { class: 'js-spaced-input' });
-    ['in_review', 'awaiting_information', 'completed', 'declined', 'unable_to_complete'].forEach((s) => {
-      statusSelect.appendChild(el('option', { value: s, text: PRIVACY_STATUS_LABELS[s] }));
+    (data.allowed_statuses || ['in_review', 'awaiting_information', 'completed', 'declined', 'unable_to_complete'])
+      .forEach((s) => {
+        statusSelect.appendChild(el('option', { value: s, text: PRIVACY_STATUS_LABELS[s] || s }));
+      });
+
+    // Evidence of what was actually carried out. Shown only for a status that
+    // claims something happened, because that is the only status it belongs to.
+    const erasedInput = el('input', {
+      class: 'js-spaced-input',
+      maxLength: 500,
+      placeholder: 'Categories erased, comma separated (e.g. account_name, account_email)',
     });
+    const anonymisedInput = el('input', {
+      class: 'js-spaced-input',
+      maxLength: 500,
+      placeholder: 'Categories anonymised, comma separated',
+    });
+    const retainedInput = el('textarea', {
+      class: 'js-spaced-input',
+      maxLength: 2000,
+      rows: 3,
+      placeholder: 'Categories retained, one per line, as "category — reason it must be kept"',
+    });
+    const summaryInput = el('input', {
+      class: 'js-spaced-input',
+      maxLength: 1000,
+      placeholder: 'What was provided, sent or corrected',
+    });
+    const evidenceBlock = el('div', { class: 'is-hidden' }, [
+      el('p', {
+        class: 'hint',
+        text: 'A request is only completed when something was actually done. Record it here — it is written to an append-only evidence table alongside the decision.',
+      }),
+      el('label', { class: 'u-1964b55e', text: 'What was provided or corrected' }),
+      summaryInput,
+      el('label', { class: 'u-1964b55e', text: 'Categories erased' }),
+      erasedInput,
+      el('label', { class: 'u-1964b55e', text: 'Categories anonymised' }),
+      anonymisedInput,
+      el('label', { class: 'u-1964b55e', text: 'Categories retained, and why' }),
+      retainedInput,
+    ]);
+
+    function toggleEvidence() {
+      evidenceBlock.classList.toggle('is-hidden', statusSelect.value !== 'completed');
+    }
+
+    // Parses "category — reason" or "category: reason" per line. A line with no
+    // reason is left without one deliberately, so the server refuses it rather
+    // than this screen inventing one.
+    function parseRetained() {
+      return retainedInput.value
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.split(/\s*(?:—|--|:)\s*/);
+          return { category: parts[0], reason: parts.slice(1).join(' — ') };
+        });
+    }
+
+    const splitList = (value) =>
+      value.split(',').map((v) => v.trim()).filter(Boolean);
 
     const codeSelect = el('select', { class: 'js-spaced-input' });
     function fillCodes() {
@@ -1502,11 +1553,15 @@
       });
       setText(preview, 'The requester will read: ' + (data.outcome_copy[codeSelect.value] || ''));
     }
-    statusSelect.addEventListener('change', fillCodes);
+    statusSelect.addEventListener('change', () => {
+      fillCodes();
+      toggleEvidence();
+    });
     codeSelect.addEventListener('change', () => {
       setText(preview, 'The requester will read: ' + (data.outcome_copy[codeSelect.value] || ''));
     });
     fillCodes();
+    toggleEvidence();
 
     const submit = el('button', {
       class: 'btn primary u-51820e15',
@@ -1531,6 +1586,17 @@
                 // Read from the detail fetch. A screen left open while somebody
                 // else decided is refused with a 409 rather than overwriting it.
                 version: req.version,
+                execution_evidence: statusSelect.value === 'completed'
+                  ? {
+                      categories_erased: splitList(erasedInput.value),
+                      categories_anonymised: splitList(anonymisedInput.value),
+                      categories_retained: parseRetained(),
+                      summary: summaryInput.value,
+                      // No actor is sent. The server attributes the execution to
+                      // the authenticated session, so this screen cannot put
+                      // somebody else's name against a decision.
+                    }
+                  : null,
               }),
             });
             row.classList.add('is-hidden');
@@ -1586,11 +1652,36 @@
       el('label', { class: 'u-1964b55e', text: 'Outcome the requester will be given' }),
       codeSelect,
       preview,
+      evidenceBlock,
       // Said on the screen where the mistake would be made.
       el('p', {
         class: 'hint',
         text: 'Recording a decision here changes the status and writes the history. It does not delete or anonymise any record — that is a separate, deliberate action.',
       }),
+      req.type === 'deletion' && !data.deletion_execution_implemented
+        ? el('p', {
+            class: 'js-mint-box',
+            text: 'This is a deletion request and it cannot be marked completed. Nothing erases data yet, and the rules for which records may be erased, anonymised or kept are not approved. Use "Awaiting retention policy" to leave it honestly open with us, or close it as unable to complete or declined.',
+          })
+        : null,
+      (data.executions || []).length
+        ? el('div', { class: 'u-680b5a65' }, [
+            el('p', { class: 'u-5bf9ad33', text: 'What was carried out' }),
+            data.executions.map((ex) =>
+              el('p', { class: 'u-a76e0798' }, [
+                `${new Date(ex.executed_at).toLocaleString()} · ${ex.action_kind} · by ${ex.executed_by || ex.executed_by_job}`,
+                el('br'),
+                `erased: ${(ex.categories_erased || []).join(', ') || 'none'}`,
+                el('br'),
+                `anonymised: ${(ex.categories_anonymised || []).join(', ') || 'none'}`,
+                el('br'),
+                `retained: ${(ex.categories_retained || []).map((r) => `${r.category} (${r.reason})`).join('; ') || 'none'}`,
+                ex.summary ? el('br') : null,
+                ex.summary ? ex.summary : null,
+              ])
+            ),
+          ])
+        : null,
       el('div', { class: 'js-button-row' }, submit),
       error,
       history.length

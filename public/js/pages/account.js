@@ -325,6 +325,13 @@
         class: 'hint',
         text: 'A deletion request is a request for review by a person, not an instant erase. Some records — an open prize claim, a payment record, an audit trail — cannot simply be removed, and we will tell you which.',
       }),
+      // Said before the request is sent, not discovered afterwards. Somebody
+      // asking to be deleted deserves to know today's answer is "not yet"
+      // rather than finding out weeks later.
+      el('p', {
+        class: 'hint',
+        text: 'To be straight with you about deletion specifically: we have not finished deciding which records can be erased, which can be anonymised, and which we are obliged to keep. Until that is settled we will not carry out an erasure, and we will not close your request as done while nothing has been done. It stays open with us.',
+      }),
       el('button', {
         class: 'btn primary u-8a359a76',
         type: 'button',

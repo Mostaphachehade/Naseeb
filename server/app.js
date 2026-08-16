@@ -205,9 +205,10 @@ app.get('/giveaway.html', async (req, res, next) => {
 // Serve the frontend
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Safety net for anything that slips past a route's own try/catch (e.g. a
-// bug in middleware itself) — most real errors are already covered by
-// captureConsoleIntegration in index.js.
+// Safety net for anything that slips past a route's own try/catch — a bug in
+// middleware itself, say. Everything it captures still goes through the
+// `beforeSend` scrubber configured in server/lib/errorReporting.js; this handler
+// decides *whether* an event is created, never what is in it.
 if (process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
 }

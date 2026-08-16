@@ -135,6 +135,7 @@ naseeb/
     lib/eligibility.js         # the 18+ self-declaration. Not age verification
     lib/dataExport.js          # what a person may download about themselves
     lib/policies.js            # policy status/version/effective date. Inert by design
+    lib/errorReporting.js      # Sentry config + the beforeSend scrubber
     routes/config.js           # exposes non-secret Cloudinary config to the frontend
   public/
     index.html            # browse giveaways
@@ -348,12 +349,34 @@ passed. Terms and Privacy are both `draft` with `effectiveDate: null`, so
 `server/lib/policies.js` — that file reads no environment variable, and a test greps it to
 prove it. Nothing is inferred from signup, continued use or a deployment date.
 
-**A deletion request deletes nothing.** It opens a case for a person; the response says
-so, and closing it returns `records_deleted: false`. Open claims, hosted giveaways,
-disputes and integrity cases are reported as blocking categories, and a `completed`
-outcome is refused with `409` while any of them stands. What could be erased, anonymised
-or must be retained is designed in `docs/PRIVACY_AND_RIGHTS.md` §8 and awaits counsel — no
-statutory deadline is stated anywhere, because none has been established.
+**A deletion request cannot be completed, by anybody.** Nothing on this platform erases
+or anonymises data, so marking an erasure request "completed" would be a false statement
+to the person least able to check it. Three layers refuse it: a switch in
+`server/lib/accountRights.js`, the route, and a `CHECK` constraint. A deletion request may
+only reach `in_review`, `awaiting_information`, `awaiting_policy` (open, still in the
+queue, still needing follow-up), `unable_to_complete` or `declined`, each with a
+controlled explanation and mandatory internal notes.
+
+Completing **any** request requires recorded execution evidence — an append-only
+`privacy_request_executions` row naming what was erased, what was anonymised, what was
+retained and why each retained category was kept, when it ran, and who or what ran it. An
+access or correction completion needs a summary of what was actually provided or changed.
+What could be erased, anonymised or must be retained is designed in
+`docs/PRIVACY_AND_RIGHTS.md` §8 and awaits counsel — no statutory deadline is stated
+anywhere, because none has been established.
+
+**No route hard-deletes an account.** `DELETE /api/admin/users/:id` answers `405
+ACCOUNT_DELETION_DISABLED` and points at the alternatives: suspend the account, revoke its
+sessions, or use the privacy request workflow. Removing an account at the database level
+is an emergency operation needing a separately approved runbook, which does not exist —
+see `docs/PRIVACY_AND_RIGHTS.md` §8.
+
+**Error reporting carries no personal data by construction.** Sentry's console
+integration is gone, `sendDefaultPii` is off, breadcrumbs are dropped, and a `beforeSend`
+scrubber in `server/lib/errorReporting.js` recursively redacts credentials, tokens,
+cookies, headers, request bodies, query strings, email addresses, phone numbers,
+addresses, delivery notes, internal notes, IP addresses, provider secrets and encrypted
+payloads. Capture is a deliberate `reportError()` call, not a side effect of logging.
 
 An email change is a security event: password first, a 32-byte token stored only as
 SHA-256, two hours, single-use by the `UPDATE` that claims the row, uniqueness re-checked
@@ -642,9 +665,8 @@ anonymous — removing a name from a row does not make the row anonymous.
 
 Two scheduled jobs are missing and are operational gaps rather than legal ones: expired
 sessions and expired risk signals both have cleanup code, and neither has a scheduler.
-Sentry's `captureConsoleIntegration` sends the text of any `console.error` off-platform;
-error paths are written not to carry personal data, but nothing enforces that
-automatically.
+No runbook exists for a database-level account removal; the application path to one is
+closed, and the operational path is undefined.
 
 ## Deploying to Render
 

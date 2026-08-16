@@ -1098,6 +1098,51 @@ async function init() {
     CREATE INDEX IF NOT EXISTS idx_privacy_request_events_request
       ON privacy_request_events(request_id, created_at);
 
+    -- What was actually done, when a request is closed as done.
+    --
+    -- A request cannot be marked completed on somebody's say-so. Closing one as
+    -- completed requires a row here first, and the row has to name what happened
+    -- rather than assert that something did: which categories were erased, which
+    -- were anonymised, which were kept, the reason each kept category was kept,
+    -- when it ran, and who or what ran it.
+    --
+    -- For a deletion request that is currently unreachable by design, because the
+    -- erasure engine does not exist and the retention rules are not approved. The
+    -- table is here so that when it does exist, "completed" means something a
+    -- third party could check, rather than a status somebody typed.
+    --
+    -- Append-only, on the same terms as the event history: evidence that can be
+    -- edited afterwards is not evidence.
+    CREATE TABLE IF NOT EXISTS privacy_request_executions (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      -- 'erasure' | 'anonymisation' | 'access_response' | 'correction'
+      action_kind TEXT NOT NULL,
+      -- Arrays of category names, drawn from the inventory in
+      -- docs/DATA_INVENTORY.md. Empty is allowed and meaningful; null is not.
+      categories_erased JSONB NOT NULL DEFAULT '[]'::jsonb,
+      categories_anonymised JSONB NOT NULL DEFAULT '[]'::jsonb,
+      -- [{ category, reason }] — every retained category carries its own legal
+      -- or operational reason. A retention with no reason is not a record of a
+      -- decision, it is a gap with a timestamp.
+      categories_retained JSONB NOT NULL DEFAULT '[]'::jsonb,
+      -- What was produced or sent, for an access or correction response.
+      summary TEXT,
+      executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      -- Exactly one of these. A person, or a named job — never neither.
+      executed_by TEXT,
+      executed_by_job TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_privacy_request_executions_request
+      ON privacy_request_executions(request_id, executed_at);
+
+    DROP TRIGGER IF EXISTS privacy_request_executions_immutable ON privacy_request_executions;
+    CREATE TRIGGER privacy_request_executions_immutable
+      BEFORE UPDATE OR DELETE ON privacy_request_executions
+      FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only();
+
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_age_attestation_valid') THEN
@@ -1112,21 +1157,57 @@ async function init() {
         ALTER TABLE privacy_requests ADD CONSTRAINT privacy_requests_type_valid
           CHECK (request_type IN ('access', 'correction', 'deletion', 'objection'));
       END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'privacy_requests_status_valid') THEN
-        ALTER TABLE privacy_requests ADD CONSTRAINT privacy_requests_status_valid
-          CHECK (status IN ('submitted', 'in_review', 'awaiting_information', 'completed', 'declined', 'unable_to_complete'));
+      -- awaiting_policy was added with the Phase 2.3B safety fix: the honest
+      -- state for a deletion request that cannot be acted on because the
+      -- retention and anonymisation rules do not exist yet. Dropped and
+      -- recreated rather than left alone, because an existing database carries
+      -- the older list.
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'privacy_requests_status_valid') THEN
+        ALTER TABLE privacy_requests DROP CONSTRAINT privacy_requests_status_valid;
       END IF;
+      ALTER TABLE privacy_requests ADD CONSTRAINT privacy_requests_status_valid
+        CHECK (status IN ('submitted', 'in_review', 'awaiting_information',
+                          'awaiting_policy', 'completed', 'declined', 'unable_to_complete'));
+
       -- A closed request must say what happened, and an administrator must have
       -- written down why. Neither the route nor the constraint is the only thing
       -- standing between here and an unexplained refusal.
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'privacy_requests_closure_explained') THEN
-        ALTER TABLE privacy_requests ADD CONSTRAINT privacy_requests_closure_explained
-          CHECK (
-            status NOT IN ('completed', 'declined', 'unable_to_complete')
-            OR (outcome_code IS NOT NULL
-                AND admin_notes IS NOT NULL
-                AND length(btrim(admin_notes)) >= 3)
-          );
+      --
+      -- awaiting_policy is held to the same standard even though it is not
+      -- terminal: it is a state a request can sit in for a long time, and it
+      -- needs to say why on the record rather than looking like a stall.
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'privacy_requests_closure_explained') THEN
+        ALTER TABLE privacy_requests DROP CONSTRAINT privacy_requests_closure_explained;
+      END IF;
+      ALTER TABLE privacy_requests ADD CONSTRAINT privacy_requests_closure_explained
+        CHECK (
+          status NOT IN ('completed', 'declined', 'unable_to_complete', 'awaiting_policy')
+          OR (outcome_code IS NOT NULL
+              AND admin_notes IS NOT NULL
+              AND length(btrim(admin_notes)) >= 3)
+        );
+
+      -- The database's own refusal to record a completed deletion.
+      --
+      -- The route refuses it first, with a clear code. This exists because the
+      -- route is one edit away from not refusing it, and a false "your data was
+      -- deleted" is the single worst thing this workflow could say to somebody.
+      -- Lifting it is a deliberate migration, reviewable in a diff, and it should
+      -- not be lifted until an erasure engine exists and the category rules are
+      -- approved. See docs/PRIVACY_AND_RIGHTS.md section 8.
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'privacy_requests_no_phantom_deletion') THEN
+        ALTER TABLE privacy_requests ADD CONSTRAINT privacy_requests_no_phantom_deletion
+          CHECK (NOT (request_type = 'deletion' AND status = 'completed'));
+      END IF;
+
+      -- Every execution row names a responsible party, and only one.
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'privacy_execution_has_actor') THEN
+        ALTER TABLE privacy_request_executions ADD CONSTRAINT privacy_execution_has_actor
+          CHECK ((executed_by IS NOT NULL) <> (executed_by_job IS NOT NULL));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'privacy_execution_kind_valid') THEN
+        ALTER TABLE privacy_request_executions ADD CONSTRAINT privacy_execution_kind_valid
+          CHECK (action_kind IN ('erasure', 'anonymisation', 'access_response', 'correction'));
       END IF;
     END $$;
 

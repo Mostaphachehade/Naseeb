@@ -684,32 +684,53 @@ router.patch('/users/:id', requireAdmin, async (req, res) => {
   }
 });
 
-// Deleting a user only works while nothing references them (no giveaways,
-// entries, or host applications) — Postgres's foreign key constraints
-// enforce that, so a host with real activity can't be deleted by accident.
-router.delete('/users/:id', requireAdmin, async (req, res) => {
-  try {
-    if (req.params.id === req.userId) {
-      return res.status(400).json({ error: "You can't delete your own account." });
-    }
-    const target = await pool.query('SELECT is_admin FROM users WHERE id = $1', [req.params.id]);
-    if (!target.rows[0]) {
-      return res.status(404).json({ error: 'User not found.' });
-    }
-    if (target.rows[0].is_admin) {
-      return res.status(400).json({ error: "Admin accounts can't be deleted here." });
-    }
-    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
-    res.json({ ok: true });
-  } catch (err) {
-    if (err.code === '23503') {
-      return res.status(400).json({
-        error: 'This host still has giveaways, entries, or applications on record — cancel or remove those first.',
-      });
-    }
-    console.error(err);
-    res.status(500).json({ error: 'Something went wrong. Please try again.' });
-  }
+// Deleting an account from the admin panel is gone.
+//
+// It used to work whenever Postgres's foreign keys allowed it — which is to say,
+// on any account that had not yet done anything. That sounds harmless and is
+// not: it is a second, unreviewed erasure path that sits beside the privacy
+// request workflow and answers to none of its rules. No recorded reason, no
+// notes, no append-only event, no blocker check, nothing the person is told, and
+// no way to establish afterwards that it happened or who did it. An erasure that
+// leaves no trace is precisely what the workflow next door exists to prevent.
+//
+// What replaces it, for each reason somebody used to reach for it:
+//
+//   abuse or a security problem  →  suspend the account (POST /users/:id/status),
+//                                   which is recorded, reversible and explained
+//   a compromised session        →  revoke sessions
+//   "they asked to be deleted"   →  the privacy request workflow, which weighs
+//                                   open claims, payments and audit obligations
+//                                   before anything is decided
+//   a test or junk account       →  a database operation under a runbook, not an
+//                                   application feature (see below)
+//
+// The route stays mounted and answers 405 rather than 404, so an old bookmark,
+// an old script or a stale cached page gets an explanation instead of looking
+// like a routing bug somebody should go and fix.
+//
+// **Direct database deletion is outside normal application behaviour.** There is
+// no supported in-app path to it, and there is deliberately no hidden one. If an
+// account genuinely has to be removed at the database level — a court order, a
+// regulator's instruction, an incident — that is an emergency operation
+// requiring a separately approved runbook covering who may authorise it, who
+// executes it, what is recorded before and after, and how the append-only audit
+// tables (which carry no foreign keys and would therefore survive) are
+// reconciled. No such runbook exists yet, and this comment is not one.
+// Recorded in docs/PRIVACY_AND_RIGHTS.md §8.
+router.delete('/users/:id', requireAdmin, (req, res) => {
+  res.set('Allow', 'GET, PATCH, POST');
+  res.status(405).json({
+    error:
+      'Deleting an account is not available. Suspend the account to stop abuse, revoke its sessions if it is compromised, or use the privacy request workflow if the account holder has asked to be erased.',
+    code: 'ACCOUNT_DELETION_DISABLED',
+    alternatives: [
+      { action: 'suspend', route: 'POST /api/admin/users/:id/account-status' },
+      { action: 'revoke_sessions', route: 'POST /api/admin/users/:id/revoke-sessions' },
+      { action: 'erasure_request', route: 'GET /api/admin/privacy-requests' },
+    ],
+    note: 'No records were deleted by this request.',
+  });
 });
 
 // Owner-editable values that would otherwise need a code deploy — see
@@ -1164,9 +1185,14 @@ router.get('/privacy-requests', requireAdmin, async (req, res) => {
         account_ref: String(row.user_id).slice(0, 8),
         // Categories only.
         blocking: Array.isArray(row.blockers) ? row.blockers.map((b) => b.category) : [],
+        // A deletion request is not offered `completed`, because it cannot
+        // reach it. Offering an action the next call refuses is how a queue
+        // teaches somebody to ignore its refusals.
         actions: rights.CLOSED_STATUSES.includes(row.status)
           ? []
-          : ['in_review', 'awaiting_information', 'completed', 'declined', 'unable_to_complete'],
+          : row.request_type === 'deletion'
+            ? rights.DELETION_ALLOWED_STATUSES
+            : ['in_review', 'awaiting_information', 'completed', 'declined', 'unable_to_complete'],
       }))
     );
   } catch (err) {
@@ -1189,7 +1215,7 @@ router.get('/privacy-requests/:id', requireAdmin, async (req, res) => {
     const row = result.rows[0];
     if (!row) return res.status(404).json({ error: 'That request does not exist.' });
 
-    const [history, blockers] = await Promise.all([
+    const [history, blockers, executions] = await Promise.all([
       pool.query(
         `SELECT ev.from_status, ev.to_status, ev.outcome_code, ev.admin_notes,
                 ev.actor_role, ev.created_at, actor.name AS actor_name
@@ -1201,6 +1227,12 @@ router.get('/privacy-requests/:id', requireAdmin, async (req, res) => {
       // Recomputed rather than read from the row: the row's copy is from when
       // the request was made, and a claim may have closed since.
       rights.deletionBlockers(pool, row.user_id),
+      pool.query(
+        `SELECT action_kind, categories_erased, categories_anonymised, categories_retained,
+                summary, executed_at, executed_by, executed_by_job
+           FROM privacy_request_executions WHERE request_id = $1 ORDER BY executed_at`,
+        [req.params.id]
+      ),
     ]);
 
     res.json({
@@ -1228,6 +1260,16 @@ router.get('/privacy-requests/:id', requireAdmin, async (req, res) => {
       outcome_codes: rights.OUTCOMES_FOR_STATUS,
       outcome_copy: rights.OUTCOME_COPY,
       history: history.rows,
+      // What this request may actually be moved to. A deletion request has a
+      // shorter list than the others while erasure is not implemented, and the
+      // screen is told that rather than offering a button that 409s.
+      allowed_statuses:
+        row.request_type === 'deletion'
+          ? rights.DELETION_ALLOWED_STATUSES
+          : Object.values(rights.REQUEST_STATUS).filter((s) => s !== rights.REQUEST_STATUS.SUBMITTED),
+      deletion_execution_implemented: rights.DELETION_EXECUTION_IMPLEMENTED,
+      // Evidence of what was actually carried out. Empty everywhere today.
+      executions: executions.rows,
     });
   } catch (err) {
     console.error(err);
@@ -1239,7 +1281,17 @@ router.post('/privacy-requests/:id/decision', requireAdmin, async (req, res) => 
   const client = await pool.connect();
   try {
     res.set('Cache-Control', 'no-store');
-    const { status, outcome_code: outcomeCode, admin_notes: adminNotes, version } = req.body || {};
+    const {
+      status,
+      outcome_code: outcomeCode,
+      admin_notes: adminNotes,
+      version,
+      // Required to complete anything. For a deletion it must name what was
+      // erased, anonymised and retained; for an access or correction it must say
+      // what was provided or changed. Today no deletion can reach `completed` at
+      // all — see server/lib/accountRights.js.
+      execution_evidence: executionEvidence,
+    } = req.body || {};
 
     await client.query('BEGIN');
     const result = await rights.decideRequest(client, {
@@ -1249,6 +1301,7 @@ router.post('/privacy-requests/:id/decision', requireAdmin, async (req, res) => 
       adminNotes,
       actorUserId: req.userId,
       expectedVersion: version,
+      executionEvidence,
     });
     await client.query('COMMIT');
 
@@ -1261,9 +1314,12 @@ router.post('/privacy-requests/:id/decision', requireAdmin, async (req, res) => 
       },
       previous_status: result.previousStatus,
       // Stated in the response because it is the thing most likely to be
-      // misread: closing a deletion request has deleted nothing by itself.
+      // misread: a decision here changes a status and writes history. It does
+      // not erase or anonymise anything, and no status this endpoint can set
+      // today claims that it did.
       records_deleted: false,
-      note: 'No records were deleted by this decision. Any erasure or anonymisation is a separate, deliberate action — see docs/PRIVACY_AND_RIGHTS.md §8.',
+      execution_recorded: Boolean(result.execution),
+      note: 'No records were deleted by this decision. Any erasure or anonymisation is a separate, deliberate action that is not implemented — see docs/PRIVACY_AND_RIGHTS.md §8.',
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

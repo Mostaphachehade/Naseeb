@@ -177,13 +177,39 @@ tokenised, and how that is reconciled with an audit trail whose value depends on
 being editable. The full category-by-category proposal is in
 `docs/PRIVACY_AND_RIGHTS.md` §8 and is explicitly a proposal, not a decision.
 
-### B10b. Error reporting can carry text off-platform
-`Sentry.init` is configured with `captureConsoleIntegration({ levels: ['error'] })`, so
-every `console.error` in the codebase becomes a Sentry event when `SENTRY_DSN` is set.
-Error paths are written not to interpolate personal data and message bodies carrying a
-live link are suppressed from logs entirely — but that is a convention held up by review,
-not a mechanism. **We need a decision** on whether to install a scrubbing hook, drop the
-console integration, or accept the risk with a processing agreement in place.
+### B10b. Error reporting — resolved technically, still needs a processing agreement
+**Closed on the engineering side.** The console integration is removed, `sendDefaultPii`
+is off, breadcrumbs are dropped outright, and a `beforeSend` scrubber redacts recursively
+by key and by value before anything leaves — see `server/lib/errorReporting.js` and
+`docs/DATA_INVENTORY.md` section 13. Capture is now a deliberate call rather than a
+side effect of logging.
+
+**Still open:** Sentry remains a processor that receives error data, and no data
+processing agreement exists with it — or with Resend, Cloudinary, Stripe or Render —
+because the contracting entity has not been established (section A). **We need advice**
+on what those agreements must contain, and whether the residual data in a scrubbed
+exception report (a route path, a stack trace, a record id) needs any further basis.
+
+### B10c. Erasure is refused, not merely unimplemented
+A deletion request cannot be marked completed by anybody. The request stays open in an
+`awaiting_policy` state, the requester is told plainly that nothing has been deleted and
+why, and three independent layers refuse a completion: a switch in
+`server/lib/accountRights.js`, the route, and a database CHECK constraint.
+
+This is deliberate and it is a holding position, not an answer. **We need** the category
+rules in `docs/PRIVACY_AND_RIGHTS.md` section 8 reviewed and approved — which data may be
+erased, which anonymised, which must be retained and for how long — before any erasure
+engine is built. Until then this platform cannot honour an erasure request, and says so
+rather than pretending otherwise.
+
+### B10d. A runbook for database-level account removal
+The administrator hard-delete route is disabled and no application path removes an
+account. If one ever has to be removed at the database level — a court order, a
+regulator's instruction, an incident — that is an emergency operation and needs a
+**separately approved runbook**: who authorises, who executes, what is recorded before
+and after, and what is done about the append-only tables that carry no foreign keys and
+would survive the deletion. No such runbook exists. **We need one drafted and approved**
+before any such request could be honoured.
 
 ### B11. Advertising terms and refunds
 Terms §9 states that a placement we fail to run is refunded or rescheduled at the
@@ -263,6 +289,14 @@ will not imply it.
 - [ ] B13 answered: the response timescale for a privacy request
 - [ ] The two missing scheduled jobs run somewhere — expired-session cleanup and
       expired risk-signal purge. Both have code; neither has a scheduler
+- [ ] A runbook approved for database-level account removal (B10d)
+- [ ] Data processing agreements in place with Resend, Cloudinary, Sentry, Stripe and
+      Render, once there is an entity able to sign one (B10b)
+- [x] Error reporting no longer depends on developer discipline to stay private —
+      console capture removed, PII off, recursive `beforeSend` scrubber (B10b, engineering
+      side only; the processing agreement is still outstanding)
+- [x] No application route can hard-delete an account (B10d, application side only; the
+      runbook is still outstanding)
 - [x] A decision recorded on whether host paid plans are offered at all, given that they
       were advertised but not enforced — **answered for today only**: the three plans
       (free pilot, AED 250 / 3 listings, AED 900 per month) have been removed rather than

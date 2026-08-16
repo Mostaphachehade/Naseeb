@@ -1419,12 +1419,14 @@ test('26. request history cannot be updated or deleted, and requests cannot be e
   const row = queue.body.find((r) => r.reference === created1.body.request.reference);
 
   const view = await adminSession.get(`/api/admin/privacy-requests/${row.id}`);
-  await adminSession.post(`/api/admin/privacy-requests/${row.id}/decision`).send({
+  const done = await adminSession.post(`/api/admin/privacy-requests/${row.id}/decision`).send({
     status: 'completed',
     outcome_code: 'access_provided',
     admin_notes: 'Export supplied.',
     version: view.body.request.version,
+    execution_evidence: { summary: 'Sent the JSON export to the address on the account.' },
   });
+  assert.equal(done.status, 200, JSON.stringify(done.body));
 
   const events = await pool.query('SELECT * FROM privacy_request_events WHERE request_id = $1', [row.id]);
   assert.ok(events.rowCount >= 2, 'submission and decision are both recorded');
@@ -1522,20 +1524,25 @@ test('27. a deletion request deletes nothing and says so', async () => {
   const decisionStart = adminRoutes.indexOf("router.post('/privacy-requests/:id/decision'");
   assert.ok(decisionStart > 0);
   const decisionHandler = adminRoutes.slice(decisionStart, adminRoutes.indexOf('\nrouter.', decisionStart + 1));
-  assert.ok(!/DELETE FROM|deleteAccount|anonymise|anonymize/i.test(decisionHandler),
-    'a decision never erases or anonymises anything');
+  // Code, not prose: the handler's own response text explains that no erasure
+  // or anonymisation happened, which is the point, so the check is for a query
+  // or a call rather than for the words.
+  assert.ok(!/DELETE\s+FROM/i.test(decisionHandler), 'a decision deletes nothing');
+  assert.ok(!/\b(deleteAccount|eraseAccount|anonymiseAccount|anonymizeAccount)\s*\(/.test(decisionHandler),
+    'a decision calls no erasure or anonymisation routine');
 
   // The one route that can remove an account is the pre-existing host cleanup,
   // which is unrelated to this workflow and which Postgres refuses the moment
   // the account has any activity. It is recorded in docs/PRIVACY_AND_RIGHTS.md
   // §8 rather than pretended away — and it cannot be reached from a request.
-  const cleanupStart = adminRoutes.indexOf("router.delete('/users/:id'");
-  assert.ok(cleanupStart > 0, 'the pre-existing cleanup route is accounted for');
-  assert.ok(cleanupStart < decisionStart || cleanupStart > decisionStart + decisionHandler.length);
+  const disabledStart = adminRoutes.indexOf("router.delete('/users/:id'");
+  assert.ok(disabledStart > 0, 'the route is still mounted so an old caller gets an explanation');
+  assert.ok(disabledStart < decisionStart || disabledStart > decisionStart + decisionHandler.length);
 
   const adminSession2 = await signIn(admin.email);
   const refusedDelete = await adminSession2.delete(`/api/admin/users/${user.id}`);
-  assert.equal(refusedDelete.status, 400, 'an account with any activity cannot be removed that way');
+  assert.equal(refusedDelete.status, 405, 'the admin hard-delete route is disabled');
+  assert.equal(refusedDelete.body.code, 'ACCOUNT_DELETION_DISABLED');
   const survived = await pool.query('SELECT COUNT(*)::int AS c FROM users WHERE id = $1', [user.id]);
   assert.equal(survived.rows[0].c, 1);
 });
@@ -1587,9 +1594,13 @@ test('28. active claims, hosted giveaways, disputes and integrity cases are flag
     admin_notes: 'Trying to complete while a claim is open.',
     version: view.body.request.version,
   });
+  // Refused before the blocker check even runs: no deletion can be completed at
+  // all while nothing performs one. The blocker check is still there for the day
+  // that changes, and test 27b covers it.
   assert.equal(refused.status, 409);
-  assert.equal(refused.body.code, 'DELETION_BLOCKED');
-  assert.ok(refused.body.current.blockers.some((b) => b.category === 'open_prize_claim'));
+  assert.equal(refused.body.code, 'DELETION_NOT_IMPLEMENTED');
+  assert.ok(refused.body.current.allowed_statuses.includes('awaiting_policy'));
+  assert.ok(!refused.body.current.allowed_statuses.includes('completed'));
 
   const unchanged = await pool.query('SELECT status FROM privacy_requests WHERE id = $1', [row.id]);
   assert.equal(unchanged.rows[0].status, 'submitted');
@@ -1642,6 +1653,504 @@ test('29. the administrator list carries the minimum, and the detail needs a del
   // Even opened, it carries no credential material.
   const detailText = JSON.stringify(detail.body);
   assert.ok(!/token_hash|password_hash|delivery_ciphertext|signal_hash/i.test(detailText));
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2.3B safety fix — 1. no completion without an execution
+// ---------------------------------------------------------------------------
+
+test('sf1. a deletion request cannot be completed, by any route or any status', async () => {
+  const user = await makeUser('sfdel');
+  const admin = await makeUser('sfdeladmin', { admin: true });
+  const userSession = await signIn(user.email);
+  const adminSession = await signIn(admin.email);
+
+  // A clean account: no claim, no giveaway, no dispute, nothing open. Under the
+  // old rule this was exactly the case that WOULD have completed.
+  const created1 = await userSession
+    .post('/api/account/privacy-requests')
+    .send({ request_type: 'deletion' });
+  assert.equal(created1.status, 201);
+
+  const queue = await adminSession.get('/api/admin/privacy-requests');
+  const row = queue.body.find((r) => r.reference === created1.body.request.reference);
+  const view = await adminSession.get(`/api/admin/privacy-requests/${row.id}`);
+
+  const refused = await adminSession.post(`/api/admin/privacy-requests/${row.id}/decision`).send({
+    status: 'completed',
+    outcome_code: 'deletion_partial_records_retained',
+    admin_notes: 'Nothing is open, so this ought to complete — and must not.',
+    version: view.body.request.version,
+  });
+  assert.equal(refused.status, 409);
+  assert.equal(refused.body.code, 'DELETION_NOT_IMPLEMENTED');
+
+  // Nothing moved, and nothing was written.
+  const after = await pool.query('SELECT status, version FROM privacy_requests WHERE id = $1', [row.id]);
+  assert.equal(after.rows[0].status, 'submitted');
+  assert.equal(after.rows[0].version, view.body.request.version);
+  const events = await pool.query(
+    "SELECT COUNT(*)::int AS c FROM privacy_request_events WHERE request_id = $1 AND to_status = 'completed'",
+    [row.id]
+  );
+  assert.equal(events.rows[0].c, 0, 'a refused completion writes no event');
+
+  // Supplying evidence does not buy a way through it either.
+  const withEvidence = await adminSession.post(`/api/admin/privacy-requests/${row.id}/decision`).send({
+    status: 'completed',
+    outcome_code: 'deletion_partial_records_retained',
+    admin_notes: 'Claiming an erasure happened.',
+    version: view.body.request.version,
+    execution_evidence: {
+      categories_erased: ['account_name', 'account_email'],
+      categories_retained: [{ category: 'audit_records', reason: 'audit' }],
+    },
+  });
+  assert.equal(withEvidence.status, 409);
+  assert.equal(withEvidence.body.code, 'DELETION_NOT_IMPLEMENTED');
+
+  // And the database refuses it independently of the route, so removing the
+  // check above is not enough to produce a false completion.
+  await assert.rejects(
+    () => pool.query("UPDATE privacy_requests SET status = 'completed' WHERE id = $1", [row.id]),
+    /privacy_requests_no_phantom_deletion|violates check constraint/i
+  );
+
+  const stillNotDeleted = await pool.query('SELECT COUNT(*)::int AS c FROM users WHERE id = $1', [user.id]);
+  assert.equal(stillNotDeleted.rows[0].c, 1);
+});
+
+test('sf1b. awaiting_policy is available, honest, and keeps the request in the queue', async () => {
+  const user = await makeUser('sfpolicy');
+  const admin = await makeUser('sfpolicyadmin', { admin: true });
+  const userSession = await signIn(user.email);
+  const adminSession = await signIn(admin.email);
+
+  const created1 = await userSession
+    .post('/api/account/privacy-requests')
+    .send({ request_type: 'deletion', message: 'Please delete everything.' });
+
+  // The queue offers only statuses that can actually be reached.
+  const queue = await adminSession.get('/api/admin/privacy-requests');
+  const row = queue.body.find((r) => r.reference === created1.body.request.reference);
+  assert.ok(!row.actions.includes('completed'), 'the queue does not offer an action that 409s');
+  assert.ok(row.actions.includes('awaiting_policy'));
+
+  const view = await adminSession.get(`/api/admin/privacy-requests/${row.id}`);
+  assert.equal(view.body.deletion_execution_implemented, false);
+  assert.ok(!view.body.allowed_statuses.includes('completed'));
+
+  // A status that says something happened needs an outcome, even though it is
+  // not terminal.
+  const noOutcome = await adminSession.post(`/api/admin/privacy-requests/${row.id}/decision`).send({
+    status: 'awaiting_policy',
+    admin_notes: 'Holding until retention rules exist.',
+    version: view.body.request.version,
+  });
+  assert.equal(noOutcome.status, 400);
+  assert.equal(noOutcome.body.code, 'OUTCOME_CODE_INVALID');
+
+  const held = await adminSession.post(`/api/admin/privacy-requests/${row.id}/decision`).send({
+    status: 'awaiting_policy',
+    outcome_code: 'deletion_policy_pending',
+    admin_notes: 'Holding until the category rules are approved. Reviewed the account: nothing else outstanding.',
+    version: view.body.request.version,
+  });
+  assert.equal(held.status, 200, JSON.stringify(held.body));
+  assert.equal(held.body.records_deleted, false);
+  assert.equal(held.body.execution_recorded, false);
+
+  // Still open, so follow-up is still required. Not closed_at, not terminal.
+  assert.ok(rights.OPEN_STATUSES.includes('awaiting_policy'));
+  const stored = await pool.query('SELECT status, closed_at FROM privacy_requests WHERE id = $1', [row.id]);
+  assert.equal(stored.rows[0].status, 'awaiting_policy');
+  assert.equal(stored.rows[0].closed_at, null);
+
+  const stillQueued = await adminSession.get('/api/admin/privacy-requests');
+  const requeued = stillQueued.body.find((r) => r.reference === created1.body.request.reference);
+  assert.ok(requeued, 'it stays in the administrator queue');
+  assert.ok(requeued.actions.length, 'and can still be acted on');
+
+  // What the requester reads never says their data was removed.
+  const mine = await userSession.get(`/api/account/privacy-requests/${created1.body.request.reference}`);
+  assert.equal(mine.body.status, 'awaiting_policy');
+  const copy = mine.body.outcome;
+  assert.ok(copy);
+  assert.ok(/Nothing has been deleted/i.test(copy));
+  assert.ok(!/(has been|was) (deleted|erased|removed)\b/i.test(copy.replace(/Nothing has been deleted/gi, '')));
+  // And the blocker naming the real reason is visible to them.
+  assert.ok(mine.body.blockers.some((b) => b.category === 'deletion_policy_pending'));
+});
+
+test('sf1c. no outcome wording in the deletion path claims an erasure happened', () => {
+  // Every sentence a requester can be shown about a deletion, checked as a set.
+  const deletionCopy = [
+    rights.OUTCOME_COPY[rights.OUTCOME_CODES.DELETION_POLICY_PENDING],
+    rights.OUTCOME_COPY[rights.OUTCOME_CODES.DELETION_BLOCKED],
+  ];
+  deletionCopy.forEach((copy) => {
+    assert.ok(copy, 'every deletion outcome has wording');
+    assert.match(copy, /[Nn]othing has been deleted/);
+  });
+
+  // `completed` is unreachable for a deletion, so the one outcome that DOES
+  // describe an erasure cannot be reached by any status a deletion may take.
+  const reachable = new Set(
+    rights.DELETION_ALLOWED_STATUSES.flatMap((s) => rights.OUTCOMES_FOR_STATUS[s] || [])
+  );
+  assert.ok(!reachable.has(rights.OUTCOME_CODES.DELETION_PARTIAL),
+    'the "records were removed or anonymised" sentence is unreachable today');
+  assert.equal(rights.DELETION_EXECUTION_IMPLEMENTED, false);
+  assert.ok(!rights.DELETION_ALLOWED_STATUSES.includes('completed'));
+});
+
+test('sf1d. completing an access or correction request requires a recorded action', async () => {
+  const user = await makeUser('sfevidence');
+  const admin = await makeUser('sfevidenceadmin', { admin: true });
+  const userSession = await signIn(user.email);
+  const adminSession = await signIn(admin.email);
+
+  async function open(type) {
+    const res = await userSession.post('/api/account/privacy-requests').send({ request_type: type });
+    const queue = await adminSession.get('/api/admin/privacy-requests');
+    const row = queue.body.find((r) => r.reference === res.body.request.reference);
+    const view = await adminSession.get(`/api/admin/privacy-requests/${row.id}`);
+    return { row, version: view.body.request.version, reference: res.body.request.reference };
+  }
+
+  const access = await open('access');
+  const bare = await adminSession.post(`/api/admin/privacy-requests/${access.row.id}/decision`).send({
+    status: 'completed',
+    outcome_code: 'access_provided',
+    admin_notes: 'Marking it done without saying what was done.',
+    version: access.version,
+  });
+  assert.equal(bare.status, 400);
+  assert.equal(bare.body.code, 'EXECUTION_EVIDENCE_REQUIRED');
+
+  const empty = await adminSession.post(`/api/admin/privacy-requests/${access.row.id}/decision`).send({
+    status: 'completed',
+    outcome_code: 'access_provided',
+    admin_notes: 'Still not saying what was done.',
+    version: access.version,
+    execution_evidence: { summary: '' },
+  });
+  assert.equal(empty.status, 400);
+  assert.equal(empty.body.code, 'EXECUTION_SUMMARY_REQUIRED');
+
+  const good = await adminSession.post(`/api/admin/privacy-requests/${access.row.id}/decision`).send({
+    status: 'completed',
+    outcome_code: 'access_provided',
+    admin_notes: 'Generated the export and sent it.',
+    version: access.version,
+    execution_evidence: { summary: 'Sent the JSON export to the address on the account.' },
+  });
+  assert.equal(good.status, 200, JSON.stringify(good.body));
+  assert.equal(good.body.execution_recorded, true);
+
+  // Recorded as evidence, attributed to the signed-in administrator rather than
+  // to whatever the body claimed, and append-only.
+  const ex = await pool.query('SELECT * FROM privacy_request_executions WHERE request_id = $1', [
+    access.row.id,
+  ]);
+  assert.equal(ex.rowCount, 1);
+  assert.equal(ex.rows[0].action_kind, 'access_response');
+  assert.equal(ex.rows[0].executed_by, admin.id);
+  assert.equal(ex.rows[0].executed_by_job, null);
+  assert.ok(ex.rows[0].executed_at instanceof Date);
+
+  await assert.rejects(
+    () => pool.query("UPDATE privacy_request_executions SET summary = 'rewritten' WHERE id = $1", [ex.rows[0].id]),
+    /append-only|immutable|cannot be/i
+  );
+  await assert.rejects(
+    () => pool.query('DELETE FROM privacy_request_executions WHERE id = $1', [ex.rows[0].id]),
+    /append-only|immutable|cannot be/i
+  );
+
+  // A correction with a retained category and no reason is refused.
+  const correction = await open('correction');
+  const noReason = await adminSession
+    .post(`/api/admin/privacy-requests/${correction.row.id}/decision`)
+    .send({
+      status: 'completed',
+      outcome_code: 'correction_applied',
+      admin_notes: 'Corrected the name.',
+      version: correction.version,
+      execution_evidence: {
+        summary: 'Corrected the display name.',
+        categories_retained: [{ category: 'audit_records' }],
+      },
+    });
+  assert.equal(noReason.status, 400);
+  assert.equal(noReason.body.code, 'RETENTION_REASON_REQUIRED');
+
+  // The client cannot name somebody else as responsible.
+  const impersonated = await adminSession
+    .post(`/api/admin/privacy-requests/${correction.row.id}/decision`)
+    .send({
+      status: 'completed',
+      outcome_code: 'correction_applied',
+      admin_notes: 'Corrected the name.',
+      version: correction.version,
+      execution_evidence: { summary: 'Corrected the display name.', executed_by: user.id },
+    });
+  assert.equal(impersonated.status, 200);
+  const ex2 = await pool.query('SELECT executed_by FROM privacy_request_executions WHERE request_id = $1', [
+    correction.row.id,
+  ]);
+  assert.equal(ex2.rows[0].executed_by, admin.id, 'attribution comes from the session, not the body');
+
+  // The library refuses an erasure with nothing erased, for the day the switch
+  // flips.
+  assert.throws(
+    () => rights.assertExecutionEvidence(
+      { categories_retained: [], executed_by: 'someone' },
+      { requestType: 'deletion' }
+    ),
+    (err) => err.code === 'EXECUTION_EVIDENCE_EMPTY'
+  );
+  // And one that names neither a person nor a job.
+  assert.throws(
+    () => rights.assertExecutionEvidence({ summary: 'did a thing' }, { requestType: 'access' }),
+    (err) => err.code === 'EXECUTION_ACTOR_REQUIRED'
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2.3B safety fix — 2. no administrator hard-delete
+// ---------------------------------------------------------------------------
+
+test('sf2. no route hard-deletes an account, and no screen offers to', async () => {
+  const admin = await makeUser('sfnodelete', { admin: true });
+  const plain = await makeUser('sfnodeletetarget');
+  const adminSession = await signIn(admin.email);
+
+  // A brand new account with no activity at all — the exact case the old route
+  // was happy to remove.
+  const res = await adminSession.delete(`/api/admin/users/${plain.id}`);
+  assert.equal(res.status, 405);
+  assert.equal(res.body.code, 'ACCOUNT_DELETION_DISABLED');
+  assert.match(res.headers.allow || '', /GET|PATCH|POST/);
+  assert.ok(Array.isArray(res.body.alternatives) && res.body.alternatives.length);
+  assert.match(res.body.note, /No records were deleted/i);
+
+  const survived = await pool.query('SELECT COUNT(*)::int AS c FROM users WHERE id = $1', [plain.id]);
+  assert.equal(survived.rows[0].c, 1);
+
+  // Not a permission problem being reported as a method problem: a
+  // non-administrator is still refused first.
+  const plainSession = await signIn(plain.email);
+  assert.equal((await plainSession.delete(`/api/admin/users/${admin.id}`)).status, 403);
+
+  // The alternatives it points at exist and work.
+  const suspended = await adminSession.post(`/api/admin/users/${plain.id}/account-status`).send({
+    status: 'suspended',
+    reason: 'Fabricated: proving the documented alternative exists.',
+  });
+  assert.equal(suspended.status, 200, JSON.stringify(suspended.body));
+
+  // The alternatives the refusal names are real routes, not aspirational ones.
+  res.body.alternatives.forEach((alt) => {
+    const [method, route] = alt.route.split(' ');
+    assert.ok(['GET', 'POST'].includes(method), alt.route);
+    assert.ok(route.startsWith('/api/admin/'), alt.route);
+  });
+  const revoked = await adminSession.post(`/api/admin/users/${plain.id}/revoke-sessions`).send({});
+  assert.equal(revoked.status, 200);
+
+  // No other route anywhere deletes an account.
+  const routeDir = path.join(__dirname, '..', 'server', 'routes');
+  const sources = fs.readdirSync(routeDir).map((f) => ({
+    name: f,
+    text: fs.readFileSync(path.join(routeDir, f), 'utf8'),
+  }));
+  sources.forEach(({ name, text }) => {
+    assert.ok(
+      !/DELETE\s+FROM\s+users/i.test(text),
+      `${name} must not delete an account`
+    );
+  });
+
+  // And no frontend control invokes one.
+  const publicDir = path.join(__dirname, '..', 'public');
+  const pageDir = path.join(publicDir, 'js', 'pages');
+  fs.readdirSync(pageDir).forEach((file) => {
+    const text = fs.readFileSync(path.join(pageDir, file), 'utf8');
+    const deleteCalls = text.match(/method:\s*'DELETE'[\s\S]{0,80}/g) || [];
+    deleteCalls.forEach((snippet) => {
+      assert.ok(!/users/.test(snippet), `${file} still has an account-delete control`);
+    });
+    assert.ok(!/admin\/users\/[^)]*`?,\s*\{\s*method:\s*'DELETE'/.test(text), `${file} deletes an account`);
+  });
+  const adminPage = fs.readFileSync(path.join(pageDir, 'admin.js'), 'utf8');
+  assert.ok(!/user-delete-btn/.test(adminPage), 'the delete button is gone, not just hidden');
+
+  // Historical audit records are unaffected by any of this.
+  const events = await pool.query(
+    'SELECT COUNT(*)::int AS c FROM host_status_events WHERE user_id = $1',
+    [plain.id]
+  );
+  assert.ok(events.rows[0].c >= 0);
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2.3B safety fix — 3. Sentry privacy is mechanical
+// ---------------------------------------------------------------------------
+
+test('sf3. error reporting captures no console output and scrubs what it does send', () => {
+  const reporting = require('../server/lib/errorReporting');
+
+  // The console integration is gone from the source, not merely unused.
+  const indexSource = fs.readFileSync(path.join(__dirname, '..', 'server', 'index.js'), 'utf8');
+  // The call, not the word — the comment above it legitimately names what was
+  // removed and why, and that comment is worth keeping.
+  assert.ok(
+    !/[^.\w]captureConsoleIntegration\s*\(/.test(indexSource.replace(/^\s*\/\/.*$/gm, '')),
+    'no console capture: a log line must not become an off-platform event'
+  );
+  const appSource = fs.readFileSync(path.join(__dirname, '..', 'server', 'app.js'), 'utf8');
+  assert.ok(!/captureConsoleIntegration\s*\(/.test(appSource.replace(/^\s*\/\/.*$/gm, '')));
+
+  // Sentry is configured through one place, with the settings that matter.
+  const libSource = fs.readFileSync(
+    path.join(__dirname, '..', 'server', 'lib', 'errorReporting.js'),
+    'utf8'
+  );
+  assert.match(libSource, /sendDefaultPii:\s*false/);
+  assert.match(libSource, /beforeSend/);
+  assert.match(libSource, /beforeBreadcrumb/);
+  assert.match(libSource, /integrations:\s*\[\]/);
+
+  // A breadcrumb is a log line by another name and is dropped outright.
+  assert.equal(reporting.scrubBreadcrumb({ message: 'anything' }), null);
+
+  // Key-based redaction, recursive, on the categories that matter here.
+  const scrubbed = reporting.scrub({
+    password_hash: '$2a$10$abcdefghijklmnopqrstuv',
+    token_hash: 'a'.repeat(64),
+    csrf: 'v1.abc',
+    cookie: 'naseeb_session=abc',
+    authorization: 'Bearer abc',
+    contact_email: 'someone@example.com',
+    contact_phone: '+971501234567',
+    delivery_ciphertext: 'AAAA',
+    delivery_note: 'Leave with the concierge',
+    admin_notes: 'suspected of multi-accounting',
+    network_hmac: 'b'.repeat(64),
+    stripe_payment_intent: 'pi_123',
+    database_url: 'postgres://u:p@host/db',
+    nested: {
+      deeper: {
+        user_message: 'my address is 12 Fabricated Street',
+        harmless: 'a giveaway title',
+      },
+    },
+    list: [{ reset_token: 'zzz' }, { fine: 'ok' }],
+  });
+
+  const asText = JSON.stringify(scrubbed);
+  [
+    '$2a$10$', 'naseeb_session', 'Bearer abc', 'someone@example.com', '971501234567',
+    'concierge', 'multi-accounting', 'pi_123', 'postgres://', 'Fabricated Street',
+  ].forEach((secret) => {
+    assert.ok(!asText.includes(secret), `${secret} must not survive the scrubber`);
+  });
+  assert.equal(scrubbed.harmless, undefined);
+  assert.equal(scrubbed.nested.deeper.harmless, 'a giveaway title', 'ordinary values survive');
+  assert.equal(scrubbed.list[1].fine, 'ok');
+
+  // Value-based redaction, for personal data under an innocent key.
+  const messages = {
+    email: 'could not reach winner@example.com about the prize',
+    url: 'GET http://localhost:3000/claim.html?token=abcdefghijklmnopqrstuvwx failed',
+    fragment: 'redirect to /verify-email-change.html#token=SECRETVALUE1234567890abcd',
+    ipv4: 'refused entry from 203.0.113.42',
+    ipv6: 'refused entry from 2001:0db8:85a3:0000:0000:8a2e:0370:7334',
+    phone: 'delivery contact 050 123 4567 unreachable',
+    stripeKey: 'auth failed for sk_test_abcdefghijklmnop',
+    opaque: `token ${'x'.repeat(43)} rejected`,
+    connection: 'connect failed postgresql://user:secret@db.example.com:5432/naseeb',
+  };
+  const out = reporting.scrub(messages);
+  assert.ok(!out.email.includes('winner@example.com'));
+  assert.ok(!out.url.includes('abcdefghijklmnopqrstuvwx'));
+  assert.ok(out.url.includes('/claim.html'), 'the path survives, so an error stays locatable');
+  assert.ok(!out.fragment.includes('SECRETVALUE1234567890abcd'));
+  assert.ok(!out.ipv4.includes('203.0.113.42'));
+  assert.ok(!out.ipv6.includes('2001:0db8'));
+  assert.ok(!out.phone.includes('050 123 4567'));
+  assert.ok(!out.stripeKey.includes('sk_test_abcdefghijklmnop'));
+  assert.ok(!out.opaque.includes('x'.repeat(43)));
+  assert.ok(!out.connection.includes('secret@db.example.com'));
+
+  // A whole event: request body, headers, cookies, query string and user are
+  // removed rather than trusted to be clean.
+  const event = reporting.scrubEvent({
+    message: 'failed for someone@example.com',
+    request: {
+      url: 'https://mynaseeb.ae/claim.html?token=abcdefghijklmnopqrstuvwxyz123456',
+      method: 'POST',
+      cookies: { naseeb_session: 'live-token' },
+      headers: { authorization: 'Bearer live', 'x-csrf-token': 'v1.abc', 'user-agent': 'x' },
+      data: { password: 'hunter2', delivery: { address: '12 Fabricated Street' } },
+      query_string: 'token=abcdefghijklmnopqrstuvwxyz123456',
+      env: { DATABASE_URL: 'postgres://u:p@h/d' },
+    },
+    user: { id: 'u-1', email: 'someone@example.com', ip_address: '203.0.113.9' },
+    server_name: 'host-1',
+  });
+  const eventText = JSON.stringify(event);
+  ['someone@example.com', 'live-token', 'Bearer live', 'hunter2', 'Fabricated Street',
+   'abcdefghijklmnopqrstuvwxyz123456', '203.0.113.9', 'host-1'].forEach((secret) => {
+    assert.ok(!eventText.includes(secret), `${secret} must not reach Sentry`);
+  });
+  assert.equal(event.request.cookies, undefined);
+  assert.equal(event.request.headers, undefined);
+  assert.equal(event.request.data, undefined);
+  assert.equal(event.request.env, undefined);
+  assert.equal(event.request.query_string, undefined);
+  assert.equal(event.user, undefined);
+  assert.equal(event.request.url, 'https://mynaseeb.ae/claim.html');
+  assert.equal(event.request.method, 'POST', 'ordinary diagnostics survive');
+
+  // A cycle does not take the report path down, and depth is bounded.
+  const cyclic = { name: 'root' };
+  cyclic.self = cyclic;
+  assert.doesNotThrow(() => reporting.scrub(cyclic));
+
+  // A scrubber that throws must drop the event rather than send it raw.
+  assert.equal(reporting.scrubEvent(null), null);
+});
+
+test('sf3b. reportError is the only capture path, and its context is scrubbed too', () => {
+  const reporting = require('../server/lib/errorReporting');
+  const captured = [];
+  reporting._setSentry({
+    captureException: (err, options) => captured.push({ err, options }),
+  });
+
+  try {
+    reporting.reportError(new Error('boom'), {
+      route: 'POST /api/account/export',
+      email: 'someone@example.com',
+      token: 'abcdefghijklmnopqrstuvwxyz1234567890',
+      record_id: 'abc-123',
+    });
+    assert.equal(captured.length, 1);
+    const extra = JSON.stringify(captured[0].options.extra);
+    assert.ok(!extra.includes('someone@example.com'));
+    assert.ok(!extra.includes('abcdefghijklmnopqrstuvwxyz1234567890'));
+    assert.ok(extra.includes('POST /api/account/export'), 'the useful part survives');
+    assert.ok(extra.includes('abc-123'));
+
+    // No DSN configured means no capture at all, rather than a queued event.
+    reporting._setSentry(null);
+    assert.equal(reporting.reportError(new Error('nope')), false);
+    assert.equal(captured.length, 1);
+  } finally {
+    reporting._setSentry(null);
+  }
 });
 
 // ---------------------------------------------------------------------------

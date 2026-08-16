@@ -229,11 +229,11 @@ exports.
 
 | | |
 | --- | --- |
-| Fields | Acceptances: `id`, `user_id`, `policy_id`, `policy_version`, `policy_effective_date`, `acceptance_kind`, `source`, `accepted_at`. Requests: `id`, `reference`, `user_id`, `request_type`, `status`, `user_message`, `outcome_code`, `admin_notes`, `blockers`, `version`, `created_at`, `updated_at`, `closed_at`, `closed_by`. Request events: `id`, `request_id`, `user_id`, `from_status`, `to_status`, `outcome_code`, `admin_notes`, `actor_user_id`, `actor_role`, `created_at`. |
+| Fields | Acceptances: `id`, `user_id`, `policy_id`, `policy_version`, `policy_effective_date`, `acceptance_kind`, `source`, `accepted_at`. Requests: `id`, `reference`, `user_id`, `request_type`, `status`, `user_message`, `outcome_code`, `admin_notes`, `blockers`, `version`, `created_at`, `updated_at`, `closed_at`, `closed_by`. Request events: `id`, `request_id`, `user_id`, `from_status`, `to_status`, `outcome_code`, `admin_notes`, `actor_user_id`, `actor_role`, `created_at`. Executions: `id`, `request_id`, `user_id`, `action_kind`, `categories_erased`, `categories_anonymised`, `categories_retained`, `summary`, `executed_at`, `executed_by`, `executed_by_job`. |
 | Purpose | Record what somebody agreed to and when; run access, correction, deletion and objection requests with an auditable history. |
 | Access | The requester sees their own requests, their own message, and a fixed outcome sentence. Administrators see the account and the internal notes, and only after deliberately opening a row. |
 | Classification | `admin_notes` **sensitive**. `user_message` **confidential**. Acceptances **confidential**. |
-| Retention implemented | `privacy_request_events` is **append-only** (`BEFORE UPDATE OR DELETE` trigger) and carries no foreign keys, so it survives the deletion of the account it describes. `policy_acceptances` is **empty**, because no policy is in force. |
+| Retention implemented | `privacy_request_events` and `privacy_request_executions` are both **append-only** (`BEFORE UPDATE OR DELETE` triggers) and carry no foreign keys, so they survive the deletion of the account they describe. `policy_acceptances` is **empty**, because no policy is in force. `privacy_request_executions` is **empty**, because nothing has been erased or anonymised. |
 | Awaiting decision | How long a closed request is kept, and whether the requester's own free text should have a shorter life than the decision record. |
 | Correction / deletion | Neither, by design. No route deletes a request at any privilege level. |
 | External recipient | None. |
@@ -271,20 +271,45 @@ legal entity that would sign one has not been established. That is recorded in
 | **Resend** | Recipient address, subject and message body, including single-use links. | `RESEND_API_KEY` | Active when configured. Without a key, messages are logged instead — and bodies containing a live link are **suppressed** even then. |
 | **Cloudinary** | Uploaded giveaway and advertising images. Served from `res.cloudinary.com`; uploads go to `api.cloudinary.com`. | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_UPLOAD_PRESET` | Active. Images are host-supplied creative, not personal data by design — but an uploader can put anything in an image. |
 | **Stripe** | Payment session, amount, and the payer's own details entered on Stripe's page. Only an event id and type are stored back. | `STRIPE_SECRET_KEY` etc. | **Disabled.** `ADS_CHECKOUT_ENABLED=false`. |
-| **Sentry** | Error reports, and — because `captureConsoleIntegration` is enabled for `console.error` — the text of any logged error. | `SENTRY_DSN` | Active when configured. **See the warning below.** |
+| **Sentry** | Deliberately captured exceptions only, after recursive redaction. No console output, no breadcrumbs, no request body, no headers, no cookies, no query string, no user object. | `SENTRY_DSN` | Active when configured. **See below.** |
 | **Google Analytics** | Page views on public pages, via `googletagmanager.com`. | `GA_MEASUREMENT_ID` | Active when configured. **Not loaded** on `/claim.html`, `/admin.html`, `/owner.html`, `/account.html` or `/verify-email-change.html`. |
 | **Render** | Hosting: process, logs, and the environment. | Deployment | Active. |
 | **Postgres host** | The whole database. | `DATABASE_URL` | Active. |
 
-**Sentry and console output — an open risk.** `Sentry.init` uses
-`captureConsoleIntegration({ levels: ['error'] })`, so every `console.error` in
-the codebase becomes a Sentry event. Error paths in this codebase are written
-not to interpolate personal data, and messages that carry a live link are
-suppressed from logs entirely — but that is a convention held up by review, not
-a mechanism. A future `console.error` that includes an email address would send
-it to Sentry without anybody noticing. Recorded in
-`docs/UAE_COUNSEL_REVIEW.md`; the mitigation (a scrubbing hook, or dropping the
-console integration) is not implemented.
+**Sentry, and why it no longer depends on anybody's discipline.** This used to
+be `captureConsoleIntegration({ levels: ['error'] })` — every `console.error` in
+the codebase became a Sentry event. It was convenient, and it made the privacy of
+an off-platform transmission rest on nobody ever interpolating an address, a
+delivery note or a token into a log line. One ordinary-looking `console.error`
+that interpolated a user's email address would have sent it off-platform, and
+nothing in the diff would have looked wrong.
+
+That integration is gone. What is in its place, in `server/lib/errorReporting.js`:
+
+- **No console capture and no breadcrumbs.** `beforeBreadcrumb` returns `null`
+  unconditionally — a breadcrumb is a log line by another name.
+- **`sendDefaultPii: false`**, set explicitly rather than inherited, because the
+  default has moved between SDK majors.
+- **A `beforeSend` scrubber** that walks the whole event and redacts by key
+  (anything matching password, token, csrf, cookie, session, authorization,
+  cipher/iv/key, stripe, resend, dsn, email, phone, address, delivery, contact,
+  trade licence, admin notes, user message, IP, forwarded-for, user-agent,
+  network/signal hash) and then by value over every surviving string (email
+  addresses, phone numbers, IPv4 and IPv6, URLs with a query string or fragment,
+  `token=`-style pairs, `sk_`/`pk_`/`whsec_`/`re_` keys, Postgres connection
+  strings, and any opaque 32+ character run).
+- **Whole sections removed rather than scrubbed**: `request.cookies`,
+  `request.headers`, `request.data`, `request.env`, `request.query_string` and
+  the `user` object. The request URL keeps its path — which is what makes an
+  error locatable — and loses everything after `?` or `#`.
+- **Fails closed.** A scrubber that throws drops the event; a cycle or an
+  over-deep structure is redacted rather than followed; a value type it does not
+  understand is replaced rather than forwarded.
+
+Capture is now deliberate: `errorReporting.reportError(err, context)`, with the
+context scrubbed on the same terms, plus Express's own error handler for what
+slips past a route's `try`/`catch`. `test/account-rights.test.js` sf3 and sf3b
+pin all of it.
 
 ---
 
@@ -304,6 +329,9 @@ data that is present:
 - No Stripe webhook payload — only the event id and type.
 - No advertising or analytics on any page that shows an address, a request
   history, an export or a token.
+- No console output, breadcrumbs, request bodies, headers, cookies, query
+  strings or user objects in an error report.
+- No application route that hard-deletes an account.
 
 ---
 
@@ -311,6 +339,10 @@ data that is present:
 
 | Rule | Enforced by | Proved by |
 | --- | --- | --- |
+| A deletion request cannot be marked completed | `DELETION_EXECUTION_IMPLEMENTED`, the route check, and the `privacy_requests_no_phantom_deletion` CHECK | `test/account-rights.test.js` sf1 |
+| A completion names what was actually done | `assertExecutionEvidence` + `privacy_request_executions` | `test/account-rights.test.js` sf1d |
+| No route hard-deletes an account | The disabled route; no `DELETE FROM users` anywhere under `server/routes/` | `test/account-rights.test.js` sf2 |
+| Error reports carry no personal data | `beforeSend` / `beforeBreadcrumb` in `errorReporting.js` | `test/account-rights.test.js` sf3, sf3b |
 | Integrity history cannot be edited or deleted | `BEFORE UPDATE OR DELETE` triggers; no foreign keys | `test/entry-integrity.test.js` |
 | Privacy-request history cannot be edited or deleted | `privacy_request_events_immutable` trigger | `test/account-rights.test.js` 26 |
 | Internal notes never reach the person | `reason_code` / `outcome_code` allowlists in code | `test/account-rights.test.js` 21, 24 |

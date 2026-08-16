@@ -1,19 +1,17 @@
 require('dotenv').config();
 const Sentry = require('@sentry/node');
 
-// Every route in this app already catches its own errors and logs them via
-// console.error rather than calling next(err), so Sentry's automatic Express
-// error handler alone wouldn't see any of them. captureConsoleIntegration
-// mirrors every console.error call into Sentry too, without having to touch
-// every route file's catch block individually. Must run before ./app is
-// required, since that's what wires up the routes that use console.error.
-if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || 'production',
-    integrations: [Sentry.captureConsoleIntegration({ levels: ['error'] })],
-  });
-}
+// Error reporting is configured in one place, with a scrubber in front of it —
+// see server/lib/errorReporting.js for what it strips and why.
+//
+// This used to be `captureConsoleIntegration({ levels: ['error'] })`, which
+// mirrored every console.error in the codebase to Sentry. It was convenient and
+// it made the privacy of an off-platform transmission depend on nobody ever
+// interpolating an address or a token into a log line. That integration is gone;
+// what reaches Sentry now is a deliberate capture that has been through
+// `beforeSend`. Must run before ./app is required.
+const errorReporting = require('./lib/errorReporting');
+errorReporting.init(Sentry);
 
 const app = require('./app');
 const { init, isSlotProtectionActive, SLOT_CONSTRAINT_NAME } = require('./db');
@@ -27,9 +25,16 @@ const { resolveTrustProxy } = require('./lib/proxyTrust');
 // A rejected promise nobody awaited terminates the process on modern Node.
 // Most of this codebase awaits everything, but a background send or a
 // scheduler tick that slips through should be logged and survived rather than
-// taking the site down — and console.error is mirrored into Sentry.
+// taking the site down.
+//
+// Reported deliberately, because this is exactly the class of failure nobody
+// sees otherwise. The reason goes through the scrubber like everything else.
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled promise rejection:', reason instanceof Error ? reason.message : reason);
+  errorReporting.reportError(
+    reason instanceof Error ? reason : new Error(String(reason)),
+    { source: 'unhandledRejection' }
+  );
 });
 
 // Taking card payments without a verified webhook is the failure this whole
