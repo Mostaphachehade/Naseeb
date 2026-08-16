@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -20,17 +21,17 @@
 </header>
 
 <main id="main">
-  <div class="wrap" style="max-width:640px;">
+  <div class="wrap u-de0aa912">
 
-    <div id="processing-panel" class="card narrow" style="display:none; text-align:center;">
-      <p style="color:var(--text-soft);">Confirming your payment…</p>
+    <div id="processing-panel" class="card narrow u-287a5cfe is-hidden">
+      <p class="u-a2aae0fb">Confirming your payment…</p>
     </div>
 
-    <div id="success-panel" class="card narrow" style="display:none; text-align:center;">
+    <div id="success-panel" class="card narrow u-287a5cfe is-hidden">
       <h2 id="success-heading">You're booked.</h2>
-      <p style="color:var(--text-soft); margin-bottom:18px;" id="success-details"></p>
+      <p class="u-1aa37734" id="success-details"></p>
       <p class="hint" id="success-note">A receipt was sent to your email. Your banner goes live automatically on the start date — no further action needed.</p>
-      <a href="/index.html" class="btn primary" style="margin-top:16px;">Back to Naseeb</a>
+      <a href="/index.html" class="btn primary u-8a359a76">Back to Naseeb</a>
     </div>
 
     <div id="booking-flow">
@@ -45,28 +46,28 @@
            checkoutEnabled: false. The inquiry form below stays available in
            both states, so an advertiser is never left without a way to buy —
            the route changes from self-serve to a direct conversation. -->
-      <div class="card narrow" id="checkout-unavailable" style="display:none; max-width:none; margin-bottom:20px;">
-        <h3 style="margin-top:0;">Online booking is temporarily unavailable</h3>
-        <p style="color:var(--text-soft);">We've paused self-serve card payment for the homepage banner while we finish some work on it. The slot itself is still available — send an inquiry below and we'll confirm your dates and invoice you directly, usually the same day.</p>
-        <p class="hint" style="margin-bottom:0;">Nothing is charged online while this is paused, and no booking is held until we've confirmed it with you.</p>
+      <div class="card narrow u-a818694f is-hidden" id="checkout-unavailable">
+        <h3 class="u-291b7bbb">Online booking is temporarily unavailable</h3>
+        <p class="u-a2aae0fb">We've paused self-serve card payment for the homepage banner while we finish some work on it. The slot itself is still available — send an inquiry below and we'll confirm your dates and invoice you directly, usually the same day.</p>
+        <p class="hint u-76084ee4">Nothing is charged online while this is paused, and no booking is held until we've confirmed it with you.</p>
       </div>
 
-      <div class="card narrow" id="pricing-card" style="max-width:none; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
+      <div class="card narrow u-41555afc" id="pricing-card">
         <div>
           <!-- Filled from /api/ads/availability. No price is hard-coded on this
                page: the server is the only place the rate exists. -->
-          <div style="font-family:'Fraunces',serif; font-size:1.6rem; color:var(--ink-deep);"><span id="week-price">—</span><span style="font-size:0.95rem; color:var(--text-soft); font-weight:400;"> / week</span></div>
-          <p class="hint" style="margin-top:2px;">Next available: <strong id="next-available">—</strong></p>
+          <div class="u-dcd89071"><span id="week-price">—</span><span class="u-0377156e"> / week</span></div>
+          <p class="hint u-b0816963">Next available: <strong id="next-available">—</strong></p>
         </div>
         <span class="pill-badge company" id="pricing-badge">Pay online, live automatically</span>
       </div>
 
-      <div id="cancelled-notice" class="form-error show" style="display:none; margin-bottom:16px;">Checkout was cancelled — you weren't charged. Ready when you are.</div>
+      <div id="cancelled-notice" class="form-error show u-17bbc5d2 is-hidden">Checkout was cancelled — you weren't charged. Ready when you are.</div>
 
       <!-- Hidden until the server confirms checkout is enabled. Failing closed
            means a slow or failed availability call shows no payment form at
            all, rather than briefly showing one that can't complete. -->
-      <form class="card narrow" id="ad-form" style="max-width:none; display:none;">
+      <form class="card narrow u-34caecf2 is-hidden" id="ad-form">
         <label for="business_name">Business name</label>
         <input id="business_name" placeholder="e.g. Al Fahim Marketing LLC" required />
 
@@ -75,10 +76,10 @@
         <p class="hint">Your receipt and booking confirmation go here.</p>
 
         <label for="image_file">Banner image</label>
-        <div id="image-upload-row" style="display:none; margin-bottom:10px;">
+        <div id="image-upload-row" class="u-7a0acf60 is-hidden">
           <input type="file" id="image_file" accept="image/*" />
           <span class="hint" id="upload-status"></span>
-          <img id="image-preview" alt="" style="display:none; max-width:240px; border-radius:8px; margin-top:8px;" />
+          <img id="image-preview" alt="" class="u-c18f7c35 is-hidden" />
         </div>
         <input id="image_url" type="url" placeholder="https://…" required />
         <p class="hint" id="image-url-hint">Paste an image URL, or upload one above. Wide banner shape works best (e.g. 1200×240).</p>
@@ -98,20 +99,20 @@
         <!-- Shown when the owner changes the price mid-session. The customer is
              told the new total and has to confirm it; nothing is held or
              charged until they do. -->
-        <div id="price-changed-notice" class="form-error show" style="display:none; margin-bottom:14px;"></div>
+        <div id="price-changed-notice" class="form-error show u-1521d510 is-hidden"></div>
 
         <button class="btn primary" type="submit" id="checkout-btn">Continue to payment</button>
         <p class="form-error" id="error"></p>
       </form>
 
-      <div class="section-head" style="margin-top:40px;" id="inquiry-head">
+      <div class="section-head u-9f7cb1fb" id="inquiry-head">
         <div>
           <h3 id="inquiry-heading">Want something custom?</h3>
           <p id="inquiry-subheading">Video ads, a longer campaign, or a different placement — tell us what you have in mind and we'll follow up directly.</p>
         </div>
       </div>
 
-      <form class="card narrow" id="inquiry-form" style="max-width:none;">
+      <form class="card narrow u-a685987e" id="inquiry-form">
         <label for="inq_business_name">Business name</label>
         <input id="inq_business_name" required />
 
@@ -131,280 +132,9 @@
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  let nextAvailableDate = null;
-  // Fail closed: nothing shows a payment form until the server has said, in
-  // this response, that checkout is on.
-  let checkoutEnabled = false;
-
-  // The current server quote: the weekly rate, every duration with its own
-  // server-calculated total, and the version identifying which price these
-  // came from. There is no price constant anywhere on this page — if this is
-  // null, the page has no prices to show and cannot check out.
-  let quote = null;
-  // Set when the server rejects a checkout because the price moved. The
-  // customer has to look at the new total and submit again.
-  let awaitingPriceConfirmation = false;
-
-  async function loadAvailability() {
-    try {
-      const availability = await api('/ads/availability');
-      checkoutEnabled = availability.checkoutEnabled === true;
-      nextAvailableDate = availability.nextAvailableDate;
-      applyQuote(availability);
-      const formatted = new Date(nextAvailableDate + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-      document.getElementById('next-available').textContent = formatted;
-      document.getElementById('form-start-date').textContent = formatted;
-    } catch (err) {
-      checkoutEnabled = false;
-      document.getElementById('next-available').textContent = 'now';
-    }
-    applyCheckoutState();
-  }
-
-  // Renders a server quote. Every number here arrives already calculated and
-  // already formatted — the page picks strings out of the response and puts
-  // them on screen, and at no point multiplies a rate by a duration itself.
-  function applyQuote(next, { keepSelection = true } = {}) {
-    if (!next || !Array.isArray(next.durations) || !next.durations.length) return;
-
-    const select = document.getElementById('weeks');
-    const previous = keepSelection && select.value ? Number(select.value) : null;
-    quote = next;
-
-    document.getElementById('week-price').textContent = quote.pricePerWeekDisplay;
-
-    select.innerHTML = '';
-    quote.durations.forEach((duration) => {
-      const option = document.createElement('option');
-      option.value = String(duration.weeks);
-      option.textContent = duration.label;
-      option.dataset.totalDisplay = duration.totalDisplay;
-      select.appendChild(option);
-    });
-
-    const wanted = quote.durations.some((d) => d.weeks === previous) ? previous : quote.durations[0].weeks;
-    select.value = String(wanted);
-    renderTotal();
-  }
-
-  function renderTotal() {
-    if (!quote) return;
-    const weeks = Number(document.getElementById('weeks').value);
-    const duration = quote.durations.find((d) => d.weeks === weeks);
-    if (duration) document.getElementById('total-price').textContent = duration.totalDisplay;
-  }
-
-  // Swaps the page between self-serve booking and inquiry-only. The inquiry
-  // form is untouched in both states — it's the fallback that keeps the slot
-  // sellable while online payment is paused.
-  function applyCheckoutState() {
-    const form = document.getElementById('ad-form');
-    const notice = document.getElementById('checkout-unavailable');
-
-    if (checkoutEnabled) {
-      notice.style.display = 'none';
-      form.style.display = '';
-      return;
-    }
-
-    notice.style.display = 'block';
-    form.style.display = 'none';
-    document.getElementById('pricing-badge').textContent = 'Booked by inquiry';
-    document.getElementById('inquiry-heading').textContent = 'Book the banner slot';
-    document.getElementById('inquiry-subheading').textContent =
-      "Tell us your dates and what you'd like to run. We'll confirm availability and invoice you directly.";
-  }
-
-  document.getElementById('weeks').addEventListener('change', renderTotal);
-
-  let cloudinaryConfig = null;
-  fetch('/api/config').then((r) => r.json()).then((config) => {
-    if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
-      cloudinaryConfig = config;
-      document.getElementById('image-upload-row').style.display = 'block';
-      document.getElementById('image-url-hint').textContent = 'Upload a file above, or paste an image URL.';
-    }
-  }).catch(() => {});
-
-  document.getElementById('image_file').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file || !cloudinaryConfig) return;
-    const statusEl = document.getElementById('upload-status');
-    statusEl.textContent = 'Uploading…';
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
-    try {
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudinary_cloud_name}/image/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
-      document.getElementById('image_url').value = data.secure_url;
-      const preview = document.getElementById('image-preview');
-      preview.src = data.secure_url;
-      preview.style.display = 'block';
-      statusEl.textContent = 'Uploaded.';
-    } catch (err) {
-      statusEl.textContent = err.message;
-    }
-  });
-
-  document.getElementById('ad-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const errorEl = document.getElementById('error');
-    const btn = document.getElementById('checkout-btn');
-    errorEl.classList.remove('show');
-
-    // The form is hidden when checkout is off, so this is belt-and-braces
-    // against a stale page left open across a deploy that turned it off.
-    if (!checkoutEnabled) {
-      applyCheckoutState();
-      return;
-    }
-
-    if (!quote) {
-      errorEl.textContent = 'Prices are still loading. Give it a moment and try again.';
-      errorEl.classList.add('show');
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = 'Starting checkout…';
-
-    // Deliberately sends no price and no total — only which duration was
-    // chosen, and which quote the customer was looking at when they chose it.
-    // The server works out what that costs.
-    const payload = {
-      business_name: document.getElementById('business_name').value,
-      contact_email: document.getElementById('contact_email').value,
-      image_url: document.getElementById('image_url').value,
-      target_url: document.getElementById('target_url').value,
-      weeks: Number(document.getElementById('weeks').value),
-      quote_version: quote.quoteVersion,
-    };
-
-    let res;
-    try {
-      res = await fetch('/api/ads/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      errorEl.textContent = 'Could not reach the server. Please try again.';
-      errorEl.classList.add('show');
-      btn.disabled = false;
-      btn.textContent = 'Continue to payment';
-      return;
-    }
-
-    const data = await res.json().catch(() => ({}));
-
-    // The owner changed the price while this form was open. Nothing has been
-    // held and nothing has been charged; show the new total and make the
-    // customer agree to it before trying again.
-    if (res.status === 409 && data.code === 'PRICE_CHANGED') {
-      applyQuote(data.quote);
-      awaitingPriceConfirmation = true;
-
-      const weeks = Number(document.getElementById('weeks').value);
-      const duration = quote.durations.find((d) => d.weeks === weeks);
-      const notice = document.getElementById('price-changed-notice');
-      notice.textContent = `${data.error} The new total for ${weeks} week${weeks > 1 ? 's' : ''} is ${duration ? duration.totalDisplay : quote.pricePerWeekDisplay + ' per week'}.`;
-      notice.style.display = 'block';
-
-      btn.disabled = false;
-      btn.textContent = 'Confirm new price and continue';
-      return;
-    }
-
-    if (!res.ok) {
-      errorEl.textContent = data.error || 'Something went wrong. Please try again.';
-      errorEl.classList.add('show');
-      btn.disabled = false;
-      btn.textContent = awaitingPriceConfirmation ? 'Confirm new price and continue' : 'Continue to payment';
-      return;
-    }
-
-    document.getElementById('price-changed-notice').style.display = 'none';
-    awaitingPriceConfirmation = false;
-    window.location.href = data.checkoutUrl;
-  });
-
-  document.getElementById('inquiry-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const errorEl = document.getElementById('inquiry-error');
-    errorEl.classList.remove('show');
-    try {
-      await api('/ad-inquiries', {
-        method: 'POST',
-        body: JSON.stringify({
-          business_name: document.getElementById('inq_business_name').value,
-          contact_email: document.getElementById('inq_contact_email').value,
-          message: document.getElementById('inq_message').value || null,
-        }),
-      });
-      document.getElementById('inquiry-form').style.display = 'none';
-      document.getElementById('inquiry-success').textContent = "Got it — we'll be in touch.";
-      document.getElementById('inquiry-success').classList.add('show');
-    } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.classList.add('show');
-    }
-  });
-
-  async function init() {
-    const params = new URLSearchParams(window.location.search);
-    const status = params.get('status');
-    const sessionId = params.get('session_id');
-
-    if (status === 'success' && sessionId) {
-      document.getElementById('booking-flow').style.display = 'none';
-      document.getElementById('processing-panel').style.display = 'block';
-      try {
-        const booking = await api(`/ads/checkout/confirm?session_id=${encodeURIComponent(sessionId)}`);
-        document.getElementById('processing-panel').style.display = 'none';
-        document.getElementById('success-panel').style.display = 'block';
-
-        const runs = `${new Date(booking.starts_at + 'T00:00:00').toLocaleDateString()} – ${new Date(booking.ends_at + 'T00:00:00').toLocaleDateString()}`;
-
-        // This page no longer decides whether the payment succeeded — it only
-        // reports what the confirmed booking record says. Stripe's webhook is
-        // what marks a booking paid, and it can land a moment after the
-        // customer gets redirected here, so "not paid yet" is a normal state to
-        // show rather than an error.
-        if (booking.paid) {
-          document.getElementById('success-details').textContent =
-            `${booking.business_name}'s banner runs ${runs} (${booking.amountDisplay} paid).`;
-        } else {
-          document.getElementById('success-heading').textContent = 'Payment received — confirming';
-          document.getElementById('success-details').textContent =
-            `We're waiting for your bank to confirm the payment. Once it clears, ${booking.business_name}'s banner is scheduled for ${runs}.`;
-          document.getElementById('success-note').textContent =
-            "This usually takes a few seconds. You'll get an email as soon as it's confirmed — you don't need to stay on this page or pay again.";
-        }
-      } catch (err) {
-        document.getElementById('processing-panel').style.display = 'none';
-        document.getElementById('booking-flow').style.display = 'block';
-        document.getElementById('error').textContent = err.message;
-        document.getElementById('error').classList.add('show');
-      }
-      return;
-    }
-
-    if (status === 'cancelled') {
-      document.getElementById('cancelled-notice').style.display = 'block';
-    }
-
-    loadAvailability();
-  }
-
-  init();
-</script>
+<script src="/js/pages/advertise.js"></script>
 </body>
 </html>

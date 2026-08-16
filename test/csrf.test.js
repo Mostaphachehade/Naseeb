@@ -297,7 +297,7 @@ test('the Stripe webhook works without CSRF and still requires a valid signature
         'stripe-signature',
         Stripe.webhooks.generateTestHeaderString({ payload, secret })
       )
-      .send(Buffer.from(payload));
+      .send(payload);
     assert.notEqual(signed.status, 403, `a signed webhook must not be refused: ${JSON.stringify(signed.body)}`);
     assert.ok(signed.status < 500, `unexpected ${signed.status}: ${JSON.stringify(signed.body)}`);
 
@@ -305,14 +305,14 @@ test('the Stripe webhook works without CSRF and still requires a valid signature
     const unsigned = await api()
       .post('/api/webhooks/stripe')
       .set('Content-Type', 'application/json')
-      .send(Buffer.from(payload));
+      .send(payload);
     assert.equal(unsigned.status, 400, 'an unsigned webhook is still refused');
 
     const badSignature = await api()
       .post('/api/webhooks/stripe')
       .set('Content-Type', 'application/json')
       .set('stripe-signature', 't=1,v1=deadbeef')
-      .send(Buffer.from(payload));
+      .send(payload);
     assert.equal(badSignature.status, 400);
   } finally {
     if (original === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;

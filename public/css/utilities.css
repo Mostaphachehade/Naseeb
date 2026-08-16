@@ -1,0 +1,269 @@
+/* Utility classes extracted from inline style="" attributes.
+ *
+ * Every rule here is one former inline style, moved verbatim so the rendered
+ * design is byte-for-byte what it was. Identical inline styles collapsed onto
+ * one class, which is why there are 104 rules for 316 attributes.
+ *
+ * The selector is repeated three times on purpose. An inline style beats any
+ * class, so a single-class utility would lose to component rules like
+ * `.btn.ghost` that the inline style used to override. Tripling the selector
+ * raises specificity to (0,3,0) without reaching for !important.
+ *
+ * Generated once and then maintained by hand — see docs/CSP.md before adding
+ * to it. New work should use a named class in style.css rather than a new
+ * utility; these exist to retire inline styles, not to become a framework.
+ */
+
+/* 82x */
+.u-a2aae0fb.u-a2aae0fb.u-a2aae0fb { color:var(--text-soft); }
+/* 10x */
+.u-0b87e9e0.u-0b87e9e0.u-0b87e9e0 { font-weight:600; }
+/* 10x */
+.u-291b7bbb.u-291b7bbb.u-291b7bbb { margin-top:0; }
+/* 8x */
+.u-1e0e3812.u-1e0e3812.u-1e0e3812 { margin-bottom:56px; }
+/* 8x */
+.u-51820e15.u-51820e15.u-51820e15 { padding:6px 10px; font-size:0.78rem; }
+/* 7x */
+.u-b1ecc496.u-b1ecc496.u-b1ecc496 { margin-top:8px; }
+/* 6x */
+.u-e21d2b9e.u-e21d2b9e.u-e21d2b9e { border-color:var(--ink); color:var(--ink); }
+/* 5x */
+.u-c2238623.u-c2238623.u-c2238623 { color:var(--text-soft); font-size:0.82rem; }
+/* 5x */
+/* u-c8be1ccb: was display:none only — now .is-hidden */
+/* 5x */
+.u-88b9d5c6.u-88b9d5c6.u-88b9d5c6 { margin-top:14px; }
+/* 5x */
+.u-29cd8c40.u-29cd8c40.u-29cd8c40 { max-width:560px; }
+/* 5x */
+.u-ace910b2.u-ace910b2.u-ace910b2 { max-width:720px; }
+/* 4x */
+.u-ad7e3130.u-ad7e3130.u-ad7e3130 { color:var(--paper); }
+/* 4x */
+.u-7a0acf60.u-7a0acf60.u-7a0acf60 { margin-bottom:10px; }
+/* 4x */
+.u-287a5cfe.u-287a5cfe.u-287a5cfe { text-align:center; }
+/* 4x */
+.u-97294b20.u-97294b20.u-97294b20 { grid-column:1/-1; }
+/* 4x */
+.u-8b9688e6.u-8b9688e6.u-8b9688e6 { margin-bottom:24px; }
+/* 4x */
+.u-9eb125f5.u-9eb125f5.u-9eb125f5 { margin-top:20px; }
+/* 4x */
+.u-e8807dbc.u-e8807dbc.u-e8807dbc { margin-top:56px; }
+/* 4x */
+.u-66f3f8de.u-66f3f8de.u-66f3f8de { max-width:none; margin-bottom:24px; }
+/* 4x */
+.u-dac4fe6c.u-dac4fe6c.u-dac4fe6c { text-align:center; }
+/* 4x */
+.u-a9efa544.u-a9efa544.u-a9efa544 { white-space:nowrap; }
+/* 3x */
+.u-c18f7c35.u-c18f7c35.u-c18f7c35 { max-width:240px; border-radius:8px; margin-top:8px; }
+/* 3x */
+.u-842252d1.u-842252d1.u-842252d1 { justify-content:center; }
+/* 3x */
+.u-cddf9bb0.u-cddf9bb0.u-cddf9bb0 { margin-top:-8px; margin-bottom:18px; }
+/* 3x */
+.u-8a359a76.u-8a359a76.u-8a359a76 { margin-top:16px; }
+/* 3x */
+.u-9f7cb1fb.u-9f7cb1fb.u-9f7cb1fb { margin-top:40px; }
+/* 3x */
+.u-1da9facb.u-1da9facb.u-1da9facb { margin:0; }
+/* 3x */
+.u-de0aa912.u-de0aa912.u-de0aa912 { max-width:640px; }
+/* 3x */
+.u-34caecf2.u-34caecf2.u-34caecf2 { max-width:none; }
+/* 3x */
+.u-11d6131e.u-11d6131e.u-11d6131e { text-align:center; margin-top:18px; color:var(--text-soft); }
+/* 2x */
+.u-5e8e7900.u-5e8e7900.u-5e8e7900 { color:var(--text-soft); font-size:0.76rem; }
+/* 2x */
+.u-73c3c8ab.u-73c3c8ab.u-73c3c8ab { color:var(--text-soft); font-size:0.78rem; }
+/* 2x */
+.u-a76e0798.u-a76e0798.u-a76e0798 { color:var(--text-soft); font-size:0.8rem; }
+/* 2x */
+.u-3a46e857.u-3a46e857.u-3a46e857 { color:var(--text-soft); font-style:italic; }
+/* 2x */
+.u-c3c8a92c.u-c3c8a92c.u-c3c8a92c { color:var(--text-soft); margin-bottom:0; }
+/* 2x */
+.u-27c6008a.u-27c6008a.u-27c6008a { border-color:var(--ink); color:var(--ink); margin-top:28px; }
+/* 2x */
+.u-e51fc531.u-e51fc531.u-e51fc531 { max-width:160px; border-radius:8px; margin-top:8px; }
+/* 2x */
+.u-f38a951c.u-f38a951c.u-f38a951c { flex-shrink:0; }
+/* 2x */
+.u-b1c3aa06.u-b1c3aa06.u-b1c3aa06 { font-weight:600; color:var(--ink); }
+/* 2x */
+.u-7dde5e56.u-7dde5e56.u-7dde5e56 { margin-bottom:20px; }
+/* 2x */
+.u-2fd7789b.u-2fd7789b.u-2fd7789b { margin-top:6px; }
+/* 2x */
+.u-06519697.u-06519697.u-06519697 { margin:0 0 6px; color:var(--text-soft); font-size:0.82rem; }
+/* 2x */
+.u-c1e19fb5.u-c1e19fb5.u-c1e19fb5 { max-width:760px; }
+/* 2x */
+.u-a685987e.u-a685987e.u-a685987e { max-width:none; }
+/* 2x */
+.u-1b074808.u-1b074808.u-1b074808 { padding:12px 4px; }
+/* 2x */
+.u-54750247.u-54750247.u-54750247 { padding:6px 10px; font-size:0.78rem; border-color:var(--danger); color:var(--danger); }
+/* 2x */
+.u-cc20b935.u-cc20b935.u-cc20b935 { padding:6px 12px; font-size:0.8rem; }
+/* 2x */
+.u-162e4030.u-162e4030.u-162e4030 { padding:6px 12px; font-size:0.8rem; border-color:var(--danger); color:var(--danger); }
+/* 2x */
+.u-7adb5e91.u-7adb5e91.u-7adb5e91 { vertical-align:middle; }
+/* 2x */
+.u-6e0bccff.u-6e0bccff.u-6e0bccff { width:100px; height:40px; object-fit:cover; border-radius:6px; display:block; }
+/* 1x */
+.u-703ebe53.u-703ebe53.u-703ebe53 { background-size:cover; background-position:center; }
+/* 1x */
+.u-f7228bba.u-f7228bba.u-f7228bba { border-color:var(--ink); color:var(--ink); margin-left:10px; }
+/* 1x */
+.u-596e4aea.u-596e4aea.u-596e4aea { border-radius:var(--radius); margin:0 0 48px; }
+/* 1x */
+.u-7797a855.u-7797a855.u-7797a855 { color:var(--ink); }
+/* 1x */
+.u-1aa37734.u-1aa37734.u-1aa37734 { color:var(--text-soft); margin-bottom:18px; }
+/* 1x */
+.u-284e681e.u-284e681e.u-284e681e { color:var(--text-soft); margin-top:0; }
+/* 1x */
+.u-30c077fe.u-30c077fe.u-30c077fe { color:var(--text-soft); margin:0; }
+/* 1x */
+.u-f464438f.u-f464438f.u-f464438f { display:flex; gap:10px; align-items:flex-start; font-weight:400; margin:0; }
+/* 1x */
+.u-b7e103a1.u-b7e103a1.u-b7e103a1 { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+/* 1x */
+.u-39a6b632.u-39a6b632.u-39a6b632 { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+/* 1x */
+.u-1825864a.u-1825864a.u-1825864a { background:var(--mint); border-radius:10px; padding:12px 14px; margin-top:10px; font-size:0.95rem; }
+/* 1x */
+.u-1521d510.u-1521d510.u-1521d510 { margin-bottom:14px; }
+/* 1x */
+.u-17bbc5d2.u-17bbc5d2.u-17bbc5d2 { margin-bottom:16px; }
+/* 1x */
+.u-674ae4aa.u-674ae4aa.u-674ae4aa { margin-top:12px; }
+/* 1x */
+.u-680b5a65.u-680b5a65.u-680b5a65 { margin-top:16px; border-top:1px solid rgba(0,0,0,0.08); padding-top:14px; }
+/* 1x */
+.u-a0e7dd78.u-a0e7dd78.u-a0e7dd78 { margin-top:18px; background:var(--mint); border-radius:10px; padding:14px 16px; }
+/* 1x */
+.u-a818694f.u-a818694f.u-a818694f { max-width:none; margin-bottom:20px; }
+/* 1x */
+.u-dcd89071.u-dcd89071.u-dcd89071 { font-family:'Fraunces',serif; font-size:1.6rem; color:var(--ink-deep); }
+/* 1x */
+.u-1964b55e.u-1964b55e.u-1964b55e { font-size:0.86rem; }
+/* 1x */
+.u-0377156e.u-0377156e.u-0377156e { font-size:0.95rem; color:var(--text-soft); font-weight:400; }
+/* 1x */
+.u-6646d472.u-6646d472.u-6646d472 { font-size:0.9rem; }
+/* 1x */
+.u-5bf9ad33.u-5bf9ad33.u-5bf9ad33 { font-weight:600; margin-bottom:8px; }
+/* 1x */
+.u-76084ee4.u-76084ee4.u-76084ee4 { margin-bottom:0; }
+/* 1x */
+.u-e4ad4a16.u-e4ad4a16.u-e4ad4a16 { margin-bottom:8px; }
+/* 1x */
+.u-d8a81eac.u-d8a81eac.u-d8a81eac { margin-top:10px; }
+/* 1x */
+.u-e7673d9c.u-e7673d9c.u-e7673d9c { margin-top:18px; }
+/* 1x */
+.u-3343fd64.u-3343fd64.u-3343fd64 { margin-top:24px; }
+/* 1x */
+.u-f0778f9d.u-f0778f9d.u-f0778f9d { margin-top:28px; }
+/* 1x */
+.u-b0816963.u-b0816963.u-b0816963 { margin-top:2px; }
+/* 1x */
+.u-b98cacf2.u-b98cacf2.u-b98cacf2 { margin-top:2px; display:inline-block; }
+/* 1x */
+.u-bdf1d453.u-bdf1d453.u-bdf1d453 { margin-top:4px; width:auto; }
+/* 1x */
+.u-cec2517f.u-cec2517f.u-cec2517f { margin-top:6px; margin-bottom:8px; }
+/* 1x */
+.u-f06aec11.u-f06aec11.u-f06aec11 { margin:0 0 10px; }
+/* 1x */
+.u-acb85f03.u-acb85f03.u-acb85f03 { margin:0 0 10px; color:var(--text-soft); font-size:0.86rem; }
+/* 1x */
+.u-a353e69c.u-a353e69c.u-a353e69c { margin:0 0 6px; }
+/* 1x */
+.u-3e786f67.u-3e786f67.u-3e786f67 { margin:0 0 6px; color:var(--text-soft); font-size:0.86rem; }
+/* 1x */
+.u-ecf28f6f.u-ecf28f6f.u-ecf28f6f { margin:0; color:var(--text-soft); }
+/* 1x */
+.u-45314556.u-45314556.u-45314556 { margin:0; color:var(--text-soft); font-size:0.86rem; }
+/* 1x */
+.u-f1d2a576.u-f1d2a576.u-f1d2a576 { margin:6px 0 0; color:var(--text-soft); }
+/* 1x */
+.u-d02706d3.u-d02706d3.u-d02706d3 { margin:8px 0 0; color:var(--text-soft); font-style:italic; }
+/* 1x */
+.u-9f5261ae.u-9f5261ae.u-9f5261ae { max-width:200px; word-break:break-all; }
+/* 1x */
+.u-71b5af5d.u-71b5af5d.u-71b5af5d { max-width:260px; }
+/* 1x */
+.u-716b4eff.u-716b4eff.u-716b4eff { max-width:520px; margin:40px auto; }
+/* 1x */
+.u-c04fdcc9.u-c04fdcc9.u-c04fdcc9 { max-width:600px; }
+/* 1x */
+.u-8c71f6a5.u-8c71f6a5.u-8c71f6a5 { max-width:none; border-left:4px solid var(--gold); }
+/* 1x */
+.u-5583aeec.u-5583aeec.u-5583aeec { max-width:none; border-left:4px solid var(--gold); margin-bottom:20px; }
+/* 1x */
+.u-41555afc.u-41555afc.u-41555afc { max-width:none; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px; }
+/* 1x */
+.u-d331e6e2.u-d331e6e2.u-d331e6e2 { max-width:none; margin-bottom:20px; }
+/* 1x */
+.u-a2e94d72.u-a2e94d72.u-a2e94d72 { padding:0; }
+/* 1x */
+.u-14da4875.u-14da4875.u-14da4875 { padding:8px 14px; font-size:0.82rem; }
+/* 1x */
+.u-a716ef8e.u-a716ef8e.u-a716ef8e { padding:8px 14px; font-size:0.82rem; margin-left:8px; border-color:var(--danger); color:var(--danger); }
+/* 1x */
+.u-8753b035.u-8753b035.u-8753b035 { width:100%; margin-top:12px; justify-content:center; }
+/* 1x */
+.u-82da9eef.u-82da9eef.u-82da9eef { width:100%; margin-top:22px; justify-content:center; }
+
+/* One class for "not showing right now".
+ *
+ * Visibility used to be toggled with element.style.display from JavaScript.
+ * Chrome enforces style-src-attr against CSSOM writes as well as against
+ * style="" in markup — measured, not assumed: the first browser run under this
+ * policy produced 105 "Refused to apply inline style" violations from exactly
+ * those assignments. Toggling a class is not a style write, so it is allowed,
+ * and it keeps the presentation in the stylesheet where it belongs.
+ *
+ * !important because these elements often carry a layout utility that also sets
+ * display, and hidden has to win over it.
+ */
+.is-hidden { display: none !important; }
+
+/* Classes replacing the last JavaScript style writes.
+ *
+ * These were element.style.cssText / element.style.<prop> assignments building
+ * one-off layouts in the rescue queue and the confetti. The declarations are
+ * identical; only where they live has changed.
+ */
+.js-card-block.js-card-block { max-width: none; margin-bottom: 12px; }
+.js-row-between.js-row-between { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; }
+.js-muted-note.js-muted-note { color: var(--text-soft); margin: 6px 0 0; }
+.js-button-row.js-button-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.js-detail-panel.js-detail-panel { margin-top: 12px; border-top: 1px solid rgba(0,0,0,0.08); padding-top: 12px; }
+.js-history.js-history { font-size: 0.9rem; color: var(--text-soft); }
+.js-mint-box.js-mint-box { background: var(--mint); border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 0.9rem; }
+.js-spaced-input.js-spaced-input { margin-top: 10px; }
+.js-flush.js-flush { margin-bottom: 0; }
+.js-summary-card.js-summary-card { max-width: none; margin-bottom: 10px; display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* The confetti layer's fixed full-screen frame. It used to be a style attribute
+ * written by celebrate(); the individual pieces keep their randomised position,
+ * colour and timing as CSSOM property writes, which the policy permits — see
+ * docs/CSP.md §7. */
+.confetti-layer { position: fixed; inset: 0; pointer-events: none; z-index: 9999; overflow: hidden; }
+
+/* Extracted from public/js/app.js (header, footer and skeletons). */
+.u-ba0c32d8.u-ba0c32d8.u-ba0c32d8 { border-radius:100px; }
+.u-68433eba.u-68433eba.u-68433eba { opacity:0.7; }
+.u-da71aab0.u-da71aab0.u-da71aab0 { font-size:1.2rem; }
+.u-77148b4e.u-77148b4e.u-77148b4e { width:70%; height:1.15rem; }
+.u-3801d6f9.u-3801d6f9.u-3801d6f9 { width:90%; }
+.u-91bb8b7c.u-91bb8b7c.u-91bb8b7c { width:60px; margin:0; }

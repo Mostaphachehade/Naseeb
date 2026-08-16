@@ -177,8 +177,8 @@ function renderHeader() {
       <a href="/dashboard.html">${t('nav.myGiveaways')}</a>
       <a href="/pricing.html">${t('nav.pricing')}</a>
       ${user.is_admin ? `<a href="/admin.html">${t('nav.admin')}</a><a href="/owner.html">${t('nav.owner')}</a>` : ''}
-      <a href="/host-apply.html" id="nav-host-cta" class="btn-gold" style="border-radius:100px;">${t('nav.applyToHost')}</a>
-      <span style="opacity:0.7;">${t('nav.hi', { name: escapeHtml(user.name) })}</span>
+      <a href="/host-apply.html" id="nav-host-cta" class="btn-gold u-ba0c32d8">${t('nav.applyToHost')}</a>
+      <span class="u-68433eba">${t('nav.hi', { name: escapeHtml(user.name) })}</span>
       <button id="logout-btn">${t('nav.signOut')}</button>
       ${langSwitcherHtml()}
     `;
@@ -203,7 +203,7 @@ function renderHeader() {
       <a href="/about.html">${t('nav.about')}</a>
       <a href="/pricing.html">${t('nav.pricing')}</a>
       <a href="/login.html">${t('nav.signIn')}</a>
-      <a href="/signup.html" class="btn-gold" style="border-radius:100px;">${t('nav.joinFree')}</a>
+      <a href="/signup.html" class="btn-gold u-ba0c32d8">${t('nav.joinFree')}</a>
       ${langSwitcherHtml()}
     `;
   }
@@ -242,7 +242,7 @@ function renderFooter() {
     <footer class="site">
       <div class="wrap footer-grid">
         <div class="footer-brand">
-          <a href="/index.html" class="brand" style="font-size:1.2rem;">Naseeb<span class="dot">.</span></a>
+          <a href="/index.html" class="brand u-da71aab0">Naseeb<span class="dot">.</span></a>
           <p>${t('footer.tagline')}</p>
         </div>
         <div class="footer-links">
@@ -315,13 +315,28 @@ function deliveryPill(g) {
     : `<span class="delivery-pill pending">${t('delivery.pending')}</span>`;
 }
 
+// Applies validated media URLs to every card that has just been rendered.
+//
+// The URL travels in a data-bg attribute and is set through the CSSOM, not an
+// inline style attribute — style-src 'self' blocks the latter, and a media URL
+// interpolated into a CSS string is exactly the kind of thing a policy should
+// block. NaseebDom.setBackgroundImage refuses anything that is not an https URL
+// on an allowed media origin, and leaves the card's placeholder showing instead
+// of rendering a broken or hostile image.
+function applyCardImages(root) {
+  (root || document).querySelectorAll('[data-bg]').forEach((el) => {
+    NaseebDom.setBackgroundImage(el, el.getAttribute('data-bg'));
+    el.removeAttribute('data-bg');
+  });
+}
+
 function giveawayCard(g) {
   const img = g.image_url || '';
   const statusLabel = g.status === 'drawn' ? t('detail.winnerDrawn') : timeLeft(g.entry_deadline);
   const statusClass = g.status === 'drawn' ? 'drawn' : '';
   return `
     <a class="stub" href="/giveaway.html?id=${g.id}">
-      <div class="img" style="${img ? `background-image:url('${escapeAttr(img)}')` : ''}">
+      <div class="img" data-bg="${escapeAttr(img)}">
         <span class="status-pill ${statusClass}">${statusLabel}</span>
       </div>
       <div class="body">
@@ -402,22 +417,27 @@ async function renderMaintenanceBanner() {
 function celebrate() {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
+  // Per-piece randomness is written through the CSSOM, one property at a time.
+  // `style-src-attr 'none'` governs the style *attribute* — markup, and
+  // setAttribute('style', …) — not property assignments on element.style, which
+  // is measured in docs/CSP.md §7. The container's fixed layout is a class
+  // because it never varies; these values do, sixty different ways.
   const colors = ['#C9A15A', '#E4C078', '#DCEEE7', '#0B3B36'];
   const container = document.createElement('div');
-  container.style.cssText = 'position:fixed; inset:0; pointer-events:none; z-index:9999; overflow:hidden;';
+  container.className = 'confetti-layer';
   document.body.appendChild(container);
 
   for (let i = 0; i < 60; i++) {
     const piece = document.createElement('div');
     piece.className = 'confetti-piece';
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    const left = Math.random() * 100;
     const width = 6 + Math.random() * 6;
-    const height = width * 1.6;
-    const duration = (2.2 + Math.random() * 1.4).toFixed(2);
-    const delay = (Math.random() * 0.4).toFixed(2);
-    const rotate = Math.floor(Math.random() * 360);
-    piece.style.cssText = `left:${left}%; width:${width}px; height:${height}px; background:${color}; transform:rotate(${rotate}deg); animation-duration:${duration}s; animation-delay:${delay}s;`;
+    piece.style.left = Math.random() * 100 + '%';
+    piece.style.width = width + 'px';
+    piece.style.height = width * 1.6 + 'px';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.transform = 'rotate(' + Math.floor(Math.random() * 360) + 'deg)';
+    piece.style.animationDuration = (2.2 + Math.random() * 1.4).toFixed(2) + 's';
+    piece.style.animationDelay = (Math.random() * 0.4).toFixed(2) + 's';
     container.appendChild(piece);
   }
 
@@ -429,11 +449,11 @@ function skeletonCards(n) {
     <div class="stub skeleton-card">
       <div class="img skeleton-block"></div>
       <div class="body">
-        <div class="skeleton-line" style="width:70%; height:1.15rem;"></div>
-        <div class="skeleton-line" style="width:90%;"></div>
+        <div class="skeleton-line u-77148b4e"></div>
+        <div class="skeleton-line u-3801d6f9"></div>
         <div class="meta">
-          <div class="skeleton-line" style="width:60px; margin:0;"></div>
-          <div class="skeleton-line" style="width:60px; margin:0;"></div>
+          <div class="skeleton-line u-91bb8b7c"></div>
+          <div class="skeleton-line u-91bb8b7c"></div>
         </div>
       </div>
     </div>

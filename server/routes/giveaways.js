@@ -4,6 +4,7 @@ const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { requireHostAccess } = require('../lib/hostAccess');
+const { validateMediaUrl, isRenderableMediaUrl } = require('../lib/mediaUrls');
 const { enterLimiter } = require('../middleware/rateLimit');
 const { sendEmail } = require('../lib/email');
 const { winnerEmailHtml, entryEmailHtml } = require('../lib/emailTemplates');
@@ -31,6 +32,12 @@ async function withHostAndCount(row) {
   ]);
   return {
     ...row,
+    // Rows written before media validation existed may hold anything. The
+    // stored value is left alone — it is the record of what a host actually
+    // submitted — but only a URL that would be accepted today is handed to a
+    // browser. Anything else becomes null, and the page shows its no-image
+    // state rather than a broken image or, worse, a clickable link.
+    image_url: isRenderableMediaUrl(row.image_url) ? row.image_url : null,
     host_name: hostRes.rows[0] ? hostRes.rows[0].name : 'Unknown',
     host_verified: hostRes.rows[0] ? hostRes.rows[0].is_verified_business : false,
     entry_count: countRes.rows[0].c,
@@ -109,7 +116,15 @@ router.get('/winners/all', async (req, res) => {
        LIMIT $1 OFFSET $2`,
       [pageSize, offset]
     );
-    res.json({ items: result.rows, total, page, pageSize });
+    res.json({
+      items: result.rows.map((row) => ({
+        ...row,
+        image_url: isRenderableMediaUrl(row.image_url) ? row.image_url : null,
+      })),
+      total,
+      page,
+      pageSize,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -223,17 +238,18 @@ router.post('/', requireAuth, requireHostAccess, async (req, res) => {
       }
     }
 
+    // "is it http(s)" was the whole check here, which stops `javascript:` and
+    // very little else — and an unbounded set of image origins is what made a
+    // real Content-Security-Policy impossible. validateMediaUrl requires https,
+    // no embedded credentials, no control characters, and an origin on the
+    // allowlist that img-src is built from. See server/lib/mediaUrls.js.
     let normalizedImageUrl = null;
-    if (image_url && image_url.trim()) {
-      try {
-        const parsed = new URL(image_url.trim());
-        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-          throw new Error('bad protocol');
-        }
-        normalizedImageUrl = parsed.href;
-      } catch {
-        return res.status(400).json({ error: 'Image URL must be a valid http(s) URL.' });
+    if (image_url && String(image_url).trim()) {
+      const checked = validateMediaUrl(image_url);
+      if (!checked.url) {
+        return res.status(400).json({ error: checked.error, code: 'MEDIA_URL_REJECTED' });
       }
+      normalizedImageUrl = checked.url;
     }
 
     const id = uuid();

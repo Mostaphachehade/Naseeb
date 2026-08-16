@@ -11,6 +11,7 @@
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -23,7 +24,7 @@
 </header>
 
 <main id="main">
-  <div class="wrap" style="max-width:560px;">
+  <div class="wrap u-29cd8c40">
     <div class="section-head"><div><h2>Join free</h2><p>Takes a minute. No payment details, ever.</p></div></div>
     <form class="card narrow" id="signup-form">
       <label for="name">Full name</label>
@@ -39,38 +40,15 @@
       <button class="btn primary" type="submit">Create account</button>
       <p class="form-error" id="error"></p>
     </form>
-    <p style="text-align:center; margin-top:18px; color:var(--text-soft);">Already have an account? <a id="login-link" href="/login.html" style="font-weight:600;">Sign in</a></p>
+    <p class="u-11d6131e">Already have an account? <a id="login-link" href="/login.html" class="u-0b87e9e0">Sign in</a></p>
   </div>
 </main>
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  const redirectTo = safeRedirect(new URLSearchParams(window.location.search).get('redirect')) || '/index.html';
-  document.getElementById('login-link').href = `/login.html?redirect=${encodeURIComponent(redirectTo)}`;
-
-  document.getElementById('signup-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const errorEl = document.getElementById('error');
-    errorEl.classList.remove('show');
-    try {
-      const result = await api('/auth/signup', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: document.getElementById('name').value,
-          email: document.getElementById('email').value,
-          password: document.getElementById('password').value,
-        }),
-      });
-      adoptSession(result);
-      window.location.href = redirectTo;
-    } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.classList.add('show');
-    }
-  });
-</script>
+<script src="/js/pages/signup.js"></script>
 </body>
 </html>

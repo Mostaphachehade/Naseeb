@@ -8,7 +8,12 @@ services:
     envVars:
       - key: PORT
         value: 3000
-      - key: JWT_SECRET
+      # Signs session CSRF tokens; sessions themselves are opaque random tokens
+      # hashed in the database. Production refuses to boot on a missing, short,
+      # placeholder, low-entropy or borrowed value. sync: false keeps it out of
+      # this file and out of git — generate one and set it in the dashboard:
+      #   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      - key: SESSION_SECRET
         sync: false
       - key: DATABASE_URL
         sync: false

@@ -11,6 +11,7 @@
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -23,9 +24,9 @@
 </header>
 
 <section class="detail-hero">
-  <div class="wrap" style="max-width:720px;">
+  <div class="wrap u-ace910b2">
     <span class="eyebrow mono" data-i18n="winners.eyebrow">Winners</span>
-    <h1 style="color:var(--paper);" data-i18n="winners.headline">Real people. Real prizes. Drawn at random.</h1>
+    <h1 class="u-ad7e3130" data-i18n="winners.headline">Real people. Real prizes. Drawn at random.</h1>
     <p class="lede" data-i18n="winners.lede">Every giveaway here is drawn the same way — uniformly at random, after the deadline, from everyone who entered. Here's who's won so far.</p>
   </div>
 </section>
@@ -33,65 +34,17 @@
 <main id="main">
   <div class="wrap">
     <div class="grid" id="winners-grid"></div>
-    <div style="text-align:center;">
-      <button class="btn ghost" id="load-more-btn" data-i18n="loadMore" style="display:none; border-color:var(--ink); color:var(--ink); margin-top:28px;">Load more</button>
+    <div class="u-dac4fe6c">
+      <button class="btn ghost u-27c6008a is-hidden" id="load-more-btn" data-i18n="loadMore">Load more</button>
     </div>
   </div>
 </main>
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  document.getElementById('winners-grid').innerHTML = skeletonCards(6);
-  const PAGE_SIZE = 12;
-  let currentPage = 1;
-
-  function winnerCard(g) {
-    const img = g.image_url || '';
-    const value = g.estimated_value_aed ? `AED ${Number(g.estimated_value_aed).toLocaleString()}` : null;
-    return `
-      <a class="stub" href="/giveaway.html?id=${g.id}">
-        <div class="img" style="${img ? `background-image:url('${escapeAttr(img)}')` : ''}">
-          <span class="status-pill drawn">${t('detail.winnerDrawn')}</span>
-        </div>
-        <div class="body">
-          <h3>${escapeHtml(g.title)}</h3>
-          <p class="prize">${escapeHtml(g.prize_description)}${value ? ` · ${value}` : ''}</p>
-          <div class="meta">
-            <span class="num">${t('winners.wonBy', { name: escapeHtml(g.winner_name) })}</span>
-            <span>${t('winners.by', { name: escapeHtml(g.host_name) })}${g.host_verified ? verifiedBadge() : ''}</span>
-          </div>
-          ${deliveryPill(g)}
-        </div>
-      </a>
-    `;
-  }
-
-  async function load(page = 1) {
-    const grid = document.getElementById('winners-grid');
-    const loadMoreBtn = document.getElementById('load-more-btn');
-    try {
-      const { items, total } = await api(`/giveaways/winners/all?page=${page}&pageSize=${PAGE_SIZE}`);
-      if (page === 1 && items.length === 0) {
-        grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">${t('winners.emptyBody')}</div>`;
-        loadMoreBtn.style.display = 'none';
-        return;
-      }
-      if (page === 1) grid.innerHTML = '';
-      grid.insertAdjacentHTML('beforeend', items.map(winnerCard).join(''));
-      currentPage = page;
-      loadMoreBtn.style.display = page * PAGE_SIZE < total ? 'inline-flex' : 'none';
-    } catch (err) {
-      grid.innerHTML = `<p class="form-error show">${err.message}</p>`;
-      loadMoreBtn.style.display = 'none';
-    }
-  }
-
-  document.getElementById('load-more-btn').addEventListener('click', () => load(currentPage + 1));
-
-  load();
-</script>
+<script src="/js/pages/winners.js"></script>
 </body>
 </html>

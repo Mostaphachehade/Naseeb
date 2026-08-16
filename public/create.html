@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -20,12 +21,12 @@
 </header>
 
 <main id="main">
-  <div class="wrap" style="max-width:640px;">
+  <div class="wrap u-de0aa912">
     <div class="section-head"><div><h2>Host a giveaway</h2><p>Free to enter, always. You cover the prize as a marketing cost — participants never pay anything.</p></div></div>
 
     <div id="host-access-panel"></div>
 
-    <form class="card narrow" id="create-form" style="max-width:none; display:none;">
+    <form class="card narrow u-34caecf2 is-hidden" id="create-form">
       <label for="title">Giveaway title</label>
       <input id="title" placeholder="e.g. Weekend stay for two in Ras Al Khaimah" required />
 
@@ -39,10 +40,10 @@
       <input id="estimated_value_aed" type="number" min="0" step="1" placeholder="e.g. 1500" />
 
       <label for="image_url">Giveaway image (optional)</label>
-      <div id="image-upload-row" style="display:none; margin-bottom:10px;">
+      <div id="image-upload-row" class="u-7a0acf60 is-hidden">
         <input type="file" id="image_file" accept="image/*" />
         <span class="hint" id="upload-status"></span>
-        <img id="image-preview" alt="" style="display:none; max-width:160px; border-radius:8px; margin-top:8px;" />
+        <img id="image-preview" alt="" class="u-e51fc531 is-hidden" />
       </div>
       <input id="image_url" type="url" placeholder="https://…" />
       <p class="hint" id="image-url-hint">Paste an image URL.</p>
@@ -66,137 +67,9 @@
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  const ready = requireSession('/create.html');
-
-  // Shows the right one of five states instead of a form that 403s on submit.
-  // Purely presentational: POST /api/giveaways checks host access itself on
-  // every request, so a browser that unhides this form gains nothing.
-  const accessPanel = document.getElementById('host-access-panel');
-  const createForm = document.getElementById('create-form');
-
-  function accessPanelHtml(title, body, actionHtml) {
-    return `
-      <div class="card narrow" style="max-width:none; border-left:4px solid var(--gold);">
-        <h3 style="margin-top:0;">${title}</h3>
-        ${body}
-        ${actionHtml || ''}
-      </div>
-    `;
-  }
-
-  async function gateOnHostAccess() {
-    let state;
-    try {
-      state = await api('/host-applications/me');
-    } catch (err) {
-      accessPanel.innerHTML = `<p class="form-error show">${escapeHtml(err.message)}</p>`;
-      return false;
-    }
-
-    if (state.can_host) {
-      createForm.style.display = 'block';
-      return true;
-    }
-
-    if (!state.email_verified) {
-      accessPanel.innerHTML = accessPanelHtml(
-        'Verify your email first',
-        `<p style="color:var(--text-soft);">We need a working email address on your account before you can host. Check your inbox, or resend the verification email from the banner above.</p>`
-      );
-      return false;
-    }
-
-    const panels = {
-      not_requested: [
-        'Hosting is a closed beta',
-        `<p style="color:var(--text-soft);">Host access is granted one account at a time. Apply, and an administrator will review it.</p>`,
-        `<a class="btn primary" href="/host-apply.html">Apply to host</a>`,
-      ],
-      pending: [
-        'Your application is with an administrator',
-        `<p style="color:var(--text-soft);">You cannot publish a giveaway while an application is open. We have not set a review deadline, so we are not promising one.</p>`,
-        `<a class="btn ghost" style="border-color:var(--ink); color:var(--ink);" href="/dashboard.html">Back to my giveaways</a>`,
-      ],
-      rejected: [
-        'This account has not been approved to host',
-        `<p style="color:var(--text-soft);">An administrator reviewed your application and did not approve it.</p>
-         ${state.status_reason ? `<p style="color:var(--text-soft); font-style:italic;">Reason given: ${escapeHtml(state.status_reason)}</p>` : ''}`,
-        `<a class="btn primary" href="/host-apply.html">Apply again</a>`,
-      ],
-      suspended: [
-        'Hosting access is suspended',
-        `<p style="color:var(--text-soft);">Your existing giveaways, entries and records are unchanged. What has stopped is publishing new giveaways and drawing winners.</p>
-         ${state.status_reason ? `<p style="color:var(--text-soft); font-style:italic;">Reason given: ${escapeHtml(state.status_reason)}</p>` : ''}`,
-        `<a class="btn ghost" style="border-color:var(--ink); color:var(--ink);" href="/about.html#get-in-touch">Contact us</a>`,
-      ],
-    };
-    const chosen = panels[state.host_status] || panels.not_requested;
-    accessPanel.innerHTML = accessPanelHtml(...chosen);
-    return false;
-  }
-
-  ready.then(gateOnHostAccess);
-
-  let cloudinaryConfig = null;
-  fetch('/api/config').then((r) => r.json()).then((config) => {
-    if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
-      cloudinaryConfig = config;
-      document.getElementById('image-upload-row').style.display = 'block';
-      document.getElementById('image-url-hint').textContent = 'Upload a file above, or paste an image URL.';
-    }
-  }).catch(() => {});
-
-  document.getElementById('image_file').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file || !cloudinaryConfig) return;
-    const statusEl = document.getElementById('upload-status');
-    statusEl.textContent = 'Uploading…';
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
-    try {
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudinary_cloud_name}/image/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
-      document.getElementById('image_url').value = data.secure_url;
-      const preview = document.getElementById('image-preview');
-      preview.src = data.secure_url;
-      preview.style.display = 'block';
-      statusEl.textContent = 'Uploaded.';
-    } catch (err) {
-      statusEl.textContent = err.message;
-    }
-  });
-
-  document.getElementById('create-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const errorEl = document.getElementById('error');
-    errorEl.classList.remove('show');
-    try {
-      const g = await api('/giveaways', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: document.getElementById('title').value,
-          description: document.getElementById('description').value,
-          prize_description: document.getElementById('prize_description').value,
-          estimated_value_aed: document.getElementById('estimated_value_aed').value || null,
-          image_url: document.getElementById('image_url').value || null,
-          funded_by: document.getElementById('funded_by').value,
-          entry_deadline: new Date(document.getElementById('entry_deadline').value).toISOString(),
-        }),
-      });
-      window.location.href = `/giveaway.html?id=${g.id}`;
-    } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.classList.add('show');
-    }
-  });
-</script>
+<script src="/js/pages/create.js"></script>
 </body>
 </html>

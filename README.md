@@ -59,7 +59,7 @@ product and needs advice from a qualified lawyer before it is built, let alone l
 ```bash
 npm install
 cp .env.example .env
-# edit .env: set JWT_SECRET to a long random string, and DATABASE_URL to your Neon/Supabase connection string
+# edit .env: set SESSION_SECRET to a long random string, and DATABASE_URL to your Neon/Supabase connection string
 npm start
 ```
 
@@ -121,6 +121,8 @@ naseeb/
     routes/admin.js            # admin-only: review applications, grant/suspend host access
     lib/hostAccess.js          # THE host authorization gate — see docs/HOST_ACCESS.md
     lib/claimRescue.js         # admin takeover of a suspended host's open claims
+    lib/securityHeaders.js     # THE CSP and every other security header — see docs/CSP.md
+    lib/mediaUrls.js           # media origin allowlist, shared by URL validation and img-src
     routes/config.js           # exposes non-secret Cloudinary config to the frontend
   public/
     index.html            # browse giveaways
@@ -134,9 +136,16 @@ naseeb/
     about.html / pricing.html / terms.html / privacy.html
                           # pricing.html lists only what exists: free entry, a free
                           # closed hosting beta, and paid advertising
-    css/style.css
+    css/style.css           # the design system
+    css/utilities.css        # the classes that replaced 317 inline style="" attributes
+    css/pages.css            # the three former inline <style> blocks
     js/app.js               # shared auth/session helpers + rendering
+    js/dom.js                # escaping tagged template, safe URL + media helpers
+    js/pages/*.js            # one file per page — every former inline <script>
 ```
+
+Every page's script is a file under `public/js/pages/`, loaded in the same order the
+inline blocks ran in. There is no build step; that is still true.
 
 ## Sessions, CSRF and signing in
 
@@ -169,8 +178,59 @@ guarantee rather than a convention.
 
 `docs/SESSIONS.md` has the whole model: cookie attributes and why `SameSite=Lax`, the family and
 rotation invariants, every revocation trigger, the single Stripe-webhook CSRF exclusion,
-production secret validation, and what is still open (notably: **this is not XSS hardening —
-there is still no CSP**).
+production secret validation, and what is still open.
+
+Sessions are not by themselves XSS hardening — a cookie a script cannot read is still a
+cookie a script can *use*. That gap is what the next section closes.
+
+## Content Security Policy and XSS hardening
+
+CSP is **enforced** on every response, and there is no environment variable, flag or
+code path that turns it off:
+
+```
+default-src 'self'; script-src 'self'; script-src-attr 'none';
+style-src 'self' https://fonts.googleapis.com; style-src-attr 'none';
+font-src 'self' https://fonts.gstatic.com;
+img-src 'self' https://res.cloudinary.com; media-src 'self' https://res.cloudinary.com;
+connect-src 'self' https://api.cloudinary.com;
+object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none';
+manifest-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
+```
+
+Production adds `upgrade-insecure-requests`. No `'unsafe-inline'`, no `'unsafe-eval'`,
+no wildcards, no bare `data:`/`blob:` for scripts. Google Analytics origins appear only
+when `GA_MEASUREMENT_ID` is set, and never on `/claim.html`, `/admin.html` or
+`/owner.html`.
+
+What that cost, and what it bought:
+
+| | Before | After |
+|---|---|---|
+| Inline `<script>` blocks | 20 | **0** |
+| Inline `<style>` blocks | 3 | **0** |
+| `style=""` attributes | 317 | **0** |
+| `setAttribute('style', …)` calls | 0 | 0 |
+| `element.style` writes in JS | 82 | **13** (values computed at runtime) |
+| Image origins accepted | any `http(s)` URL | an allowlist of 1 |
+
+Three things to know before touching the frontend:
+
+1. **No inline scripts or styles, ever again.** Add a file under `public/js/pages/` and a
+   class in `public/css/utilities.css`. A `style="..."` attribute or an `onclick=`
+   handler will silently not run in a browser, and `test/csp.test.js` will fail.
+2. **`element.style.property = value` still works**, and is the right tool when a value is
+   computed at runtime. What `style-src-attr 'none'` blocks is the style *attribute* —
+   markup, and `setAttribute('style', …)`. `docs/CSP.md` §7 has the measurement, and the
+   record of getting this backwards first.
+3. **Media origins are one list with two consumers.** `MEDIA_ORIGIN_ALLOWLIST` both
+   decides which image URLs the server will store and becomes `img-src`/`media-src`.
+   Adding an origin grants it on both sides at once.
+
+`docs/CSP.md` is the whole policy: every external origin and why it is there, the other
+seven security headers, the `innerHTML` sites that remain and what makes each safe, the
+media-URL rejection rules, how to add an asset without weakening anything, and the
+limitations that stand.
 
 ## Environment variables
 
@@ -447,8 +507,8 @@ This repo includes a `render.yaml` blueprint.
 1. Push this repo to GitHub if it isn't already.
 2. On [render.com](https://render.com), **New +** → **Blueprint**, and point it at this repo.
    Render will read `render.yaml` and set up a web service running `npm start`.
-3. Fill in the environment variables it prompts for (`JWT_SECRET`, `DATABASE_URL`, and the
-   optional ones above). Generate `JWT_SECRET` with:
+3. Fill in the environment variables it prompts for (`SESSION_SECRET`, `DATABASE_URL`, and the
+   optional ones above). Generate `SESSION_SECRET` with:
    ```bash
    node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
    ```
@@ -466,7 +526,12 @@ just set the same environment variables and run `npm start`.
 
 - [x] Rate limiting on `/api/auth/*`, `/api/giveaways/:id/enter`, and the host application form
 - [x] Email verification required before a new account can host or enter a giveaway
-- [x] Terms of Service and Privacy Policy pages
-- [ ] A payment processor, if you want to actually charge for the paid hosting plans on the
-      pricing page — today, applications are just captured for manual follow-up
-      (see `/admin.html`), and hosting itself isn't gated behind payment
+- [x] Terms of Service and Privacy Policy pages — **drafts, not in effect**; see "Legal and
+      compliance status" above
+- [x] Revocable server-side sessions in HttpOnly cookies, with CSRF protection
+- [x] Enforced Content Security Policy with no inline script or style anywhere
+- [ ] A scheduled job that deletes expired sessions — nothing sweeps them today
+      (`docs/SESSIONS.md` §9b)
+- [ ] A payment processor for hosting, *if* hosting ever stops being free. It is free
+      today: hosting is a closed beta gated on an application, not on payment
+      (`docs/HOST_ACCESS.md`), and the only paid flow in the codebase is advertising

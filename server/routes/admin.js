@@ -5,6 +5,7 @@ const { requireAdmin } = require('../middleware/auth');
 const { getAllSettings, setSetting } = require('../lib/settings');
 const { HOST_STATUS, ADMIN_SETTABLE, setHostStatus } = require('../lib/hostAccess');
 const sessions = require('../lib/sessions');
+const { validateMediaUrl } = require('../lib/mediaUrls');
 
 // Account status is authentication; host status is authorization. Two columns,
 // two routes, and deliberately no path that changes one as a side effect of the
@@ -527,8 +528,11 @@ router.post('/ads', requireAdmin, async (req, res) => {
     if (!business_name || !business_name.trim()) {
       return res.status(400).json({ error: 'Business name is required.' });
     }
-    if (!image_url || !image_url.trim()) {
-      return res.status(400).json({ error: 'Media URL is required.' });
+    // A banner is served from our own homepage, so its origin has to be one
+    // img-src/media-src allows. See server/lib/mediaUrls.js.
+    const checkedMedia = validateMediaUrl(image_url);
+    if (!checkedMedia.url) {
+      return res.status(400).json({ error: checkedMedia.error, code: 'MEDIA_URL_REJECTED' });
     }
     const normalizedMediaType = media_type === 'video' ? 'video' : 'image';
 
@@ -544,7 +548,7 @@ router.post('/ads', requireAdmin, async (req, res) => {
     const id = uuid();
     await pool.query(
       'INSERT INTO ads (id, business_name, image_url, target_url, media_type) VALUES ($1, $2, $3, $4, $5)',
-      [id, business_name.trim(), image_url.trim(), normalizedTargetUrl, normalizedMediaType]
+      [id, business_name.trim(), checkedMedia.url, normalizedTargetUrl, normalizedMediaType]
     );
     const result = await pool.query('SELECT * FROM ads WHERE id = $1', [id]);
     res.status(201).json(result.rows[0]);

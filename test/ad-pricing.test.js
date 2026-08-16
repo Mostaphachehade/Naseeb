@@ -582,7 +582,15 @@ test('the owner panel rejects prices that cannot be charged exactly', async () =
 // ---------------------------------------------------------------------------
 
 test('the advertise page contains no hard-coded price or client-side money arithmetic', () => {
-  const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'advertise.html'), 'utf8');
+  // The page's behaviour now lives in an external file (Phase 2.2B moved every
+  // inline script out so CSP could forbid them). Both are read, so this still
+  // covers everything it did before.
+  const markup = fs.readFileSync(path.join(__dirname, '..', 'public', 'advertise.html'), 'utf8');
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'js', 'pages', 'advertise.js'),
+    'utf8'
+  );
+  const page = markup + script;
 
   assert.ok(!/WEEK_PRICE/.test(page), 'the hard-coded weekly price constant must be gone');
   assert.ok(!/AED\s*[\d,]/.test(page), 'no literal AED amount may remain on the page');

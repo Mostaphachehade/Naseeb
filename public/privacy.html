@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -20,45 +21,45 @@
 </header>
 
 <main id="main">
-  <div class="wrap" style="max-width:720px;">
+  <div class="wrap u-ace910b2">
     <div class="section-head">
       <div>
-        <h2>Privacy Policy <span class="pill-badge" id="policy-status-pill" style="vertical-align:middle;">DRAFT</span></h2>
+        <h2>Privacy Policy <span class="pill-badge u-7adb5e91" id="policy-status-pill">DRAFT</span></h2>
         <p>
           <strong>Draft — not yet legally effective.</strong><br />
           Draft version <strong id="policy-version">2026-08-15.1-draft</strong> · last revised <strong id="policy-revised">15 August 2026</strong> · effective date: <strong id="policy-effective">not yet effective</strong><br />
-          <span style="color:var(--text-soft);">This document has <strong>not</strong> been reviewed or approved by qualified UAE legal counsel, does not yet name a data controller, and has never been presented to any user for acceptance. It is published here so it can be reviewed, not because it is in force.</span>
+          <span class="u-a2aae0fb">This document has <strong>not</strong> been reviewed or approved by qualified UAE legal counsel, does not yet name a data controller, and has never been presented to any user for acceptance. It is published here so it can be reviewed, not because it is in force.</span>
         </p>
       </div>
     </div>
     </div>
 
-    <div class="compliance-box" style="margin-bottom:24px;">
+    <div class="compliance-box u-8b9688e6">
       <strong>Who is responsible for your data is not yet published.</strong> The legal entity acting as data controller, its registered address, and a contact point for data-protection requests are marked <em>to be confirmed</em> below. We would rather leave them blank than name something we have not verified.
     </div>
 
     <h3>What we collect, and why</h3>
-    <p style="color:var(--text-soft);"><strong>Your account:</strong> your name, email address, and a hashed password. We never store your password itself — it is hashed with bcrypt before it reaches the database. We use this to sign you in, to show your listings and entries, and to send account email such as verification and password resets.</p>
-    <p style="color:var(--text-soft);"><strong>Entering a giveaway:</strong> a record that you entered, and your ticket number. This is what makes the draw possible and what stops the same account entering twice.</p>
-    <p style="color:var(--text-soft);"><strong>Hosting a giveaway:</strong> the listing you write, including who you say is funding the prize, which is shown publicly.</p>
-    <p style="color:var(--text-soft);"><strong>Applying to host on a paid plan:</strong> your name or business name, contact email and phone, and any trade licence number or message you choose to include.</p>
-    <p style="color:var(--text-soft);"><strong>Claiming a prize:</strong> if you win and choose to claim, the delivery details you provide — a name for delivery, a phone number, an address, and any delivery note. Nothing more: we do not ask for identity documents, dates of birth or payment details, and if a browser sends fields we did not ask for, they are discarded rather than stored.</p>
-    <p style="color:var(--text-soft);"><strong>Advertising with us:</strong> your business name, contact email, the banner and destination link you supply, and a record of the booking. Card details are handled by Stripe and never reach us.</p>
+    <p class="u-a2aae0fb"><strong>Your account:</strong> your name, email address, and a hashed password. We never store your password itself — it is hashed with bcrypt before it reaches the database. We use this to sign you in, to show your listings and entries, and to send account email such as verification and password resets.</p>
+    <p class="u-a2aae0fb"><strong>Entering a giveaway:</strong> a record that you entered, and your ticket number. This is what makes the draw possible and what stops the same account entering twice.</p>
+    <p class="u-a2aae0fb"><strong>Hosting a giveaway:</strong> the listing you write, including who you say is funding the prize, which is shown publicly.</p>
+    <p class="u-a2aae0fb"><strong>Applying to host on a paid plan:</strong> your name or business name, contact email and phone, and any trade licence number or message you choose to include.</p>
+    <p class="u-a2aae0fb"><strong>Claiming a prize:</strong> if you win and choose to claim, the delivery details you provide — a name for delivery, a phone number, an address, and any delivery note. Nothing more: we do not ask for identity documents, dates of birth or payment details, and if a browser sends fields we did not ask for, they are discarded rather than stored.</p>
+    <p class="u-a2aae0fb"><strong>Advertising with us:</strong> your business name, contact email, the banner and destination link you supply, and a record of the booking. Card details are handled by Stripe and never reach us.</p>
 
     <h3>What hosts see</h3>
-    <p style="color:var(--text-soft);">If you enter a giveaway, the host sees your display name and ticket number. Hosts never see your email address, your password, or anything about other giveaways you have entered.</p>
-    <p style="color:var(--text-soft);">If you win, nothing further is shared unless you choose to share it. On the claim page you decide whether to provide delivery details, and only if you explicitly consent are they passed to that one host — and only the fields needed to deliver something. We record which version of the consent wording you agreed to and when. If you do not claim, no delivery details exist and the host receives nothing.</p>
+    <p class="u-a2aae0fb">If you enter a giveaway, the host sees your display name and ticket number. Hosts never see your email address, your password, or anything about other giveaways you have entered.</p>
+    <p class="u-a2aae0fb">If you win, nothing further is shared unless you choose to share it. On the claim page you decide whether to provide delivery details, and only if you explicitly consent are they passed to that one host — and only the fields needed to deliver something. We record which version of the consent wording you agreed to and when. If you do not claim, no delivery details exist and the host receives nothing.</p>
 
     <h3>How delivery details are protected</h3>
-    <p style="color:var(--text-soft);">Delivery details are encrypted with AES-256-GCM before they are written to the database, with a separate initialisation vector for each record. They are readable by that giveaway's host, by you, and by our administrators only when a dispute or an expired claim requires someone to intervene. They are never included in an email, never placed in a web address, and never shown in general administrative lists.</p>
-    <p style="color:var(--text-soft);">The claim link we email you is single-use and expires. It is deliberately carried in the fragment of the web address, which browsers do not send to servers, so it does not appear in our logs.</p>
+    <p class="u-a2aae0fb">Delivery details are encrypted with AES-256-GCM before they are written to the database, with a separate initialisation vector for each record. They are readable by that giveaway's host, by you, and by our administrators only when a dispute or an expired claim requires someone to intervene. They are never included in an email, never placed in a web address, and never shown in general administrative lists.</p>
+    <p class="u-a2aae0fb">The claim link we email you is single-use and expires. It is deliberately carried in the fragment of the web address, which browsers do not send to servers, so it does not appear in our logs.</p>
 
     <h3>Prize delivery and disputes</h3>
-    <p style="color:var(--text-soft);">The host records when a prize has been sent; only you can confirm you received it. Either of you can raise a dispute, which an administrator reviews and resolves with a recorded reason. We keep a record of those steps — who did what and when — without keeping your address alongside it.</p>
+    <p class="u-a2aae0fb">The host records when a prize has been sent; only you can confirm you received it. Either of you can raise a dispute, which an administrator reviews and resolves with a recorded reason. We keep a record of those steps — who did what and when — without keeping your address alongside it.</p>
 
     <h3>How long we keep things</h3>
-    <p style="color:var(--text-soft);"><strong>All retention periods below are provisional and pending approval by qualified UAE counsel.</strong> They reflect our current judgement, not settled legal advice, and may change.</p>
-    <ul style="color:var(--text-soft);">
+    <p class="u-a2aae0fb"><strong>All retention periods below are provisional and pending approval by qualified UAE counsel.</strong> They reflect our current judgement, not settled legal advice, and may change.</p>
+    <ul class="u-a2aae0fb">
       <li><strong>Encrypted delivery details:</strong> erased on a schedule after a delivery is confirmed or a dispute is closed. The current period is 30 days (provisional).</li>
       <li><strong>Claim records and their history:</strong> retained after the delivery details are erased, so there is a lasting record that a prize was claimed and delivered — without the address.</li>
       <li><strong>Account, giveaway and entry data:</strong> retained while your account is active. A defined period after account closure is <em>to be confirmed</em>.</li>
@@ -67,8 +68,8 @@
     </ul>
 
     <h3>Who else processes your data</h3>
-    <p style="color:var(--text-soft);">We use the following providers. Where one is optional, it processes nothing unless we have configured it.</p>
-    <ul style="color:var(--text-soft);">
+    <p class="u-a2aae0fb">We use the following providers. Where one is optional, it processes nothing unless we have configured it.</p>
+    <ul class="u-a2aae0fb">
       <li><strong>Render</strong> — hosts the application. Processes anything you send to the site in the course of serving requests.</li>
       <li><strong>Hosted PostgreSQL (currently Neon)</strong> — stores account, giveaway, entry, claim and booking data, including encrypted delivery details.</li>
       <li><strong>Resend</strong> — sends verification, password-reset, entry, winner, claim and status emails. Receives your email address and the content of those messages. Delivery addresses and phone numbers are deliberately never put in an email.</li>
@@ -77,51 +78,28 @@
       <li><strong>Google Analytics</strong> — measures overall site traffic, when configured. Configured to disable Google Signals and ad personalisation, and not loaded at all on the prize-claim page.</li>
       <li><strong>Sentry</strong> — receives application error reports, when configured. Error reports are written to carry identifiers rather than personal data; we do not put delivery details, tokens or secrets in them.</li>
     </ul>
-    <p style="color:var(--text-soft);">Several of these providers operate outside the UAE, so data reaches other countries. The lawful basis for those transfers, and what safeguards are required, are <em>to be confirmed</em> with counsel.</p>
-    <p style="color:var(--text-soft);">We do not sell your data, and we do not use it for advertising targeting.</p>
+    <p class="u-a2aae0fb">Several of these providers operate outside the UAE, so data reaches other countries. The lawful basis for those transfers, and what safeguards are required, are <em>to be confirmed</em> with counsel.</p>
+    <p class="u-a2aae0fb">We do not sell your data, and we do not use it for advertising targeting.</p>
 
     <h3>Cookies and local storage</h3>
-    <p style="color:var(--text-soft);">Your session is kept in your browser's local storage as a signed token, so you stay signed in between visits; clearing your site data signs you out. Your language choice is stored the same way. Google Analytics, where configured, sets its own cookies.</p>
+    <p class="u-a2aae0fb">Your session is kept in your browser's local storage as a signed token, so you stay signed in between visits; clearing your site data signs you out. Your language choice is stored the same way. Google Analytics, where configured, sets its own cookies.</p>
 
     <h3>Your rights</h3>
-    <p style="color:var(--text-soft);">You can ask us for a copy of the data we hold about you, ask us to correct it, or ask us to delete your account and associated data.</p>
-    <p style="color:var(--text-soft);"><strong>Being straightforward about the current state:</strong> there is no self-service screen for editing your account details or downloading your data yet, and these requests are handled manually. Building them is planned work, not something we are claiming already exists. Which rights apply to you under UAE law, and the timeframes we must meet, are <em>to be confirmed</em> with counsel.</p>
+    <p class="u-a2aae0fb">You can ask us for a copy of the data we hold about you, ask us to correct it, or ask us to delete your account and associated data.</p>
+    <p class="u-a2aae0fb"><strong>Being straightforward about the current state:</strong> there is no self-service screen for editing your account details or downloading your data yet, and these requests are handled manually. Building them is planned work, not something we are claiming already exists. Which rights apply to you under UAE law, and the timeframes we must meet, are <em>to be confirmed</em> with counsel.</p>
 
     <h3>Who is responsible</h3>
-    <p style="color:var(--text-soft);">The legal entity acting as data controller, its registered address, and a dedicated contact for data-protection requests are <em>to be confirmed</em>. Until they are published, use the contact details on our <a href="/about.html" style="font-weight:600;">About page</a>.</p>
+    <p class="u-a2aae0fb">The legal entity acting as data controller, its registered address, and a dedicated contact for data-protection requests are <em>to be confirmed</em>. Until they are published, use the contact details on our <a href="/about.html" class="u-0b87e9e0">About page</a>.</p>
 
     <h3>Changes to this policy</h3>
-    <p style="color:var(--text-soft);">This policy carries a version, a revision date and a status, shown at the top. It is currently a <strong>draft</strong> with no effective date: it has not been approved, has never been presented to anyone for acceptance, and does not bind anyone. Approving it and making it effective are two separate, deliberate steps, and neither happens automatically.</p>
-    <p style="color:var(--text-soft);">We do not record acceptance of this policy, and we do not claim any account has accepted any version of it. The system refuses to record an acceptance against a draft at all.</p>
+    <p class="u-a2aae0fb">This policy carries a version, a revision date and a status, shown at the top. It is currently a <strong>draft</strong> with no effective date: it has not been approved, has never been presented to anyone for acceptance, and does not bind anyone. Approving it and making it effective are two separate, deliberate steps, and neither happens automatically.</p>
+    <p class="u-a2aae0fb">We do not record acceptance of this policy, and we do not claim any account has accepted any version of it. The system refuses to record an acceptance against a draft at all.</p>
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  // Renders the policy's real status. A draft never shows an effective date:
-  // showing a reader a date under that heading is exactly the claim this page
-  // must not make.
-  api('/config')
-    .then((config) => {
-      const policy = config.policies && config.policies.privacy;
-      if (!policy) return;
-      document.getElementById('policy-version').textContent = policy.version;
-      document.getElementById('policy-status-pill').textContent = policy.status.toUpperCase();
-      if (policy.draftRevisedAt) {
-        document.getElementById('policy-revised').textContent = new Date(
-          policy.draftRevisedAt + 'T00:00:00Z'
-        ).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
-      }
-      document.getElementById('policy-effective').textContent = policy.effectiveDate
-        ? new Date(policy.effectiveDate + 'T00:00:00Z').toLocaleDateString(undefined, {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-          })
-        : 'not yet effective';
-    })
-    .catch(() => {});
-</script>
+<script src="/js/pages/privacy.js"></script>
 </body>
 </html>

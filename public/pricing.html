@@ -11,20 +11,8 @@
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
-<style>
-  .cost-list { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap:22px; margin-top:32px; }
-  .cost { background:#fff; border:1px solid rgba(11,59,54,0.12); border-radius:var(--radius); padding:28px; display:flex; flex-direction:column; }
-  .cost h3 { margin-top:0; }
-  .cost .amount { font-family:'Fraunces',serif; font-size:1.9rem; color:var(--ink-deep); margin:6px 0 10px; }
-  .cost p { color:var(--text-soft); font-size:0.92rem; }
-  .cost ul { list-style:none; padding:0; margin:14px 0 22px; flex:1; }
-  .cost li { padding:8px 0; border-bottom:1px dashed rgba(11,59,54,0.15); font-size:0.92rem; color:var(--text-soft); }
-  .cost li:last-child { border-bottom:none; }
-  .faq { max-width:720px; margin:64px auto 0; }
-  .faq details { background:#fff; border:1px solid rgba(11,59,54,0.12); border-radius:10px; padding:16px 20px; margin-bottom:12px; }
-  .faq summary { font-weight:600; cursor:pointer; color:var(--ink-deep); }
-  .faq p { color:var(--text-soft); margin-top:10px; margin-bottom:0; }
-</style>
+<link rel="stylesheet" href="/css/utilities.css" />
+<link rel="stylesheet" href="/css/pages.css" />
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -45,7 +33,7 @@
       </div>
     </div>
 
-    <div class="compliance-box" style="margin-top:8px;">
+    <div class="compliance-box u-b1ecc496">
       This page used to advertise three hosting plans — a free pilot, AED 250 for three listings, and AED 900 a month for unlimited hosting with featured placement and a verified badge. None of them was ever built. There was no checkout, no listing limit, no featured placement and no entitlement behind any of it, and hosting was open to anyone with a verified email regardless of which plan they picked. They have been removed rather than repriced, and nothing has been invented to replace them.
     </div>
 
@@ -59,7 +47,7 @@
           <li>No upgrade that improves your chances</li>
           <li>There is no payment path anywhere on the entry journey</li>
         </ul>
-        <a class="btn primary" style="justify-content:center;" href="/index.html">Browse open giveaways</a>
+        <a class="btn primary u-842252d1" href="/index.html">Browse open giveaways</a>
       </div>
 
       <div class="cost">
@@ -72,7 +60,7 @@
           <li>We have not set a review deadline, so we are not promising one</li>
           <li>There is no paid hosting tier. If we ever introduce one, it will be announced before it is charged</li>
         </ul>
-        <a class="btn primary" style="justify-content:center;" href="/host-apply.html">Apply to host</a>
+        <a class="btn primary u-842252d1" href="/host-apply.html">Apply to host</a>
       </div>
 
       <div class="cost">
@@ -84,12 +72,12 @@
           <li>Booked for specific dates against a single homepage slot</li>
           <li>Nothing here funds a prize</li>
         </ul>
-        <a class="btn primary" style="justify-content:center;" href="/advertise.html">See advertising</a>
+        <a class="btn primary u-842252d1" href="/advertise.html">See advertising</a>
       </div>
     </div>
 
     <div class="faq">
-      <h2 style="margin-bottom:20px;">Questions</h2>
+      <h2 class="u-7dde5e56">Questions</h2>
       <details>
         <summary>Do entrants ever pay anything?</summary>
         <p>No. Entry is always free, for every giveaway, for every entrant, no exceptions. There is no field for an entry price anywhere in the code.</p>
@@ -116,18 +104,9 @@
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  // The advertising price is the one real price on this page, so it is read
-  // from the server rather than typed into the markup where it can drift.
-  fetch('/api/ads/availability')
-    .then((r) => (r.ok ? r.json() : null))
-    .then((data) => {
-      if (!data || !data.pricePerWeekDisplay) return;
-      document.getElementById('ad-price').textContent = `${data.pricePerWeekDisplay} / week`;
-    })
-    .catch(() => {});
-</script>
+<script src="/js/pages/pricing.js"></script>
 </body>
 </html>

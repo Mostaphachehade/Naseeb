@@ -270,15 +270,27 @@ test('the claim page strips the fragment before any other script runs', () => {
   const fs = require('fs');
   const path = require('path');
   const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'claim.html'), 'utf8');
+  const capture = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'js', 'pages', 'claim-1.js'),
+    'utf8'
+  );
 
-  const capture = page.indexOf('captureClaimToken');
+  // The capture is now its own file, and what matters is that its <script> tag
+  // comes before every other one on the page — including dom.js, i18n.js and
+  // app.js. Ordering is the whole guarantee.
+  const captureTag = page.indexOf('/js/pages/claim-1.js');
+  const domScript = page.indexOf('/js/dom.js');
   const appScript = page.indexOf('/js/app.js');
   const i18nScript = page.indexOf('/js/i18n.js');
 
-  assert.ok(capture !== -1, 'the page captures the fragment');
-  assert.ok(capture < i18nScript && capture < appScript, 'and does so before any other script loads');
-  assert.ok(page.includes('history.replaceState'), 'the fragment is erased immediately');
-  assert.ok(!/claims\/lookup\?token=/.test(page), 'lookup is never a query string');
+  assert.ok(captureTag !== -1, 'the page captures the fragment');
+  assert.ok(capture.includes('captureClaimToken'), 'and the file does the capturing');
+  assert.ok(
+    captureTag < domScript && captureTag < i18nScript && captureTag < appScript,
+    'and does so before any other script loads'
+  );
+  assert.ok(capture.includes('history.replaceState'), 'the fragment is erased immediately');
+  assert.ok(!/claims\/lookup\?token=/.test(page + capture), 'lookup is never a query string');
 
   // Analytics must not initialise on this page at all.
   const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app.js'), 'utf8');
@@ -716,7 +728,9 @@ test('with claims disabled the workflow is inert and the old unsafe path stays c
 test('the giveaway page hides claim controls unless the server says they exist', () => {
   const fs = require('fs');
   const path = require('path');
-  const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'giveaway.html'), 'utf8');
+  const page =
+    fs.readFileSync(path.join(__dirname, '..', 'public', 'giveaway.html'), 'utf8') +
+    fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'pages', 'giveaway.js'), 'utf8');
 
   assert.ok(page.includes('claims_enabled'), 'the page checks the flag before rendering controls');
   assert.ok(

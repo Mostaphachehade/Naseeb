@@ -17,6 +17,8 @@ const configRoutes = require('./routes/config');
 const webhookRoutes = require('./routes/webhooks');
 const claimRoutes = require('./routes/claims');
 const { csrfProtection } = require('./lib/csrf');
+const { securityHeaders } = require('./lib/securityHeaders');
+const { isRenderableMediaUrl } = require('./lib/mediaUrls');
 
 const app = express();
 
@@ -25,11 +27,31 @@ const app = express();
 // end up sharing one bucket across every visitor instead of per-IP.
 app.set('trust proxy', 1);
 
-// CSP is left off: every page here uses inline <script>/<style> and loads
-// images from arbitrary host-provided URLs (prizes, ad banners), so a
-// default-restrictive CSP would break the app rather than harden it. The
-// other headers (HSTS, no-sniff, frame-deny, etc.) still apply.
-app.use(helmet({ contentSecurityPolicy: false }));
+// Every security header, on every response this process produces — including
+// API errors, the 404 page and the dynamically rendered giveaway page. Mounted
+// first for exactly that reason: a header only present on the happy path is
+// missing precisely when something has gone wrong.
+//
+// CSP used to be off, with a comment explaining that inline scripts and
+// arbitrary image origins made it unenforceable. Both of those are now fixed —
+// scripts are files, styles are classes, media origins are an allowlist — so
+// the policy is on, enforced, and has no switch to turn it off. See
+// server/lib/securityHeaders.js and docs/CSP.md.
+app.use(securityHeaders);
+
+// helmet still supplies the headers securityHeaders does not set. Its own CSP
+// and the headers we set above are disabled here so there is exactly one source
+// for each header and no chance of two contradicting each other.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    referrerPolicy: false,
+    frameguard: false,
+    strictTransportSecurity: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false,
+  })
+);
 app.use(compression());
 app.use(cors({ origin: process.env.APP_URL || 'http://localhost:3000' }));
 
@@ -94,6 +116,11 @@ app.get('/giveaway.html', async (req, res, next) => {
     const giveaway = result.rows[0];
     if (!giveaway) return next();
 
+    // Only a URL that would be accepted today goes into og:image or the
+    // structured data — this markup is consumed by crawlers and chat apps, so a
+    // hostile URL here is a hostile URL republished under our name.
+    const shareableImage = isRenderableMediaUrl(giveaway.image_url) ? giveaway.image_url : null;
+
     const title = `${giveaway.title} — Naseeb`;
     const description = (giveaway.prize_description || giveaway.description || '')
       .slice(0, 200)
@@ -115,8 +142,8 @@ app.get('/giveaway.html', async (req, res, next) => {
       `<meta property="og:description" content="${escapeHtmlAttr(description)}" />`,
       `<meta property="og:type" content="website" />`,
       `<meta property="og:url" content="${escapeHtmlAttr(url)}" />`,
-      giveaway.image_url ? `<meta property="og:image" content="${escapeHtmlAttr(giveaway.image_url)}" />` : '',
-      `<meta name="twitter:card" content="${giveaway.image_url ? 'summary_large_image' : 'summary'}" />`,
+      shareableImage ? `<meta property="og:image" content="${escapeHtmlAttr(shareableImage)}" />` : '',
+      `<meta name="twitter:card" content="${shareableImage ? 'summary_large_image' : 'summary'}" />`,
     ].filter(Boolean).join('\n');
 
     // Mapped to Event rather than Product: schema.org has no dedicated
@@ -144,7 +171,7 @@ app.get('/giveaway.html', async (req, res, next) => {
             : 'https://schema.org/SoldOut',
         url,
       },
-      ...(giveaway.image_url ? { image: giveaway.image_url } : {}),
+      ...(shareableImage ? { image: shareableImage } : {}),
     };
 
     // JSON.stringify has no notion of HTML context — a title containing
