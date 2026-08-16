@@ -59,16 +59,20 @@ There is no separate `reinstated` status. A reinstated entry is an ordinary
 eligible one — inventing a fourth value would mean the draw query had to know
 about two kinds of eligible, which is exactly the sort of thing that becomes a
 bug. The **outcome** is recorded instead: the history row carries the reason code
-`reinstated`, so "was this entry ever disqualified?" is a question the record
-answers.
+`reinstated_after_review`, so "was this entry ever disqualified?" is a question
+the record answers.
 
 Every move is refused unless all of these hold:
 
 - the actor is an administrator, re-read from `users.is_admin` **inside the
   transaction** — never a role, actor id or status from the request body;
-- a written reason of at least 3 characters is supplied (enforced by the route
-  *and* by a CHECK constraint on the history table, so neither is the only thing
-  standing between here and an unexplained disqualification);
+- administrator notes of at least 3 characters are supplied (enforced by the
+  route *and* by a CHECK constraint on the history table, so neither is the only
+  thing standing between here and an unexplained disqualification);
+- the entrant-facing reason code is on the allowlist **for that destination** —
+  a `disqualified_terms` code on a review would produce a sentence that does not
+  match what happened;
+- the caller's version matches the row's (see below);
 - the move is legal from the entry's current status, read after the row is
   locked.
 
@@ -76,18 +80,85 @@ Asking for the status an entry is already in is a no-op that reports
 `changed: false` — a double-clicked button does not produce two history rows
 saying the same thing.
 
+### Stale decisions
+
+Row locking makes two requests serial. It does not make the second one informed:
+two administrators looking at the same screen, one reinstating while the other
+disqualifies, both got their way in turn and the last one won silently.
+
+`entries.integrity_version` and `entry_integrity_cases.version` fix that. The
+detail endpoint returns the version; the mutation requires it back. A mismatch is
+`409 STALE_DECISION`, which changes no status, writes no event, and returns the
+current coarse state and version so the screen can refresh and decide again.
+
+The version is **not** authorization. Administrator status is checked first, from
+the database, inside the transaction — a correct version in a non-administrator's
+hands still gets `403`, and a stale-version refusal is never what tells an
+unauthorised caller they guessed a real id.
+
 ---
 
-## 3. The record
+## 3. Two audiences, two fields
 
-`entry_integrity_events` is append-only, and that is a trigger rather than a
-convention: `BEFORE UPDATE` raises. Rows can only disappear by cascade from the
-entry they describe, and nothing in the application deletes an entry.
+The first version of this phase had one free-text column doing two jobs: the
+administrator wrote why, and the entrant read it. That is how a network
+heuristic, somebody else's email address, or an allegation that has not been
+established ends up on a stranger's screen. The correction splits them.
 
-Each row holds the entry, the giveaway, the previous and new status, a reason
-code, the written reason, the actor, their role, a timestamp, and a `metadata`
-JSON column for non-sensitive supporting facts. **Never** an IP address, never a
-session identifier, never anything from a delivery address.
+| | `integrity_admin_notes` | `integrity_reason_code` |
+|---|---|---|
+| Written by | the administrator, free text | chosen from a fixed allowlist |
+| Contains | evidence, accounts compared, what a signal showed | nothing — it is an identifier |
+| Read by | an administrator who deliberately opened one entry | the entrant, indirectly |
+| Appears in | `GET /api/admin/integrity/entries/:id` only, `no-store` | derived into a fixed sentence |
+| Mandatory | **yes**, for every decision | yes |
+
+The entrant never receives the notes, or any part of them. They receive a
+sentence looked up **in application constants** from the code — the wording is
+not stored per row, so it cannot be edited into an accusation, cannot carry an
+address, and cannot describe how anything was noticed:
+
+| Code | What the entrant reads |
+|---|---|
+| `review_routine_check` | "Your entry is being checked before the draw. This is a routine check, nothing has been decided, and your entry has not been removed." |
+| `review_signal_follow_up` | "Your entry is being checked before the draw. Nothing has been decided, and your entry has not been removed." |
+| `disqualified_entry_rule` | "This entry is not included in the draw, because it does not meet the rule of one entry per verified account for this giveaway." |
+| `disqualified_terms` | "This entry is not included in the draw, because it does not meet the entry terms for this giveaway." |
+| `reinstated_after_review` | "This entry was reviewed and is included in the draw as normal." |
+| `legacy_unspecified` | "This entry was reviewed by an administrator. If you would like to know more, please get in touch." |
+
+The tone is deliberate: a review is described as a check, and a disqualification
+names the rule that was not met rather than what anybody is suspected of doing.
+
+**Migration.** Decisions made under the single-column version had their free text
+moved into `integrity_admin_notes` and their entrant-facing code set to
+`legacy_unspecified`. Nothing that was written as an internal note was promoted
+into something an entrant reads, and no specific public reason was invented for
+an old record. The old column was then dropped, because a column still named
+`integrity_status_reason` is one careless `SELECT` away from being entrant-facing
+again.
+
+## 3a. The record, and why it cannot be erased
+
+`entry_integrity_events` and `entry_integrity_case_events` are append-only, and
+that is enforced at the database: a `BEFORE UPDATE OR DELETE` trigger raises on
+both. UPDATE alone was not enough — a history that can be deleted is not a
+history, and the first version of this phase only blocked rewriting.
+
+Neither table has **any foreign key**. That is the other half of it: a foreign
+key is a way for the audit trail to be destroyed by something that is not about
+the audit trail. `ON DELETE CASCADE` erases the history the moment an entry is
+removed; a plain reference makes the history the reason an account deletion
+fails. The columns hold opaque UUIDs, which is exactly what a record of a past
+decision needs — a reference to something that used to exist — and they carry no
+name, address or contact detail of their own, so preserving the audit does not
+mean retaining personal data to do it. A test deletes the entry, the giveaway and
+the account, and asserts the decision is still there.
+
+Each event row holds the entry, the giveaway, the previous and new status, the
+allowlisted code, the administrator notes, the actor, their role, a timestamp,
+and a `metadata` JSON column for non-sensitive supporting facts. **Never** an IP
+address, never a session identifier, never anything from a delivery address.
 
 **An entry is never deleted to disqualify it.** The row, its submission time, its
 account and its giveaway all survive every outcome. Deleting one would destroy
@@ -135,15 +206,42 @@ Once a winner exists, an allegation does not remove them.
   is still shipping a prize that is under review.
 - **Raising a dispute stays available.** Pausing the process must not also mute
   the person waiting on it.
-- Resolution is `reinstated`, `upheld` or `no_action`, each with a written
-  reason. Reinstating resumes the *existing* claim; no second claim is created.
+### What each resolution means
 
-**Replacing a winner, cancelling a prize or redrawing is not implemented, and
-was not invented here.** That is a policy decision with legal consequences, and
-it needs the owner and counsel before it needs code.
+| Resolution | Case status after | Fulfilment | In the queue |
+|---|---|---|---|
+| `reinstated` | `resolved` | resumes, on the **existing** claim; no second claim is created | no |
+| `no_action` | `resolved` | resumes | no |
+| `upheld` | **`upheld_blocked`** | **stays blocked** | **yes** |
 
-The public API exposes only a coarse claim status. The allegation, the signals
-and the administrator's notes are never in a public response.
+`upheld` does not close anything. The first version of this phase treated it as
+a resolution, which closed the case and released the pause — so confirming a
+concern about a winner was the act that let the prize ship to them. An upheld
+case now enters a durable blocked state:
+
+- it keeps blocking every protected fulfilment transition, host and rescue alike;
+- it stays in the administrator queue, flagged as blocked;
+- it does not delete or replace the winner;
+- it does not cancel the claim;
+- it does not redraw or choose another entrant;
+- it cannot be closed from the administrator screen — trying returns
+  `409 CASE_BLOCKED_PENDING_DECISION`.
+
+A database constraint pairs the two so they cannot drift: a case is
+`upheld_blocked` if and only if its resolution is `upheld`.
+
+The pause predicate is `hasBlockingCase`, which asks whether the case is **open
+OR upheld-and-blocked** — the substantive state, not `status = 'open'`.
+
+**Cancelling, replacing a winner or redrawing is not implemented, and was not
+invented here.** Only a later, separately authorised policy — after owner and
+counsel approval — decides what happens to an upheld case. Until then it waits,
+visibly, with the prize where it is.
+
+The public API exposes only a coarse claim status, and an entrant whose giveaway
+has a blocking case is told: *"This giveaway is under review. The outcome is
+pending — nothing about the result has been decided."* No allegation, no case
+state, no internal vocabulary.
 
 ---
 
@@ -253,10 +351,13 @@ response either — it is a join key, and a join key handed to a browser is a
 correlation tool nobody asked for.
 
 **The entrant** sees a coarse status for their own entry, on the giveaway page
-and their dashboard: `entered`, `under_review`, or `disqualified` — plus the
-written reason if a decision was made about them, because a decision nobody
-explains is a decision nobody can contest. Never the signals, never another
-account, never an administrator's notes.
+and their dashboard: `entered`, `under_review`, or `disqualified`, plus the fixed
+sentence for the decision's reason code, plus `resolution_pending` when the
+giveaway has a blocking case. There is no free-text field in that payload at all
+— not the administrator's notes, not a signal, not another account, not how
+anything was noticed. A decision nobody explains is a decision nobody can
+contest; an explanation that quotes an internal investigation is a different
+harm, and the allowlist is what keeps both from happening.
 
 **A host** may flag an entry on their own giveaway
 (`POST /api/giveaways/:id/entries/:entryId/flag`), which opens an administrator

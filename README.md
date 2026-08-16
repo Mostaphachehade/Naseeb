@@ -281,16 +281,28 @@ What exists for the gap between those two statements:
 - `entries.integrity_status` — `eligible` / `under_review` / `disqualified`, closed by a
   CHECK constraint. **An entry is never deleted to disqualify it**; the row, its time, its
   account and its giveaway survive every outcome.
-- An append-only history (`entry_integrity_events`, `BEFORE UPDATE` trigger) recording the
-  previous and new status, a reason code, the written reason, the actor and a timestamp.
+- Append-only history (`entry_integrity_events`, `entry_integrity_case_events`) enforced by
+  a `BEFORE UPDATE OR DELETE` trigger, with **no foreign keys**, so nothing cascades the
+  audit trail away when an entry, giveaway or account is deleted.
+- **Two fields, two audiences.** `integrity_admin_notes` is the administrator's own record
+  — evidence, accounts compared, what a signal showed — and appears in exactly one
+  `no-store` endpoint. `integrity_reason_code` is from a fixed allowlist, and the sentence
+  the entrant reads is looked up from it in code, so it cannot be edited into an
+  accusation or carry somebody else's details.
+- Optimistic concurrency: the detail endpoint returns a version, the mutation requires it,
+  and a stale decision is `409` with no status change and no event. The version is a
+  staleness check, never a permission.
 - Only a database-confirmed administrator decides, re-read from `users.is_admin` inside
   the transaction. A role, actor id or risk score in the request body is ignored. A host
   may *flag* an entry on their own giveaway; they cannot change its status.
 - The draw uses eligible entries only, and **fails closed** with `409` while any entry is
   under review or any integrity case is open.
 - After a winner exists, an allegation opens a case that **pauses fulfilment**. The winner
-  and their claim are preserved. Replacing or redrawing a winner is not implemented and
-  needs the owner and counsel before it is.
+  and their claim are preserved. Resolving as `reinstated` or `no_action` closes the case
+  and resumes the existing claim; resolving as **`upheld` does not close anything** — the
+  case enters a durable blocked state that keeps pausing fulfilment, stays in the queue,
+  and cannot be closed from the admin screen. Cancelling, replacing a winner or redrawing
+  is not implemented and needs the owner and counsel before it is.
 
 Risk signals are indicators for a human and **never disqualify anybody**. No raw IP
 address is stored: a coarse prefix (IPv4 /24, IPv6 /48) is HMAC'd with

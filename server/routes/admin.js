@@ -823,7 +823,8 @@ router.get('/integrity/queue', requireAdmin, async (req, res) => {
        FROM entries e
        JOIN giveaways g ON g.id = e.giveaway_id
        JOIN users u ON u.id = e.user_id
-       LEFT JOIN entry_integrity_cases c ON c.entry_id = e.id AND c.status = 'open'
+       LEFT JOIN entry_integrity_cases c
+                ON c.entry_id = e.id AND c.status IN ('open', 'upheld_blocked')
       WHERE e.integrity_status <> 'eligible'
          OR c.id IS NOT NULL
          OR EXISTS (
@@ -852,7 +853,12 @@ router.get('/integrity/queue', requireAdmin, async (req, res) => {
         ),
         signal_categories: row.signal_categories,
         case_id: row.case_id,
+        case_status: row.case_status,
+        // An upheld case stays here. That is the point of the state: a confirmed
+        // concern that stops the prize moving is exactly the thing an
+        // administrator queue must not lose track of.
         case_open: Boolean(row.case_id),
+        case_blocked: row.case_status === 'upheld_blocked',
         case_post_draw: Boolean(row.case_post_draw),
         case_opened_at: row.case_opened_at,
       }))
@@ -892,8 +898,9 @@ router.get('/integrity/entries/:entryId', requireAdmin, async (req, res) => {
         [req.params.entryId]
       ),
       pool.query(
-        `SELECT ev.from_status, ev.to_status, ev.reason_code, ev.reason, ev.actor_role,
-                ev.metadata, ev.created_at, actor.name AS actor_name
+        `SELECT ev.from_status, ev.to_status, ev.reason_code,
+                COALESCE(ev.admin_notes, ev.reason) AS admin_notes,
+                ev.actor_role, ev.metadata, ev.created_at, actor.name AS actor_name
            FROM entry_integrity_events ev
            LEFT JOIN users actor ON actor.id = ev.actor_user_id
           WHERE ev.entry_id = $1 ORDER BY ev.created_at`,
@@ -901,7 +908,7 @@ router.get('/integrity/entries/:entryId', requireAdmin, async (req, res) => {
       ),
       pool.query(
         `SELECT id, status, post_draw, opened_reason, opened_at, resolution,
-                resolution_reason, resolved_at
+                resolution_reason, resolved_at, version
            FROM entry_integrity_cases WHERE entry_id = $1 ORDER BY opened_at DESC`,
         [req.params.entryId]
       ),
@@ -913,9 +920,20 @@ router.get('/integrity/entries/:entryId', requireAdmin, async (req, res) => {
         ticket_number: entry.ticket_number,
         entered_at: entry.created_at,
         status: entry.integrity_status,
-        status_reason: entry.integrity_status_reason,
+        reason_code: entry.integrity_reason_code,
+        // The administrator's own notes — the evidence, the other accounts, the
+        // signal. This response is the only place they appear, it is fetched by
+        // a deliberate click, and it is no-store.
+        admin_notes: entry.integrity_admin_notes,
+        // What the entrant actually sees, shown here so an administrator can
+        // check the wording they are about to send rather than guess at it.
+        entrant_explanation: integrity.entrantCopyFor(entry.integrity_reason_code),
+        // Concurrency token. Required back on any decision about this entry.
+        version: entry.integrity_version,
         is_winner: entry.winner_entry_id === entry.id,
       },
+      reason_codes: integrity.CODES_FOR_STATUS,
+      entrant_copy: integrity.ENTRANT_COPY,
       giveaway: {
         id: entry.giveaway_id,
         title: entry.giveaway_title,
@@ -951,30 +969,39 @@ router.get('/integrity/entries/:entryId', requireAdmin, async (req, res) => {
 router.post('/integrity/entries/:entryId/status', requireAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
-    // Only the destination and the reason are read from the body. A role, an
-    // actor id or a risk score sent by the client is ignored — the actor is the
-    // session, and the administrator check is a fresh read of users.is_admin
-    // inside this transaction.
-    const { status, reason } = req.body || {};
+    // Only the destination, the allowlisted code, the internal notes and the
+    // version are read from the body. A role, an actor id or a risk score sent
+    // by the client is ignored — the actor is the session, and the administrator
+    // check is a fresh read of users.is_admin inside this transaction. The
+    // version is a staleness check, never a permission.
+    const { status, reason_code: reasonCode, admin_notes: adminNotes, version } = req.body || {};
 
     await client.query('BEGIN');
     const result = await integrity.setStatus(client, {
       entryId: req.params.entryId,
       toStatus: status,
-      reason,
+      reasonCode,
+      adminNotes,
       actorUserId: req.userId,
+      expectedVersion: version,
     });
     await client.query('COMMIT');
 
+    res.set('Cache-Control', 'no-store');
     res.json({
       entry_id: req.params.entryId,
       status: result.status,
       changed: result.changed,
+      version: result.version,
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     if (err instanceof integrity.IntegrityError) {
-      return res.status(err.status).json({ error: err.message, code: err.code });
+      // `current` gives the screen what it needs to refresh itself after a
+      // stale decision: a coarse state and the version to resubmit with.
+      return res
+        .status(err.status)
+        .json({ error: err.message, code: err.code, current: err.details || null });
     }
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -992,7 +1019,7 @@ router.post('/integrity/entries/:entryId/status', requireAdmin, async (req, res)
 router.post('/integrity/cases', requireAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { giveaway_id: giveawayId, entry_id: entryId, reason } = req.body || {};
+    const { giveaway_id: giveawayId, entry_id: entryId, admin_notes: adminNotes } = req.body || {};
     if (!giveawayId) {
       return res.status(400).json({ error: 'A giveaway is required.', code: 'GIVEAWAY_REQUIRED' });
     }
@@ -1023,7 +1050,7 @@ router.post('/integrity/cases', requireAdmin, async (req, res) => {
     const opened = await integrity.openCase(client, {
       giveawayId,
       entryId: entryId || null,
-      reason,
+      adminNotes,
       actorUserId: req.userId,
       postDraw: giveaway.status === 'drawn',
     });
@@ -1039,7 +1066,11 @@ router.post('/integrity/cases', requireAdmin, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     if (err instanceof integrity.IntegrityError) {
-      return res.status(err.status).json({ error: err.message, code: err.code });
+      // `current` gives the screen what it needs to refresh itself after a
+      // stale decision: a coarse state and the version to resubmit with.
+      return res
+        .status(err.status)
+        .json({ error: err.message, code: err.code, current: err.details || null });
     }
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -1051,22 +1082,34 @@ router.post('/integrity/cases', requireAdmin, async (req, res) => {
 router.post('/integrity/cases/:caseId/resolve', requireAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { resolution, reason } = req.body || {};
+    const { resolution, admin_notes: adminNotes, version } = req.body || {};
 
     await client.query('BEGIN');
     const result = await integrity.resolveCase(client, {
       caseId: req.params.caseId,
       resolution,
-      reason,
+      adminNotes,
       actorUserId: req.userId,
+      expectedVersion: version,
     });
     await client.query('COMMIT');
 
-    res.json({ case: result.case, changed: result.changed });
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      case: result.case,
+      changed: result.changed,
+      // Said plainly, because "upheld" reads like an ending and is not one.
+      fulfilment_paused: integrity.BLOCKING_CASE_STATUSES.includes(result.case.status),
+      requires_owner_decision: result.case.status === integrity.CASE_STATUS.UPHELD_BLOCKED,
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     if (err instanceof integrity.IntegrityError) {
-      return res.status(err.status).json({ error: err.message, code: err.code });
+      // `current` gives the screen what it needs to refresh itself after a
+      // stale decision: a coarse state and the version to resubmit with.
+      return res
+        .status(err.status)
+        .json({ error: err.message, code: err.code, current: err.details || null });
     }
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });

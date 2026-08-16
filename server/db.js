@@ -259,6 +259,39 @@ async function init() {
     ALTER TABLE entries ADD COLUMN IF NOT EXISTS integrity_status_changed_at TIMESTAMPTZ;
     ALTER TABLE entries ADD COLUMN IF NOT EXISTS integrity_status_changed_by TEXT REFERENCES users(id);
 
+    -- Two fields, because they answer two different questions and have two
+    -- different audiences.
+    --
+    -- integrity_reason_code is from a fixed allowlist and is the ONLY thing an
+    -- entrant ever sees; the wording they read is looked up from the code in
+    -- application constants, not stored per-row, so it cannot be edited into an
+    -- accusation. integrity_admin_notes is what the administrator actually
+    -- wrote: the evidence, the other accounts, the signal that prompted it. It
+    -- is mandatory, and it never leaves an administrator response.
+    --
+    -- The first version of this phase had one free-text column doing both jobs,
+    -- shown to the entrant. That is how a network heuristic, somebody else's
+    -- email address or an unproven allegation ends up on a stranger's screen.
+    ALTER TABLE entries ADD COLUMN IF NOT EXISTS integrity_reason_code TEXT;
+    ALTER TABLE entries ADD COLUMN IF NOT EXISTS integrity_admin_notes TEXT;
+    ALTER TABLE entries ADD COLUMN IF NOT EXISTS integrity_version INTEGER NOT NULL DEFAULT 0;
+
+    -- Migration of the single-column version, in the safe direction: the old
+    -- free text becomes ADMINISTRATOR NOTES, and the entrant-facing code becomes
+    -- a neutral legacy value. Nothing that was written as an internal note is
+    -- promoted into something an entrant reads.
+    UPDATE entries
+       SET integrity_admin_notes = integrity_status_reason
+     WHERE integrity_admin_notes IS NULL AND integrity_status_reason IS NOT NULL;
+    UPDATE entries
+       SET integrity_reason_code = 'legacy_unspecified'
+     WHERE integrity_reason_code IS NULL AND integrity_status <> 'eligible';
+
+    -- Dropped rather than left in place. Keeping it would leave a column whose
+    -- name still reads like an entrant-facing reason, one careless SELECT away
+    -- from being one again. The content is preserved in integrity_admin_notes.
+    ALTER TABLE entries DROP COLUMN IF EXISTS integrity_status_reason;
+
     -- Only rows that predate the column, and only if something left the value
     -- NULL. Deliberately not a blanket UPDATE: re-running this migration must
     -- never restore a disqualified entry to the draw pool, and a WHERE clause
@@ -274,21 +307,61 @@ async function init() {
     -- metadata column is for non-sensitive supporting facts only — signal
     -- categories and counts. Never an IP address, never a session identifier,
     -- never anything from a delivery address.
+    -- Deliberately WITHOUT foreign keys.
+    --
+    -- A foreign key here is a way for the audit trail to be deleted by
+    -- something that is not about the audit trail: ON DELETE CASCADE erases the
+    -- history the moment an entry is removed, and a plain reference makes the
+    -- history a reason account deletion fails. Neither is what an audit record
+    -- should do. The columns hold opaque identifiers — a UUID that no longer
+    -- resolves is a reference to something that used to exist, which is exactly
+    -- what a record of a past decision needs, and it carries no name, address or
+    -- address-like value of its own.
     CREATE TABLE IF NOT EXISTS entry_integrity_events (
       id TEXT PRIMARY KEY,
-      entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
-      giveaway_id TEXT NOT NULL REFERENCES giveaways(id),
+      entry_id TEXT NOT NULL,
+      giveaway_id TEXT NOT NULL,
       from_status TEXT,
       to_status TEXT NOT NULL,
       reason_code TEXT NOT NULL,
+      -- Legacy column from the single-field version. Never written now, never
+      -- read by an entrant-facing path, and not dropped because this table
+      -- cannot be updated and history is not ours to rewrite.
       reason TEXT,
-      actor_user_id TEXT REFERENCES users(id),
+      admin_notes TEXT,
+      actor_user_id TEXT,
       actor_role TEXT NOT NULL,
       metadata JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE entry_integrity_events ADD COLUMN IF NOT EXISTS admin_notes TEXT;
+    -- Existing installations may have the foreign keys from the first version of
+    -- this phase. Dropping them is what stops a cascade or a restriction from
+    -- reaching the audit trail.
+    ALTER TABLE entry_integrity_events DROP CONSTRAINT IF EXISTS entry_integrity_events_entry_id_fkey;
+    ALTER TABLE entry_integrity_events DROP CONSTRAINT IF EXISTS entry_integrity_events_giveaway_id_fkey;
+    ALTER TABLE entry_integrity_events DROP CONSTRAINT IF EXISTS entry_integrity_events_actor_user_id_fkey;
     CREATE INDEX IF NOT EXISTS idx_entry_integrity_events_entry
       ON entry_integrity_events(entry_id, created_at);
+
+    -- The case's own audit trail, on the same terms and for the same reason.
+    -- entry_integrity_cases below holds current state and is updated; this holds
+    -- what happened to it and is not.
+    CREATE TABLE IF NOT EXISTS entry_integrity_case_events (
+      id TEXT PRIMARY KEY,
+      case_id TEXT NOT NULL,
+      giveaway_id TEXT NOT NULL,
+      entry_id TEXT,
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      resolution TEXT,
+      admin_notes TEXT,
+      actor_user_id TEXT,
+      actor_role TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_entry_integrity_case_events_case
+      ON entry_integrity_case_events(case_id, created_at);
 
     -- Risk signals: indicators, never verdicts.
     --
@@ -322,10 +395,20 @@ async function init() {
     -- a winner exists, a report of abuse must not quietly replace them. The case
     -- pauses fulfilment, records what was alleged and what was decided, and
     -- leaves the winner and their claim exactly where they were.
+    -- Three statuses, not two.
+    --
+    -- upheld_blocked is the one that matters. Resolving a post-draw case as
+    -- upheld means the concern was CONFIRMED — and the first version of this
+    -- phase let that close the case, which released the fulfilment pause and let
+    -- the prize ship to the winner whose entry had just been found wanting. The
+    -- confirmed case now stays in a durable blocked state: still in the queue,
+    -- still pausing fulfilment, and waiting for a decision this codebase does
+    -- not have and must not invent. It does not delete the winner, cancel the
+    -- claim, or choose anybody else.
     CREATE TABLE IF NOT EXISTS entry_integrity_cases (
       id TEXT PRIMARY KEY,
       giveaway_id TEXT NOT NULL REFERENCES giveaways(id),
-      entry_id TEXT REFERENCES entries(id) ON DELETE CASCADE,
+      entry_id TEXT REFERENCES entries(id) ON DELETE SET NULL,
       status TEXT NOT NULL DEFAULT 'open',
       post_draw BOOLEAN NOT NULL DEFAULT FALSE,
       opened_reason TEXT NOT NULL,
@@ -336,13 +419,20 @@ async function init() {
       resolved_by TEXT REFERENCES users(id),
       resolved_at TIMESTAMPTZ
     );
-    -- One open case per entry, and one open unattached case per giveaway.
-    -- Opening the same case twice is then a no-op rather than a duplicate queue
-    -- item, which is what makes the endpoint idempotent under a double-click.
-    CREATE UNIQUE INDEX IF NOT EXISTS uniq_integrity_case_open_entry
-      ON entry_integrity_cases(entry_id) WHERE status = 'open' AND entry_id IS NOT NULL;
-    CREATE UNIQUE INDEX IF NOT EXISTS uniq_integrity_case_open_giveaway
-      ON entry_integrity_cases(giveaway_id) WHERE status = 'open' AND entry_id IS NULL;
+    ALTER TABLE entry_integrity_cases ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0;
+
+    -- One live case per entry, and one live unattached case per giveaway, where
+    -- "live" means anything still blocking — open OR upheld-and-blocked. Keyed
+    -- on the blocking set rather than on 'open' alone, so a confirmed case
+    -- cannot be shadowed by a second one opened on top of it.
+    DROP INDEX IF EXISTS uniq_integrity_case_open_entry;
+    DROP INDEX IF EXISTS uniq_integrity_case_open_giveaway;
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_integrity_case_live_entry
+      ON entry_integrity_cases(entry_id)
+      WHERE status IN ('open', 'upheld_blocked') AND entry_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_integrity_case_live_giveaway
+      ON entry_integrity_cases(giveaway_id)
+      WHERE status IN ('open', 'upheld_blocked') AND entry_id IS NULL;
     CREATE INDEX IF NOT EXISTS idx_integrity_cases_open
       ON entry_integrity_cases(giveaway_id, status);
 
@@ -455,24 +545,58 @@ async function init() {
       -- unreviewable later, so the requirement is a constraint rather than a
       -- validation somebody can forget to call. 'system' rows are the automatic
       -- ones and carry a code instead.
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_integrity_events_reason_required') THEN
-        ALTER TABLE entry_integrity_events ADD CONSTRAINT entry_integrity_events_reason_required
-          CHECK (actor_role <> 'admin' OR (reason IS NOT NULL AND length(btrim(reason)) >= 3));
+      -- Administrator notes are mandatory, and the constraint accepts the legacy
+      -- column too so rows written before the split stay valid. New rows always
+      -- write admin_notes.
+      ALTER TABLE entry_integrity_events DROP CONSTRAINT IF EXISTS entry_integrity_events_reason_required;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_integrity_events_notes_required') THEN
+        ALTER TABLE entry_integrity_events ADD CONSTRAINT entry_integrity_events_notes_required
+          CHECK (
+            actor_role <> 'admin'
+            OR (admin_notes IS NOT NULL AND length(btrim(admin_notes)) >= 3)
+            OR (reason IS NOT NULL AND length(btrim(reason)) >= 3)
+          );
+      END IF;
+      -- The entrant-facing code is an allowlist in the database as well as in
+      -- the code, because it is the one field whose wording reaches a stranger.
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_integrity_events_reason_code_valid') THEN
+        ALTER TABLE entry_integrity_events ADD CONSTRAINT entry_integrity_events_reason_code_valid
+          CHECK (reason_code IN (
+            'under_review', 'disqualified', 'reinstated',
+            'review_routine_check', 'review_signal_follow_up',
+            'disqualified_entry_rule', 'disqualified_terms',
+            'reinstated_after_review', 'legacy_unspecified', 'signal_recorded'
+          ));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entries_reason_code_valid') THEN
+        ALTER TABLE entries ADD CONSTRAINT entries_reason_code_valid
+          CHECK (integrity_reason_code IS NULL OR integrity_reason_code IN (
+            'under_review', 'disqualified', 'reinstated',
+            'review_routine_check', 'review_signal_follow_up',
+            'disqualified_entry_rule', 'disqualified_terms',
+            'reinstated_after_review', 'legacy_unspecified'
+          ));
       END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_risk_signals_severity_valid') THEN
         ALTER TABLE entry_risk_signals ADD CONSTRAINT entry_risk_signals_severity_valid
           CHECK (severity IN ('info', 'review'));
       END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_integrity_cases_status_valid') THEN
-        ALTER TABLE entry_integrity_cases ADD CONSTRAINT entry_integrity_cases_status_valid
+      ALTER TABLE entry_integrity_cases DROP CONSTRAINT IF EXISTS entry_integrity_cases_status_valid;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entry_integrity_cases_state_valid') THEN
+        ALTER TABLE entry_integrity_cases ADD CONSTRAINT entry_integrity_cases_state_valid
           CHECK (
-            status IN ('open', 'resolved')
+            status IN ('open', 'upheld_blocked', 'resolved')
             AND (
               status = 'open'
               OR (resolution IN ('reinstated', 'upheld', 'no_action')
                   AND resolution_reason IS NOT NULL
                   AND length(btrim(resolution_reason)) >= 3)
             )
+            -- The pairing is enforced, not merely intended: an upheld case is
+            -- blocked, and a blocked case is upheld. Nothing can write a
+            -- confirmed concern into a closed row.
+            AND (status <> 'upheld_blocked' OR resolution = 'upheld')
+            AND (resolution <> 'upheld' OR status = 'upheld_blocked')
           );
       END IF;
     END $$;
@@ -485,17 +609,23 @@ async function init() {
     -- it describes — so the trail and the thing it is a trail of live and die
     -- together, and erasing an account cannot leave orphaned findings about it.
     -- Nothing in the application deletes an entry.
-    CREATE OR REPLACE FUNCTION entry_integrity_events_append_only()
+    CREATE OR REPLACE FUNCTION integrity_audit_append_only()
     RETURNS TRIGGER AS $$
     BEGIN
-      RAISE EXCEPTION 'entry_integrity_events is append-only; % is not permitted', TG_OP;
+      RAISE EXCEPTION '% is append-only; % is not permitted', TG_TABLE_NAME, TG_OP;
     END;
     $$ LANGUAGE plpgsql;
 
     DROP TRIGGER IF EXISTS entry_integrity_events_no_update ON entry_integrity_events;
-    CREATE TRIGGER entry_integrity_events_no_update
-      BEFORE UPDATE ON entry_integrity_events
-      FOR EACH ROW EXECUTE FUNCTION entry_integrity_events_append_only();
+    DROP TRIGGER IF EXISTS entry_integrity_events_immutable ON entry_integrity_events;
+    CREATE TRIGGER entry_integrity_events_immutable
+      BEFORE UPDATE OR DELETE ON entry_integrity_events
+      FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only();
+
+    DROP TRIGGER IF EXISTS entry_integrity_case_events_immutable ON entry_integrity_case_events;
+    CREATE TRIGGER entry_integrity_case_events_immutable
+      BEFORE UPDATE OR DELETE ON entry_integrity_case_events
+      FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only();
 
     -- Backfill: accounts that were already hosting when approval was introduced.
     --

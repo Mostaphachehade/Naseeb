@@ -42,10 +42,9 @@
       const eyebrow = document.getElementById('status-eyebrow');
       eyebrow.textContent = g.status === 'drawn' ? t('detail.winnerDrawn').toUpperCase() : timeLeft(g.entry_deadline).toUpperCase();
 
-      // The viewer's own entry status, and nobody else's. Coarse by design: the
-      // signals that prompted a review are never shown to the person being
-      // reviewed, and the reason shown is only the one an administrator wrote
-      // for them.
+      // The viewer's own entry status, and nobody else's. The sentence shown is
+      // chosen by the server from a fixed allowlist — never the administrator's
+      // notes, never a signal, never another account.
       renderMyEntryStatus(g.my_entry);
 
       const enterBtn = document.getElementById('enter-btn');
@@ -94,23 +93,19 @@
     }
   }
 
-  const ENTRY_STATUS_TEXT = {
-    entered: null,
-    under_review: 'Your entry is under review. Nothing has been decided, and it has not been removed — an administrator is looking at it.',
-    disqualified: 'This entry has been disqualified and will not be included in the draw.',
-  };
-
+  // The whole message comes from the server, chosen from an allowlist of fixed
+  // sentences. There is no free text in it, no administrator note, and nothing
+  // about how anything was noticed — see docs/ENTRY_INTEGRITY.md §3.
   function renderMyEntryStatus(myEntry) {
     const box = document.getElementById('entry-status');
     if (!box) return;
-    const message = myEntry ? ENTRY_STATUS_TEXT[myEntry.status] : null;
-    if (!message) {
+    if (!myEntry || !myEntry.explanation) {
       box.classList.add('is-hidden');
       clear(box);
       return;
     }
     box.classList.remove('is-hidden');
-    mount(box, [message, myEntry.reason ? el('br') : null, myEntry.reason ? `Reason given: ${myEntry.reason}` : null]);
+    setText(box, myEntry.explanation);
   }
 
   async function enterGiveaway() {

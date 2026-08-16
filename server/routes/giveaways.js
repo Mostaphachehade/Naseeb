@@ -158,7 +158,10 @@ router.get('/:id', optionalAuth, async (req, res) => {
         [req.params.id, req.userId]
       );
       alreadyEntered = entryRes.rows.length > 0;
-      myEntry = integrity.entrantView(entryRes.rows[0]);
+      if (entryRes.rows[0]) {
+        const blocking = await integrity.hasBlockingCase(pool, req.params.id);
+        myEntry = integrity.entrantView(entryRes.rows[0], { blockingCase: blocking });
+      }
     }
 
     let winner = null;
@@ -590,7 +593,12 @@ router.get('/mine/entered', requireAuth, async (req, res) => {
     const result = await pool.query(
       `SELECT giveaways.*, entries.id AS my_entry_id, entries.ticket_number,
               entries.created_at AS my_entry_created_at, entries.integrity_status,
-              entries.integrity_status_reason
+              entries.integrity_reason_code,
+              EXISTS (
+                SELECT 1 FROM entry_integrity_cases c
+                 WHERE c.giveaway_id = giveaways.id
+                   AND c.status IN ('open', 'upheld_blocked')
+              ) AS integrity_case_blocking
        FROM entries
        JOIN giveaways ON giveaways.id = entries.giveaway_id
        WHERE entries.user_id = $1
@@ -605,12 +613,15 @@ router.get('/mine/entered', requireAuth, async (req, res) => {
           my_ticket_number: r.ticket_number,
           // The entrant's own coarse status, on their own dashboard. Same shape
           // as the giveaway page, from the same function.
-          my_entry: integrity.entrantView({
-            created_at: r.my_entry_created_at,
-            ticket_number: r.ticket_number,
-            integrity_status: r.integrity_status,
-            integrity_status_reason: r.integrity_status_reason,
-          }),
+          my_entry: integrity.entrantView(
+            {
+              created_at: r.my_entry_created_at,
+              ticket_number: r.ticket_number,
+              integrity_status: r.integrity_status,
+              integrity_reason_code: r.integrity_reason_code,
+            },
+            { blockingCase: r.integrity_case_blocking }
+          ),
         };
       })
     );
@@ -658,8 +669,12 @@ router.post('/:id/entries/:entryId/flag', requireAuth, requireHostAccess, async 
     const opened = await integrity.openCase(client, {
       giveawayId: req.params.id,
       entryId: req.params.entryId,
-      reason: req.body && req.body.reason,
+      // The host's own words, and they are internal notes like any other: a
+      // host's theory about an entrant is exactly the sort of text that must
+      // never reach the entrant it is about.
+      adminNotes: req.body && (req.body.admin_notes || req.body.reason),
       actorUserId: req.userId,
+      actorRole: 'admin',
       postDraw: false,
     });
 

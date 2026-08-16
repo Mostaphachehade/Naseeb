@@ -347,7 +347,7 @@ router.post('/:id/transition', claimActionLimiter, requireAuth, async (req, res)
     // redrawn — the delivery simply does not advance until a human has decided.
     // Raising a dispute stays available on purpose: pausing the process must not
     // also mute the person waiting on it.
-    if (to !== STATES.DISPUTED && (await integrity.hasOpenCase(client, existing.giveaway_id))) {
+    if (to !== STATES.DISPUTED && (await integrity.hasBlockingCase(client, existing.giveaway_id))) {
       await client.query('ROLLBACK');
       return res.status(409).json({
         error:
@@ -630,7 +630,7 @@ router.post('/:id/rescue/transition', claimActionLimiter, requireAdmin, async (r
     // it for the same reason it pauses the host's own steps. An administrator
     // acting for an absent host is still shipping a prize that is under review.
     const claimRow = await claims.getClaimById(client, req.params.id);
-    if (claimRow && (await integrity.hasOpenCase(client, claimRow.giveaway_id))) {
+    if (claimRow && (await integrity.hasBlockingCase(client, claimRow.giveaway_id))) {
       await client.query('ROLLBACK');
       return res.status(409).json({
         error:

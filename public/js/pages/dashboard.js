@@ -33,18 +33,18 @@
   };
 
   const ENTRY_STATUS_NOTE = {
-    under_review: 'Entry under review',
-    disqualified: 'Entry disqualified',
+    under_review: 'Entry being checked',
+    disqualified: 'Entry not in the draw',
   };
 
+  // A short label plus the server's own fixed sentence. No administrator note
+  // reaches here, because none is sent.
   function entryStatusNote(myEntry) {
-    if (!myEntry || !ENTRY_STATUS_NOTE[myEntry.status]) return null;
-    return el('p', {
-      class: 'delivery-pill pending',
-      text: myEntry.reason
-        ? `${ENTRY_STATUS_NOTE[myEntry.status]} — ${myEntry.reason}`
-        : ENTRY_STATUS_NOTE[myEntry.status],
-    });
+    if (!myEntry) return null;
+    const label = ENTRY_STATUS_NOTE[myEntry.status]
+      || (myEntry.resolution_pending ? 'Outcome pending' : null);
+    if (!label) return null;
+    return el('p', { class: 'delivery-pill pending', text: label });
   }
 
   function emptyWithLink(before, href, linkText, after) {

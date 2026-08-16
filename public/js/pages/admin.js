@@ -1176,12 +1176,31 @@
       return;
     }
 
-    const reasonInput = el('textarea', {
+    // Two fields, because they go to two different audiences.
+    //
+    // The notes are internal: evidence, other accounts, what a signal showed.
+    // The code chooses a fixed sentence the entrant reads, and the preview below
+    // shows exactly which one — so nobody has to guess what a stranger will be
+    // told about them.
+    const notesInput = el('textarea', {
       class: 'js-spaced-input',
-      maxLength: 1000,
-      placeholder: 'Why? Recorded against the decision, and shown to the entrant.',
+      maxLength: 4000,
+      placeholder: 'Administrator notes — internal. Evidence, accounts compared, what a signal showed. The entrant never sees this.',
     });
     const error = el('p', { class: 'form-error' });
+    const preview = el('p', { class: 'hint js-flush' });
+
+    const codeSelect = el('select', { class: 'js-spaced-input' });
+    function fillCodes(status) {
+      clear(codeSelect);
+      (data.reason_codes[status] || []).forEach((code) => {
+        codeSelect.appendChild(el('option', { value: code, text: code.replace(/_/g, ' ') }));
+      });
+      setText(preview, 'The entrant will read: ' + (data.entrant_copy[codeSelect.value] || ''));
+    }
+    codeSelect.addEventListener('change', () => {
+      setText(preview, 'The entrant will read: ' + (data.entrant_copy[codeSelect.value] || ''));
+    });
 
     const decide = (status, label, className) => el('button', {
       class: className,
@@ -1190,8 +1209,14 @@
         click: async (e) => {
           const btn = e.currentTarget;
           error.classList.remove('show');
-          if (!reasonInput.value.trim()) {
-            error.textContent = 'A reason is required — it is recorded against the decision.';
+          fillCodes(status);
+          if (!notesInput.value.trim()) {
+            error.textContent = 'Administrator notes are required — they are the record of why this decision was made.';
+            error.classList.add('show');
+            return;
+          }
+          if (!codeSelect.value) {
+            error.textContent = 'Choose the explanation the entrant will be given.';
             error.classList.add('show');
             return;
           }
@@ -1199,7 +1224,14 @@
           try {
             await api(`/admin/integrity/entries/${encodeURIComponent(entryId)}/status`, {
               method: 'POST',
-              body: JSON.stringify({ status, reason: reasonInput.value.trim() }),
+              body: JSON.stringify({
+                status,
+                reason_code: codeSelect.value,
+                admin_notes: notesInput.value.trim(),
+                // The version this screen was drawn from. A decision made from a
+                // stale screen is refused rather than silently applied last.
+                version: data.entry.version,
+              }),
             });
             loadIntegrity();
           } catch (err) {
@@ -1238,8 +1270,8 @@
         click: async (e) => {
           const btn = e.currentTarget;
           error.classList.remove('show');
-          if (!reasonInput.value.trim()) {
-            error.textContent = 'A reason is required to open a case.';
+          if (!notesInput.value.trim()) {
+            error.textContent = 'Administrator notes are required to open a case.';
             error.classList.add('show');
             return;
           }
@@ -1250,7 +1282,7 @@
               body: JSON.stringify({
                 giveaway_id: data.giveaway.id,
                 entry_id: data.entry.id,
-                reason: reasonInput.value.trim(),
+                admin_notes: notesInput.value.trim(),
               }),
             });
             loadIntegrity();
@@ -1263,23 +1295,27 @@
       },
     });
 
-    const openCase = (data.cases || []).find((c) => c.status === 'open');
-    const resolveButtons = openCase
+    // A blocked case is still live. It stays here, and it stays blocking.
+    const openCase = (data.cases || []).find(
+      (c) => c.status === 'open' || c.status === 'upheld_blocked'
+    );
+    const blockedCase = openCase && openCase.status === 'upheld_blocked';
+    const resolveButtons = openCase && !blockedCase
       ? ['reinstated', 'upheld', 'no_action'].map((resolution) =>
           el('button', {
             class: 'btn ghost u-51820e15',
             text:
               resolution === 'reinstated'
-                ? 'Resolve: reinstate and resume'
+                ? 'Reinstate and resume fulfilment'
                 : resolution === 'upheld'
-                  ? 'Resolve: uphold'
-                  : 'Resolve: no action',
+                  ? 'Uphold — keeps fulfilment blocked'
+                  : 'No action needed — resume',
             on: {
               click: async (e) => {
                 const btn = e.currentTarget;
                 error.classList.remove('show');
-                if (!reasonInput.value.trim()) {
-                  error.textContent = 'A reason is required to resolve a case.';
+                if (!notesInput.value.trim()) {
+                  error.textContent = 'Administrator notes are required to resolve a case.';
                   error.classList.add('show');
                   return;
                 }
@@ -1287,7 +1323,11 @@
                 try {
                   await api(`/admin/integrity/cases/${encodeURIComponent(openCase.id)}/resolve`, {
                     method: 'POST',
-                    body: JSON.stringify({ resolution, reason: reasonInput.value.trim() }),
+                    body: JSON.stringify({
+                      resolution,
+                      admin_notes: notesInput.value.trim(),
+                      version: openCase.version,
+                    }),
                   });
                   loadIntegrity();
                 } catch (err) {
@@ -1337,12 +1377,18 @@
       openCase
         ? el('p', {
             class: 'js-mint-box',
-            text: `Case open since ${new Date(openCase.opened_at).toLocaleString()}${openCase.post_draw ? ' (post-draw — fulfilment is paused)' : ''}: ${openCase.opened_reason}`,
+            text: blockedCase
+              ? `UPHELD and blocked since ${new Date(openCase.resolved_at || openCase.opened_at).toLocaleString()}. Fulfilment stays paused and this case stays in the queue. Cancelling, replacing the winner or redrawing is not available here — it needs an owner and legal decision. Notes: ${openCase.resolution_reason || openCase.opened_reason}`
+              : `Case open since ${new Date(openCase.opened_at).toLocaleString()}${openCase.post_draw ? ' (post-draw — fulfilment is paused)' : ''}. Notes: ${openCase.opened_reason}`,
           })
         : null,
 
       winnerNote,
-      reasonInput,
+      el('label', { class: 'u-1964b55e', text: 'Administrator notes (internal — never shown to the entrant)' }),
+      notesInput,
+      el('label', { class: 'u-1964b55e', text: 'Explanation the entrant will be given' }),
+      codeSelect,
+      preview,
       el('div', { class: 'js-button-row' }, spaced([...actions, openCase ? null : caseBtn, ...resolveButtons])),
       error,
     ]));
