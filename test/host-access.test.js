@@ -25,6 +25,7 @@ before(async () => {
 
 after(async () => {
   if (createdGiveawayIds.length) {
+    await pool.query('DELETE FROM claim_rescue_queue WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query(
       'DELETE FROM prize_claim_events WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))',
       [createdGiveawayIds]
@@ -578,7 +579,7 @@ test('rejecting refuses hosting and is recorded the same way', async () => {
   assert.equal(create.body.code, 'HOST_APPROVAL_REJECTED');
 });
 
-test('a decided application cannot be decided twice, or deleted', async () => {
+test('a decided application cannot be decided twice, or closed over', async () => {
   const admin = await createUser('decider-twice', { admin: true });
   const applicant = await createUser('decided-twice');
   const applicationId = await applyAs(applicant);
@@ -596,11 +597,20 @@ test('a decided application cannot be decided twice, or deleted', async () => {
   assert.equal(second.status, 409);
   assert.equal(second.body.code, 'ALREADY_DECIDED');
 
+  // There is no delete route on this resource at all — see
+  // test/host-rescue.test.js, which proves that and guards the source.
   const deleted = await api()
     .delete(`/api/admin/host-applications/${applicationId}`)
     .set('Authorization', `Bearer ${admin.token}`);
-  assert.equal(deleted.status, 409, 'a decision is part of the audit record');
-  assert.equal(deleted.body.code, 'DECIDED_APPLICATION_IMMUTABLE');
+  assert.equal(deleted.status, 404, 'nothing may delete an application');
+
+  // And closing it afterwards would write a second outcome over the first.
+  const closed = await api()
+    .post(`/api/admin/host-applications/${applicationId}/close`)
+    .set('Authorization', `Bearer ${admin.token}`)
+    .send({ reason: 'trying to reopen a settled question' });
+  assert.equal(closed.status, 409, 'a decision is part of the audit record');
+  assert.equal(closed.body.code, 'ALREADY_DECIDED');
 
   const still = await pool.query('SELECT decision_reason FROM host_applications WHERE id = $1', [
     applicationId,

@@ -293,12 +293,28 @@ router.get('/hosts/:userId/status-events', requireAdmin, async (req, res) => {
   }
 });
 
-// Only an undecided application can be removed, and only to clear spam. A
-// decided one carries who decided it, when and why — deleting that destroys the
-// only record of a decision someone may later be asked to justify.
-router.delete('/host-applications/:id', requireAdmin, async (req, res) => {
+// Closing an application without approving or refusing it — a duplicate, a
+// mistake, spam, or an applicant who asked to be taken off the list.
+//
+// There is deliberately **no delete route on this resource**, and there was one
+// until this commit. It let an administrator remove an undecided application
+// outright, which meant the record of somebody asking to host could be made to
+// have never happened. "It was only spam" is a judgement made at the moment of
+// deleting, by the person deleting, and it is unreviewable afterwards precisely
+// because the row is gone. `withdrawn` is the honest version of the same
+// action: the application is closed, and it is still there, with who closed it,
+// when, and why.
+router.post('/host-applications/:id/close', requireAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
+    const { reason } = req.body || {};
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({ error: 'A short reason is required.', code: 'REASON_REQUIRED' });
+    }
+    if (String(reason).trim().length > 1000) {
+      return res.status(400).json({ error: 'Reason must be 1000 characters or fewer.' });
+    }
+
     await client.query('BEGIN');
     const existing = await client.query(
       'SELECT id, user_id, status FROM host_applications WHERE id = $1 FOR UPDATE',
@@ -308,35 +324,44 @@ router.delete('/host-applications/:id', requireAdmin, async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Application not found.' });
     }
+    // An approved or refused application already carries an outcome. Closing it
+    // would write a second, different answer over the first.
     if (existing.rows[0].status !== 'pending') {
       await client.query('ROLLBACK');
       return res.status(409).json({
-        error:
-          "A decided application is part of the audit record and cannot be deleted. Change the account's host access instead.",
-        code: 'DECIDED_APPLICATION_IMMUTABLE',
+        error: `This application was already ${existing.rows[0].status} and its outcome cannot be rewritten.`,
+        code: 'ALREADY_DECIDED',
       });
     }
 
-    await client.query('DELETE FROM host_applications WHERE id = $1', [req.params.id]);
+    await client.query(
+      `UPDATE host_applications
+          SET status = 'withdrawn', decided_at = NOW(), decided_by = $1, decision_reason = $2,
+              contacted = TRUE
+        WHERE id = $3`,
+      [req.userId, String(reason).trim(), req.params.id]
+    );
 
-    // Removing the application takes the account back to never having asked,
-    // rather than leaving it waiting on a review of something that no longer
-    // exists. Recorded like any other change, so the deletion is visible.
+    // The account goes back to never having asked — it has no open application
+    // and no decision against it — and that move is itself an event, so the
+    // history reads: applied, then closed by this administrator for this reason.
     if (existing.rows[0].user_id) {
       await setHostStatus(client, {
         userId: existing.rows[0].user_id,
         toStatus: HOST_STATUS.NOT_REQUESTED,
-        reason: 'Undecided application removed by an administrator.',
+        reason: `Application closed without a decision: ${String(reason).trim()}`,
         changedBy: req.userId,
         source: 'admin_decision',
+        applicationId: req.params.id,
       });
     }
 
     await client.query('COMMIT');
-    res.json({ ok: true });
+    res.set('Cache-Control', 'no-store');
+    res.json({ id: req.params.id, status: 'withdrawn' });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    console.error(err);
+    console.error('Host application close failed:', err.message);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   } finally {
     client.release();

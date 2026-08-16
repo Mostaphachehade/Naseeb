@@ -11,8 +11,12 @@ There is no payment flow anywhere in this codebase, by design. Every giveaway mu
 
 **Hosting is a closed beta.** Entering is open to anyone with a verified email; publishing a
 giveaway is not. An account must be approved by an administrator, and access can be suspended
-without deleting anything. See `docs/HOST_ACCESS.md` for the model, the routes it gates, the
-migration, and one known consequence around open prize claims.
+without deleting anything. Suspending a host puts every unfinished prize claim of theirs into
+an administrator rescue queue automatically, so a winner mid-delivery is never left waiting on
+somebody who can no longer act — and never asked to raise a dispute to fix it. See
+`docs/HOST_ACCESS.md` for the model, the routes it gates, the migration, and the exact limits
+on what a rescuing administrator may do (they may ship on a host's behalf; only the winner ever
+confirms receipt).
 
 ## Why it's built this way
 
@@ -112,6 +116,7 @@ naseeb/
     routes/hostApplications.js # private-beta host application (sign-in required) + own status
     routes/admin.js            # admin-only: review applications, grant/suspend host access
     lib/hostAccess.js          # THE host authorization gate — see docs/HOST_ACCESS.md
+    lib/claimRescue.js         # admin takeover of a suspended host's open claims
     routes/config.js           # exposes non-secret Cloudinary config to the frontend
   public/
     index.html            # browse giveaways

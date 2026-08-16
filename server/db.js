@@ -513,6 +513,42 @@ async function init() {
     );
     CREATE INDEX IF NOT EXISTS idx_prize_claim_events_claim ON prize_claim_events(claim_id, created_at);
 
+    -- Claims whose host was suspended while a delivery was still in progress.
+    --
+    -- Suspending a host is a decision this platform makes about the host. It
+    -- must not become the winner's problem to notice and repair. The first
+    -- version of the host-access phase left the recovery path as "the winner
+    -- raises a dispute and an administrator resolves it", which required the
+    -- winner to work out that something had gone wrong internally and then use
+    -- the complaints mechanism to fix it. This queue is the replacement: the
+    -- moment a host is suspended, every unfinished claim of theirs lands here
+    -- for a human, automatically.
+    --
+    -- A row is a piece of work, not a permission by itself. Whether an
+    -- administrator may actually act is re-derived on every request from the
+    -- host's current status and the claim's current state — a stale row grants
+    -- nothing (see server/lib/claimRescue.js).
+    CREATE TABLE IF NOT EXISTS claim_rescue_queue (
+      id TEXT PRIMARY KEY,
+      claim_id TEXT NOT NULL REFERENCES prize_claims(id),
+      giveaway_id TEXT NOT NULL REFERENCES giveaways(id),
+      host_user_id TEXT NOT NULL REFERENCES users(id),
+      status TEXT NOT NULL DEFAULT 'open',
+      opened_reason TEXT,
+      opened_by TEXT REFERENCES users(id),
+      opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      closed_reason TEXT,
+      closed_by TEXT REFERENCES users(id),
+      closed_at TIMESTAMPTZ
+    );
+    -- One open item per claim, enforced by the database. Suspending an already
+    -- suspended host, two administrators clicking at once, or a redeem racing a
+    -- suspension all collapse onto this: the insert is ON CONFLICT DO NOTHING
+    -- against exactly this index.
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_claim_rescue_open
+      ON claim_rescue_queue (claim_id) WHERE status = 'open';
+    CREATE INDEX IF NOT EXISTS idx_claim_rescue_host ON claim_rescue_queue(host_user_id, status);
+
     -- Whether the winner has actually been told they won.
     --
     -- The invitation is the one email the whole workflow depends on: a winner

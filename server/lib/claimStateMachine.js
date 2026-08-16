@@ -30,7 +30,21 @@ const TERMINAL = new Set([STATES.DELIVERED, STATES.CANCELLED]);
 
 // Roles are resolved from the database per request — never taken from the
 // browser. 'system' is the scheduled expiry sweep, which has no user behind it.
-const ROLES = { WINNER: 'winner', HOST: 'host', ADMIN: 'admin', SYSTEM: 'system' };
+//
+// 'admin_rescue' is an administrator standing in for a host who has been
+// suspended mid-delivery. It is not the same thing as 'admin': an administrator
+// resolving a dispute is exercising their own authority, while a rescuer is
+// doing the one job the absent host would otherwise have done. It is therefore
+// granted exactly the host's three forward moves and nothing else — see
+// RESCUE_ELIGIBLE_STATES below, and server/lib/claimRescue.js for when it may
+// be assumed at all.
+const ROLES = {
+  WINNER: 'winner',
+  HOST: 'host',
+  ADMIN: 'admin',
+  ADMIN_RESCUE: 'admin_rescue',
+  SYSTEM: 'system',
+};
 
 const TRANSITIONS = {
   [STATES.AWAITING_CLAIM]: {
@@ -40,25 +54,28 @@ const TRANSITIONS = {
     [STATES.CANCELLED]: [ROLES.ADMIN],
   },
   [STATES.CLAIMED]: {
-    [STATES.PREPARING_DELIVERY]: [ROLES.HOST],
+    [STATES.PREPARING_DELIVERY]: [ROLES.HOST, ROLES.ADMIN_RESCUE],
     [STATES.DISPUTED]: [ROLES.WINNER, ROLES.HOST],
     [STATES.CANCELLED]: [ROLES.ADMIN],
   },
   [STATES.PREPARING_DELIVERY]: {
-    [STATES.SHIPPED_OR_ARRANGED]: [ROLES.HOST],
+    [STATES.SHIPPED_OR_ARRANGED]: [ROLES.HOST, ROLES.ADMIN_RESCUE],
     [STATES.DISPUTED]: [ROLES.WINNER, ROLES.HOST],
     [STATES.CANCELLED]: [ROLES.ADMIN],
   },
   [STATES.SHIPPED_OR_ARRANGED]: {
     // The furthest a host can move it on their own. Saying "I sent it" is a
     // claim about their own actions; saying "you received it" is not theirs to
-    // make.
-    [STATES.DELIVERED_PENDING_CONFIRMATION]: [ROLES.HOST],
+    // make. A rescuer inherits exactly that limit, for exactly that reason.
+    [STATES.DELIVERED_PENDING_CONFIRMATION]: [ROLES.HOST, ROLES.ADMIN_RESCUE],
     [STATES.DISPUTED]: [ROLES.WINNER, ROLES.HOST],
     [STATES.CANCELLED]: [ROLES.ADMIN],
   },
   [STATES.DELIVERED_PENDING_CONFIRMATION]: {
-    // Only the winner closes this. Not the host, not an automatic timer.
+    // Only the winner closes this. Not the host, not an administrator, not a
+    // rescuer, not an automatic timer. Rescue exists so that a suspended host
+    // does not strand a winner — not so that somebody else can answer the one
+    // question only the winner can answer.
     [STATES.DELIVERED]: [ROLES.WINNER],
     [STATES.DISPUTED]: [ROLES.WINNER, ROLES.HOST],
     [STATES.CANCELLED]: [ROLES.ADMIN],
@@ -78,6 +95,21 @@ const TRANSITIONS = {
   [STATES.DELIVERED]: {},
   [STATES.CANCELLED]: {},
 };
+
+// The states a rescuer may act from, derived from the table above rather than
+// listed a second time — a role that appears in TRANSITIONS but not here (or
+// the reverse) would be a silent disagreement between the gate and the queue.
+const RESCUE_ELIGIBLE_STATES = new Set(
+  Object.entries(TRANSITIONS)
+    .filter(([, moves]) => Object.values(moves).some((roles) => roles.includes(ROLES.ADMIN_RESCUE)))
+    .map(([from]) => from)
+);
+
+// Every claim that is not finished. A suspended host's claims all go into the
+// rescue queue so an administrator sees the whole picture, even the ones where
+// nothing is waiting on a host right now (a claim the winner has not opened
+// yet, or one waiting on the winner's confirmation).
+const ACTIVE_STATES = new Set(Object.values(STATES).filter((state) => !TERMINAL.has(state)));
 
 // What the public may see. Deliberately coarse: a giveaway page shows that a
 // delivery is in progress, never who is delivering what to which address.
@@ -149,6 +181,8 @@ module.exports = {
   ROLES,
   TERMINAL,
   TRANSITIONS,
+  RESCUE_ELIGIBLE_STATES,
+  ACTIVE_STATES,
   PUBLIC_STATUS,
   ClaimTransitionError,
   isValidState,

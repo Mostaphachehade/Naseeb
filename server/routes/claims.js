@@ -10,6 +10,8 @@ const {
 } = require('../lib/emailTemplates');
 const { STATES, ROLES, ClaimTransitionError } = require('../lib/claimStateMachine');
 const claims = require('../lib/claims');
+const rescue = require('../lib/claimRescue');
+const claimEvents = require('../lib/claimEvents');
 const { isConfigured: isEncryptionConfigured } = require('../lib/claimCrypto');
 const { areClaimsEnabled } = require('../lib/featureFlags');
 const notifications = require('../lib/claimNotifications');
@@ -203,6 +205,15 @@ router.post('/redeem', claimTokenLimiter, async (req, res) => {
         code: 'TOKEN_UNUSABLE',
       });
     }
+
+    // If the host was suspended while this claim was still unopened, the winner
+    // has just handed over an address to somebody who cannot act on it. Put it
+    // in front of an administrator now rather than waiting for the winner to
+    // notice the silence. Idempotent — the suspension already queued every
+    // unfinished claim, so this normally finds the row already there.
+    await rescue.ensureRescueForClaim(client, claim.id, {
+      reason: 'Winner claimed while the host was suspended.',
+    });
 
     const context = await client.query(
       `SELECT g.title, g.host_id, hostuser.email AS host_email, hostuser.name AS host_name,
@@ -516,6 +527,12 @@ router.post('/admin/backfill/:giveawayId', claimActionLimiter, requireAdmin, asy
     const { created, claim } = await claims.backfillClaimForGiveaway(client, req.params.giveawayId);
     if (created) {
       await notifications.queueInvitation(client, claim.id);
+      // A backfilled claim for a suspended host's giveaway needs a rescuer from
+      // the moment it exists — no suspension event is going to come along later
+      // and queue it.
+      await rescue.ensureRescueForClaim(client, claim.id, {
+        reason: 'Claim backfilled for a suspended host.',
+      });
     }
     await client.query('COMMIT');
 
@@ -530,6 +547,171 @@ router.post('/admin/backfill/:giveawayId', claimActionLimiter, requireAdmin, asy
       ...baseClaimView(claim),
       invitation: await notifications.notificationStateFor(pool, claim.id),
       delivery_succeeded: summary ? summary.delivered : null,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    return claimError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rescuing a suspended host's claims
+// ---------------------------------------------------------------------------
+
+// The rescue queue: every unfinished claim whose host is suspended.
+//
+// Populated automatically inside the suspension transaction, so an
+// administrator never has to notice the problem, and a winner is never expected
+// to. Carries no delivery details, no ciphertext, no address and no phone —
+// only whether details exist and could be opened. See the note on the review
+// queue above: a list is the last place a page of home addresses belongs.
+router.get('/admin/rescue-queue', requireAdmin, async (req, res) => {
+  try {
+    const rows = await rescue.listOpenRescues(pool);
+    res.set('Cache-Control', 'no-store');
+    res.json(rows);
+  } catch (err) {
+    return claimError(res, err);
+  }
+});
+
+// An administrator taking one host-side step on behalf of a suspended host.
+//
+// Separate from the ordinary transition endpoint on purpose. Rescue is a
+// distinct authority with a distinct answer to "who is allowed", and folding it
+// into the generic route would mean every administrator implicitly carried
+// host powers over every claim. Here they carry them only when the host really
+// is suspended and the claim really is waiting on a host — both re-read from
+// the database inside this request, neither taken from the queue row.
+router.post('/:id/rescue/transition', claimActionLimiter, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { to, reason } = req.body || {};
+
+    // A rescue is somebody acting in another party's place. It is exactly the
+    // kind of action that needs to say why, every time — not only when it goes
+    // wrong.
+    if (!reason || !String(reason).trim()) {
+      await client.query('ROLLBACK').catch(() => {});
+      return res.status(400).json({
+        error: 'A short reason is required for a rescue action.',
+        code: 'REASON_REQUIRED',
+      });
+    }
+
+    await client.query('BEGIN');
+
+    // Throws 403/409 with a code. Does not consult the queue: a queue row is
+    // work to do, not a permission.
+    await rescue.assertRescueAllowed(client, { claimId: req.params.id, adminUserId: req.userId });
+
+    const { claim } = await claims.transition(client, {
+      claimId: req.params.id,
+      to,
+      role: ROLES.ADMIN_RESCUE,
+      actorUserId: req.userId,
+      note: String(reason).trim(),
+    });
+
+    const context = await client.query(
+      `SELECT g.title, winner.name AS winner_name, winner.email AS winner_email
+         FROM giveaways g
+         JOIN users winner ON winner.id = $2
+        WHERE g.id = $1`,
+      [claim.giveaway_id, claim.winner_user_id]
+    );
+
+    await client.query('COMMIT');
+
+    res.set('Cache-Control', 'no-store');
+    res.json({ ...baseClaimView(claim), acted_as: ROLES.ADMIN_RESCUE });
+
+    // The winner is told what happened, by the same route as any other status
+    // change and carrying no more than any other one does.
+    const info = context.rows[0];
+    if (info) {
+      sendEmail({
+        to: info.winner_email,
+        subject: `Update on ${info.title}`,
+        html: claimStatusHtml({
+          recipientName: info.winner_name,
+          giveawayTitle: info.title,
+          status: claim.status,
+          message: 'Sign in to see the details and what happens next.',
+          giveawayUrl: `${APP_URL}/giveaway.html?id=${claim.giveaway_id}`,
+        }),
+      });
+    }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    return claimError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+// Opening the winner's delivery details for one claim, deliberately.
+//
+// A POST with a reason in the body, not a GET: this is an action that leaves a
+// record, not a page to browse. Nothing about it appears in the queue above, so
+// an administrator who never needs an address never sees one.
+//
+// Refused unless the winner actually consented, and refused outright once
+// retention has erased the details — an erased address stays erased, and a
+// rescue is not a way to reach behind that.
+router.post('/:id/rescue/delivery-details', claimActionLimiter, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { reason } = req.body || {};
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({
+        error: 'A short reason is required before delivery details can be opened.',
+        code: 'REASON_REQUIRED',
+      });
+    }
+
+    await client.query('BEGIN');
+    await rescue.assertRescueAllowed(client, { claimId: req.params.id, adminUserId: req.userId });
+
+    const claim = await claims.getClaimById(client, req.params.id);
+    const delivery = claims.hostVisibleDelivery(claim);
+    if (!delivery.available) {
+      await client.query('ROLLBACK');
+      res.set('Cache-Control', 'no-store');
+      return res.status(409).json({
+        error:
+          delivery.reason === 'erased'
+            ? 'These delivery details have been erased under the retention policy and cannot be recovered.'
+            : 'The winner has not supplied delivery details for this claim yet.',
+        code: delivery.reason === 'erased' ? 'DELIVERY_ERASED' : 'DELIVERY_UNAVAILABLE',
+      });
+    }
+
+    // Audited in the claim's own history, alongside every state change. The
+    // from and to statuses are the same because nothing moved — the record is
+    // that somebody looked, not that something changed. The note carries the
+    // administrator's reason and nothing about the address itself.
+    await claimEvents.recordEvent(client, {
+      claimId: req.params.id,
+      from: claim.status,
+      to: claim.status,
+      actorUserId: req.userId,
+      actorRole: `${ROLES.ADMIN_RESCUE}:delivery_details_opened`,
+      note: String(reason).trim(),
+    });
+
+    await client.query('COMMIT');
+
+    // no-store, because a proxy or a browser cache holding a winner's address
+    // is the same leak as logging it.
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      claim_id: claim.id,
+      status: claim.status,
+      delivery,
+      opened_for: 'suspended_host_rescue',
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

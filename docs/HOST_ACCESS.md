@@ -136,10 +136,13 @@ it to decide which of the five states to render; it never enforces anything.
 | `POST /api/admin/host-applications/:id/decision` | `{decision, reason}`. Reason required. Records decider and timestamp. |
 | `POST /api/admin/hosts/:userId/status` | Suspend, reinstate, or grant without an application. Reason required. |
 | `GET /api/admin/hosts/:userId/status-events` | The history behind an account's current access. |
-| `DELETE /api/admin/host-applications/:id` | **Only** an undecided application, to clear spam. A decided one returns 409. |
+| `POST /api/admin/host-applications/:id/close` | Closes an undecided application as `withdrawn`. Reason required. **Nothing is deleted** — see §10. |
+| `GET /api/claims/admin/rescue-queue` | Unfinished claims whose host is suspended — see §8. |
+| `POST /api/claims/:id/rescue/transition` | One host-side step, on behalf of a suspended host. Reason required. |
+| `POST /api/claims/:id/rescue/delivery-details` | Opens one winner's details, deliberately and audited. Reason required. |
 
-Deleting an undecided application returns the account to `not_requested` and
-records that too.
+There is **no delete route on host applications.** Closing one returns the
+account to `not_requested` and records that too.
 
 ---
 
@@ -182,26 +185,108 @@ record what was once advertised. **No replacement price has been invented.**
 
 ---
 
-## 8. Known consequence: suspending a host with an open claim
+## 8. Suspending a host does not strand a winner
 
-A suspended host loses the host role on their claims, which means they can no
-longer see the winner's delivery details or move the claim toward delivery. That
-is the requested behaviour and it is tested — but it has a cost worth stating
-plainly.
+A suspended host loses the host role on their claims immediately — they cannot
+see the winner's delivery details and cannot move the claim along. That is
+correct, and it leaves an obvious hole: a winner who has already handed over
+their address is waiting on somebody who can no longer act.
 
-The claim state machine only lets an administrator **cancel** a claim that is in
-`claimed`, `preparing_delivery` or `shipped_or_arranged`. To resolve one to
-`delivered` an administrator first needs it in `disputed`, and only the winner or
-the host can raise a dispute. So the recovery path for a winner whose host was
-suspended mid-delivery is: **the winner disputes, an administrator resolves.**
+An earlier version of this document called the recovery path *"the winner raises
+a dispute and an administrator resolves it"*. That was not a recovery path. It
+asked the winner to notice a silence, work out that the platform had done
+something internally, and then use the complaints mechanism to repair it. The
+person with the least information and the least responsibility was carrying the
+work.
 
-`POST /api/admin/hosts/:userId/status` returns `open_claims_affected` and the
-admin UI shows it, so nobody suspends a host without being told what they have
-just taken on. Making an administrator able to pull a stalled claim into review
-directly would remove the dependency on the winner acting first; that is a change
-to the claim state machine and is **not** in this phase.
+### The rescue queue
 
----
+`claim_rescue_queue`, populated **inside the suspension transaction** by
+`setHostStatus`. There is no window in which a host has been suspended but their
+winners are not yet anybody's job, and no way to suspend a host while forgetting
+to. Every unfinished claim of theirs lands there, including the ones where
+nothing is waiting on a host right now, so an administrator sees the whole
+picture.
+
+Idempotency is in the database: a partial unique index
+(`uniq_claim_rescue_open` on `claim_id WHERE status = 'open'`) and an
+`ON CONFLICT … DO NOTHING` insert. Suspending twice, two administrators clicking
+at once, or a winner's redemption racing a suspension all collapse onto one row.
+A test inserts a duplicate directly and asserts the database refuses it, so the
+guarantee does not rest on application code.
+
+Rows close automatically when the host is reinstated (`setHostStatus` →
+`approved`) or when the claim reaches `delivered` or `cancelled` (inside
+`claims.transition`, so it holds for every path that can finish a claim).
+
+`ensureRescueForClaim` covers the two ways a claim can become active *after* a
+suspension: a winner opening a link that was already in flight, and an
+administrator backfilling a claim for a suspended host's old giveaway.
+
+### Exact rescue permissions
+
+A new role, `admin_rescue`, distinct from `admin`. An administrator resolving a
+dispute exercises their own authority; a rescuer does the one job the absent
+host would have done. It gets the host's three forward moves and nothing else:
+
+| From | To | Rescuer? |
+|---|---|---|
+| `claimed` | `preparing_delivery` | **yes** |
+| `preparing_delivery` | `shipped_or_arranged` | **yes** |
+| `shipped_or_arranged` | `delivered_pending_confirmation` | **yes** |
+| `awaiting_claim` | `claimed` | **no** — only the winner, with a token and consent |
+| `delivered_pending_confirmation` | `delivered` | **no** — only the winner |
+| anything | `disputed` / `cancelled` / `expired` | **no** — not a rescue action |
+
+Winner confirmation remains the only route to `delivered` outside a dispute, and
+`giveaways.prize_delivered` still moves only when the winner says so. A test
+walks the whole transition table and fails if a future edit ever hands
+`admin_rescue` a path to `delivered` or `claimed`.
+
+### Authority is re-derived, never inherited from the queue
+
+`assertRescueAllowed` reads three facts from the database on **every** request:
+
+1. the caller is an administrator (`users.is_admin`);
+2. the claim's host is `suspended` **right now** — a reinstated host does their
+   own work, and an administrator does not get to take over from a host who is
+   perfectly able to act (409 `HOST_NOT_SUSPENDED`);
+3. the claim is in a rescue-eligible state **right now** (409
+   `NOT_RESCUE_ELIGIBLE`).
+
+A queue row is work to do, not a permission. A test leaves a stale open row
+behind after reinstating the host by hand and confirms it grants nothing.
+
+Every rescue action requires a reason (400 `REASON_REQUIRED`) and writes to
+`prize_claim_events` with the previous state, the new state, the administrator's
+id, `actor_role = 'admin_rescue'`, the reason and a timestamp.
+
+### Delivery details
+
+| | |
+|---|---|
+| Route | `POST /api/claims/:id/rescue/delivery-details` |
+| Never in | `GET /api/claims/admin/rescue-queue`, or any other list |
+| Requires | administrator, host suspended, claim eligible, **and a reason** |
+| Requires | the winner's recorded consent (`consented_at`, `consent_version`) |
+| Refuses | erased details, permanently (409 `DELIVERY_ERASED`) |
+| Refuses | details that were never supplied (409 `DELIVERY_UNAVAILABLE`) |
+| Audited | a `prize_claim_events` row per opening, `from_status == to_status` — looking is not moving |
+| Header | `Cache-Control: no-store` |
+
+The queue reports only a boolean `delivery_available`, so an administrator who
+never needs an address never sees one. A test captures every console write and
+outgoing email across a full rescue and asserts no address, phone, block, city
+or note appears in any of them, nor in the queue, the public giveaway endpoint
+or the ordinary admin review queue — only in the one deliberate fetch.
+
+### What this still does not do
+
+A rescuer cannot cancel a claim (that is `admin`, from any active state) and
+cannot pull a stalled claim into `disputed`. Neither is a rescue action: the
+first is a decision to end the thing, the second is a complaints route. If a
+suspended host's winner needs a claim closed rather than fulfilled, an
+administrator cancels it through the ordinary admin path.
 
 ## 9. Still open
 
@@ -212,6 +297,36 @@ to the claim state machine and is **not** in this phase.
 - No notification is sent to an applicant when a decision is made. They see it on
   the dashboard and the apply page. Wiring it into the existing claim outbox is
   later work.
-- There is no self-service way for a host to withdraw an application; an
-  administrator deletes it.
+- There is no self-service way for an applicant to withdraw their own
+  application; an administrator closes it. Closing is not deleting — see §10.
+- The rescue queue is not notified anywhere. An administrator has to open the
+  admin page to see it; there is no email or alert when a claim lands in it.
 - Admin promotion remains a direct database action (unchanged, see README).
+
+---
+
+## 10. Host applications are never deleted
+
+There was a `DELETE /api/admin/host-applications/:id` route, restricted to
+undecided applications and meant for clearing spam. It has been removed. "It was
+only spam" is a judgement made at the moment of deleting, by the person deleting,
+and it becomes unreviewable the instant the evidence for it is gone.
+
+`POST /api/admin/host-applications/:id/close` replaces it. It sets the status to
+`withdrawn` and requires a reason. Preserved unchanged: the original row, its
+`created_at`, the account it belongs to, what the applicant wrote, and every
+`host_status_events` row. Added: `decided_at`, `decided_by`, `decision_reason`.
+
+An application that already carries an outcome — `approved` or `rejected` —
+cannot be closed over (409 `ALREADY_DECIDED`). A later application is a **new
+row**, never an edit of the earlier one, so a refusal followed by a fresh
+application reads as two events rather than one rewritten answer.
+
+Concurrency: the decision and close routes both take `SELECT … FOR UPDATE` on the
+application row. Three simultaneous attempts (approve, reject, close) produce one
+200 and two 409s, one outcome on the row, one matching `users.host_status`, and
+exactly one `host_status_events` transition out of `pending`.
+
+A test asserts the DELETE route returns 404 and greps the comment-stripped source
+of `server/routes/admin.js` for `router.delete('/host-applications` and
+`DELETE FROM host_applications`, so neither can reappear quietly.

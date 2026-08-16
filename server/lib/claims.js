@@ -5,11 +5,19 @@
 // the browser.
 const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
-const { STATES, ROLES, PUBLIC_STATUS, assertTransition, ClaimTransitionError } = require('./claimStateMachine');
+const {
+  STATES,
+  ROLES,
+  TERMINAL,
+  PUBLIC_STATUS,
+  assertTransition,
+  ClaimTransitionError,
+} = require('./claimStateMachine');
 const { issueToken, hashToken } = require('./claimTokens');
 const { encryptDeliveryDetails, decryptDeliveryDetails } = require('./claimCrypto');
 const { recordEvent } = require('./claimEvents');
 const { canHost } = require('./hostAccess');
+const { closeRescueForClaim } = require('./claimRescue');
 
 // Bumped whenever the wording a winner agrees to changes, so a consent given
 // under old wording is distinguishable from one given under new wording.
@@ -201,6 +209,17 @@ async function transition(client, { claimId, to, role, actorUserId, note, extra 
     actorRole: role,
     note,
   });
+
+  // A finished claim is nobody's outstanding work, including a rescuer's. Done
+  // here rather than in the routes so it holds for every path that can finish a
+  // claim — winner confirmation, admin resolution of a dispute, cancellation —
+  // instead of only the ones somebody remembered to wire up.
+  if (TERMINAL.has(to)) {
+    await closeRescueForClaim(client, claimId, {
+      reason: `Claim reached ${to}.`,
+      closedBy: actorUserId,
+    });
+  }
 
   return { previous: claim, claim: updated.rows[0] };
 }

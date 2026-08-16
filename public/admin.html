@@ -24,6 +24,7 @@
     <nav class="admin-nav">
       <a href="#overview">Overview</a>
       <a href="#applications">Applications</a>
+      <a href="#rescue">Suspended-host claims</a>
       <a href="#ad-inquiries">Ad inquiries</a>
       <a href="#ads-section">Ads</a>
       <a href="#giveaways">Giveaways</a>
@@ -95,6 +96,19 @@
          out. Deliberately shows the minimum — what it is, how old, and what
          needs doing. Delivery details are NOT in this list; opening an
          individual case fetches them separately. -->
+    <!-- Opened automatically inside the suspension transaction. A winner is
+         never expected to notice that their host went away, and is never asked
+         to raise a dispute to get a delivery moving again. No delivery details
+         are in this list — opening one case fetches them separately, with a
+         reason, and records that it happened. -->
+    <div class="section-head" id="rescue">
+      <div>
+        <h2>Suspended-host claims</h2>
+        <p>Unfinished claims whose host we suspended. You can take the steps the host would have taken — preparing delivery, then marking it shipped or arranged. You cannot claim for the winner and you cannot confirm receipt for them: only the winner can say a prize arrived.</p>
+      </div>
+    </div>
+    <div id="rescue-content" style="margin-bottom:56px;"><p>Loading…</p></div>
+
     <div class="section-head" id="claims">
       <div>
         <h2>Prize claims needing review</h2>
@@ -195,7 +209,7 @@
         <td>${decided}</td>
         <td style="white-space:nowrap;">
           <button class="btn ghost app-open-btn" style="padding:6px 10px; font-size:0.78rem;">Review</button>
-          ${a.status === 'pending' ? '<button class="btn ghost app-delete-btn" style="padding:6px 10px; font-size:0.78rem; border-color:var(--danger); color:var(--danger);">Delete</button>' : ''}
+          ${a.status === 'pending' ? '<button class="btn ghost app-close-btn" style="padding:6px 10px; font-size:0.78rem;">Close without deciding</button>' : ''}
         </td>
       </tr>
       <tr class="app-detail-row" data-detail-for="${a.id}" style="display:none;"><td colspan="6"></td></tr>
@@ -283,13 +297,22 @@
       content.querySelectorAll('.app-open-btn').forEach((btn) => {
         btn.addEventListener('click', (e) => openApplication(e.target.closest('tr').dataset.id));
       });
-      content.querySelectorAll('.app-delete-btn').forEach((btn) => {
+      // Closes, never deletes. The row, its submission time, the account it
+      // belongs to and its status events all stay exactly where they are —
+      // "it was only spam" is a judgement that becomes unreviewable the moment
+      // the evidence for it is gone.
+      content.querySelectorAll('.app-close-btn').forEach((btn) => {
         btn.addEventListener('click', async (e) => {
-          if (!confirm('Delete this undecided application? The applicant returns to never having applied.')) return;
+          const reason = prompt('Why is this application being closed without a decision? Recorded against the application.');
+          if (reason === null) return;
+          if (!reason.trim()) { alert('A short reason is required.'); return; }
           const id = e.target.closest('tr').dataset.id;
           btn.disabled = true;
           try {
-            await api(`/admin/host-applications/${id}`, { method: 'DELETE' });
+            await api(`/admin/host-applications/${id}/close`, {
+              method: 'POST',
+              body: JSON.stringify({ reason }),
+            });
             load();
             loadStats();
           } catch (err) {
@@ -779,6 +802,125 @@
     return `${hours} hour${hours === 1 ? '' : 's'} old`;
   }
 
+  // ------------------------------------------------------------------
+  // Suspended-host claim rescue
+  // ------------------------------------------------------------------
+
+  // What a rescuer may do from each state. Mirrors the server table in
+  // server/lib/claimStateMachine.js; the server refuses anything else outright,
+  // so this only decides which button to draw.
+  const RESCUE_NEXT = {
+    claimed: { to: 'preparing_delivery', label: 'Mark preparing delivery' },
+    preparing_delivery: { to: 'shipped_or_arranged', label: 'Mark shipped / arranged' },
+    shipped_or_arranged: { to: 'delivered_pending_confirmation', label: 'Report delivered — winner confirms' },
+  };
+
+  const CLAIM_STATE_LABELS = {
+    awaiting_claim: 'Waiting for the winner to claim',
+    claimed: 'Claimed — waiting on the host',
+    preparing_delivery: 'Preparing delivery',
+    shipped_or_arranged: 'Shipped or arranged',
+    delivered_pending_confirmation: 'Waiting for the winner to confirm receipt',
+    disputed: 'Disputed',
+    expired: 'Claim window expired',
+  };
+
+  function rescueRow(r) {
+    const next = r.action_available ? RESCUE_NEXT[r.claim_status] : null;
+    const waiting = !next
+      ? '<span style="color:var(--text-soft); font-size:0.82rem;">Nothing for you to do here — this one is waiting on the winner.</span>'
+      : '';
+    return `
+      <tr data-claim="${r.claim_id}">
+        <td>${escapeHtml(r.title)}<br><span style="color:var(--text-soft); font-size:0.8rem;">host: ${escapeHtml(r.host_name)} · winner: ${escapeHtml(r.winner_name)}</span></td>
+        <td><span class="pill-badge">${escapeHtml(CLAIM_STATE_LABELS[r.claim_status] || r.claim_status)}</span></td>
+        <td>${new Date(r.opened_at).toLocaleDateString()}<br><span style="color:var(--text-soft); font-size:0.8rem;">${escapeHtml(r.opened_reason || '')}</span></td>
+        <td style="white-space:nowrap;">
+          ${next ? `<button class="btn primary rescue-step" data-to="${next.to}" style="padding:6px 10px; font-size:0.78rem;">${next.label}</button>` : ''}
+          ${r.delivery_available ? '<button class="btn ghost rescue-details" style="padding:6px 10px; font-size:0.78rem;">Open delivery details</button>' : '<span style="color:var(--text-soft); font-size:0.78rem;">no details available</span>'}
+          ${waiting}
+        </td>
+      </tr>
+      <tr data-details-for="${r.claim_id}" style="display:none;"><td colspan="4"></td></tr>
+    `;
+  }
+
+  async function loadRescueQueue() {
+    const content = document.getElementById('rescue-content');
+    try {
+      const rows = await api('/claims/admin/rescue-queue');
+      if (rows.length === 0) {
+        content.innerHTML = '<div class="empty">No suspended host has an unfinished claim.</div>';
+        return;
+      }
+      content.innerHTML = `
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Giveaway</th><th>Claim state</th><th>In the queue since</th><th>Actions</th></tr></thead>
+            <tbody>${rows.map(rescueRow).join('')}</tbody>
+          </table>
+        </div>
+      `;
+
+      content.querySelectorAll('.rescue-step').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          const claimId = e.target.closest('tr').dataset.claim;
+          const reason = prompt('Why are you taking this step for the host? Recorded in the claim history.');
+          if (reason === null) return;
+          if (!reason.trim()) { alert('A short reason is required.'); return; }
+          btn.disabled = true;
+          try {
+            await api(`/claims/${claimId}/rescue/transition`, {
+              method: 'POST',
+              body: JSON.stringify({ to: btn.dataset.to, reason }),
+            });
+            loadRescueQueue();
+            loadClaims();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
+          }
+        });
+      });
+
+      content.querySelectorAll('.rescue-details').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          const claimId = e.target.closest('tr').dataset.claim;
+          const cell = content.querySelector(`tr[data-details-for="${claimId}"] td`);
+          const row = cell.parentElement;
+          if (row.style.display !== 'none') { row.style.display = 'none'; cell.innerHTML = ''; return; }
+          const reason = prompt('Why do you need the winner\'s address? This is recorded against the claim.');
+          if (reason === null) return;
+          if (!reason.trim()) { alert('A short reason is required.'); return; }
+          btn.disabled = true;
+          try {
+            const result = await api(`/claims/${claimId}/rescue/delivery-details`, {
+              method: 'POST',
+              body: JSON.stringify({ reason }),
+            });
+            const d = result.delivery.details;
+            row.style.display = '';
+            cell.innerHTML = `
+              <div style="padding:12px 4px;">
+                <p style="margin:0 0 6px; color:var(--text-soft); font-size:0.82rem;">Opened for fulfilment and recorded in this claim's history. Winner consented ${new Date(result.delivery.consentedAt).toLocaleDateString()} (${escapeHtml(result.delivery.consentVersion)}).</p>
+                <p style="margin:0;">${escapeHtml(d.recipient_name)} · ${escapeHtml(d.phone)}</p>
+                <p style="margin:0;">${escapeHtml(d.address_line1)}${d.address_line2 ? `, ${escapeHtml(d.address_line2)}` : ''}</p>
+                <p style="margin:0;">${escapeHtml(d.city)}, ${escapeHtml(d.emirate)}</p>
+                ${d.notes ? `<p style="margin:6px 0 0; color:var(--text-soft);">${escapeHtml(d.notes)}</p>` : ''}
+              </div>
+            `;
+          } catch (err) {
+            alert(err.message);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
   async function loadClaims() {
     const box = document.getElementById('claims-content');
     try {
@@ -999,6 +1141,7 @@
   if (getToken()) {
     loadStats();
     loadClaims();
+    loadRescueQueue();
     loadMissingClaims();
     load();
     loadAdInquiries();

@@ -22,6 +22,7 @@
 
 const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
+const rescue = require('./claimRescue');
 
 const HOST_STATUS = {
   NOT_REQUESTED: 'not_requested',
@@ -183,6 +184,11 @@ async function canHost(client, userId) {
 // why, and whether a human or a migration did it. Returns null when the status
 // is already what was asked for, so a double-clicked approve button does not
 // write a second event claiming a change that did not happen.
+//
+// Suspension also opens the claim rescue queue, and restoring access closes it,
+// both in this same transaction. That coupling is the point: there is no window
+// in which a host has been suspended but their winners are not yet anybody's
+// responsibility, and no way to suspend a host while forgetting to.
 async function setHostStatus(client, { userId, toStatus, reason, changedBy, source, applicationId = null }) {
   if (!isValidStatus(toStatus)) {
     throw new Error(`Unknown host status: ${toStatus}`);
@@ -218,7 +224,24 @@ async function setHostStatus(client, { userId, toStatus, reason, changedBy, sour
     [eventId, userId, fromStatus, toStatus, reason || null, source, changedBy || null, applicationId]
   );
 
-  return { id: eventId, fromStatus, toStatus };
+  let rescuesOpened = 0;
+  let rescuesClosed = 0;
+  if (toStatus === HOST_STATUS.SUSPENDED) {
+    rescuesOpened = await rescue.openRescuesForHost(client, {
+      hostUserId: userId,
+      reason: reason || 'Host access suspended.',
+      openedBy: changedBy,
+    });
+  } else if (toStatus === HOST_STATUS.APPROVED) {
+    // The host is back, so their deliveries are theirs again.
+    rescuesClosed = await rescue.closeRescuesForHost(client, {
+      hostUserId: userId,
+      reason: reason ? `Host access restored: ${reason}` : 'Host access restored.',
+      closedBy: changedBy,
+    });
+  }
+
+  return { id: eventId, fromStatus, toStatus, rescuesOpened, rescuesClosed };
 }
 
 module.exports = {
