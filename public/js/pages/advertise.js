@@ -40,7 +40,7 @@
 
     document.getElementById('week-price').textContent = quote.pricePerWeekDisplay;
 
-    select.innerHTML = '';
+    clear(select);
     quote.durations.forEach((duration) => {
       const option = document.createElement('option');
       option.value = String(duration.weeks);
@@ -108,9 +108,12 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
-      document.getElementById('image_url').value = data.secure_url;
       const preview = document.getElementById('image-preview');
-      preview.src = data.secure_url;
+      if (!NaseebDom.setMediaSrc(preview, data.secure_url)) {
+        statusEl.textContent = 'Upload returned an image address we do not accept.';
+        return;
+      }
+      document.getElementById('image_url').value = data.secure_url;
       preview.classList.remove('is-hidden');
       statusEl.textContent = 'Uploaded.';
     } catch (err) {
@@ -197,7 +200,13 @@
 
     document.getElementById('price-changed-notice').classList.add('is-hidden');
     awaitingPriceConfirmation = false;
-    window.location.href = data.checkoutUrl;
+    // Stripe's hosted checkout, relayed by our API. Checked against the one
+    // origin it may be, because "our API said so" is not a property of a URL.
+    if (!NaseebDom.navigateToCheckout(data.checkoutUrl)) {
+      errorEl.textContent = 'Checkout is unavailable right now. Please try again later.';
+      errorEl.classList.add('show');
+      btn.disabled = false;
+    }
   });
 
   document.getElementById('inquiry-form').addEventListener('submit', async (e) => {

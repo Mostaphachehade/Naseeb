@@ -1,4 +1,4 @@
-  document.getElementById('grid').innerHTML = skeletonCards(6);
+  mount(document.getElementById('grid'), skeletonCards(6));
   const PAGE_SIZE = 12;
   let currentPage = 1;
 
@@ -12,7 +12,10 @@
       const g = items[0];
       if (!g || g.status !== 'active') return;
 
-      document.getElementById('promo-cta-inner').href = `/giveaway.html?id=${g.id}`;
+      NaseebDom.setHref(
+        document.getElementById('promo-cta-inner'),
+        '/giveaway.html?id=' + encodeURIComponent(g.id)
+      );
       if (g.image_url) {
         // Validated and set through the helper, which refuses anything that is
         // not https on an allowed media origin.
@@ -49,7 +52,7 @@
     ];
 
     function spawnConfetti() {
-      confetti.innerHTML = '';
+      clear(confetti);
       for (let i = 0; i < 8; i++) {
         const s = document.createElement('span');
         s.className = 'promo-speck';
@@ -98,23 +101,21 @@
     try {
       const { items, total } = await api(`/giveaways?page=${page}&pageSize=${PAGE_SIZE}`);
       if (page === 1 && items.length === 0) {
-        grid.innerHTML = `
-          <div class="empty launch u-97294b20">
-            <span class="mono eyebrow">${t('empty.launchEyebrow')}</span>
-            <h3>${t('empty.launchTitle')}</h3>
-            <p>${t('empty.launchBody')}</p>
-            <a class="btn primary" href="/host-apply.html">${t('empty.launchCta')}</a>
-          </div>`;
+        mount(grid, el('div', { class: 'empty launch u-97294b20' }, [
+          el('span', { class: 'mono eyebrow', text: t('empty.launchEyebrow') }),
+          el('h3', { text: t('empty.launchTitle') }),
+          el('p', { text: t('empty.launchBody') }),
+          el('a', { class: 'btn primary', href: '/host-apply.html', text: t('empty.launchCta') }),
+        ]));
         loadMoreBtn.classList.add('is-hidden');
         return;
       }
-      if (page === 1) grid.innerHTML = '';
-      grid.insertAdjacentHTML('beforeend', items.map(giveawayCard).join(''));
-      applyCardImages(grid);
+      if (page === 1) clear(grid);
+      append(grid, items.map(giveawayCard));
       currentPage = page;
       loadMoreBtn.classList.toggle('is-hidden', page * PAGE_SIZE >= total);
     } catch (err) {
-      grid.innerHTML = `<p class="form-error show">${escapeHtml(err.message)}</p>`;
+      mount(grid, errorNode(err.message));
       loadMoreBtn.classList.add('is-hidden');
     }
   }
@@ -142,17 +143,25 @@
     try {
       const ad = await api('/ads/active');
       if (!ad) return;
+
+      // An advertiser's media URL used to be escaped and interpolated into a
+      // src attribute. Escaping is the wrong tool here — it does nothing to a
+      // scheme — so the URL goes through the media validator, and an ad whose
+      // media is not on an allowed origin simply does not render.
       const media = ad.media_type === 'video'
-        ? `<video src="${escapeHtml(ad.image_url)}" autoplay muted loop playsinline></video>`
-        : `<img src="${escapeHtml(ad.image_url)}" alt="${escapeHtml(ad.business_name)}" />`;
-      document.getElementById('ad-banner-slot').innerHTML = `
-        <div class="ad-banner-wrap">
-          <span class="ad-banner-label">Advertisement</span>
-          <a class="ad-banner" href="/api/ads/${ad.id}/click" target="_blank" rel="noopener sponsored">
-            ${media}
-          </a>
-        </div>
-      `;
+        ? el('video', { autoplay: true, muted: true, loop: true, playsInline: true })
+        : el('img', { alt: ad.business_name });
+      if (!NaseebDom.setMediaSrc(media, ad.image_url)) return;
+
+      mount(document.getElementById('ad-banner-slot'), el('div', { class: 'ad-banner-wrap' }, [
+        el('span', { class: 'ad-banner-label', text: 'Advertisement' }),
+        el('a', {
+          class: 'ad-banner',
+          href: '/api/ads/' + encodeURIComponent(ad.id) + '/click',
+          target: '_blank',
+          rel: 'noopener sponsored',
+        }, [media]),
+      ]));
     } catch (err) {
       // Non-critical — just don't show a banner if this fails.
     }

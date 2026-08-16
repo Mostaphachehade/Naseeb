@@ -5,7 +5,7 @@ const { requireAdmin } = require('../middleware/auth');
 const { getAllSettings, setSetting } = require('../lib/settings');
 const { HOST_STATUS, ADMIN_SETTABLE, setHostStatus } = require('../lib/hostAccess');
 const sessions = require('../lib/sessions');
-const { validateMediaUrl } = require('../lib/mediaUrls');
+const { validateMediaUrl, validateExternalLinkUrl } = require('../lib/mediaUrls');
 
 // Account status is authentication; host status is authorization. Two columns,
 // two routes, and deliberately no path that changes one as a side effect of the
@@ -536,14 +536,14 @@ router.post('/ads', requireAdmin, async (req, res) => {
     }
     const normalizedMediaType = media_type === 'video' ? 'video' : 'image';
 
-    let normalizedTargetUrl;
-    try {
-      const parsed = new URL(target_url.trim());
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('bad protocol');
-      normalizedTargetUrl = parsed.href;
-    } catch {
-      return res.status(400).json({ error: 'Target URL must be a valid http(s) URL.' });
+    // Same validator the click-through path and the admin table use, so a
+    // destination that would be refused when rendered cannot be accepted when
+    // stored.
+    const checkedTarget = validateExternalLinkUrl(target_url);
+    if (!checkedTarget.url) {
+      return res.status(400).json({ error: checkedTarget.error, code: 'TARGET_URL_REJECTED' });
     }
+    const normalizedTargetUrl = checkedTarget.url;
 
     const id = uuid();
     await pool.query(

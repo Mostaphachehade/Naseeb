@@ -37,7 +37,11 @@ const TRANSLATIONS = {
     'footer.bottom': '© {year} Naseeb. Every ticket is free.',
 
     'hero.eyebrow': 'No purchase necessary',
-    'hero.headline': 'Every ticket is free.<br>Every draw is real.',
+    // Two lines rather than one string with a <br>: the dictionary holds text,
+    // and the line break is an element the page builds. Nothing here is markup,
+    // so nothing here needs an innerHTML to render it.
+    'hero.headlineLine1': 'Every ticket is free.',
+    'hero.headlineLine2': 'Every draw is real.',
     'hero.lede': "Naseeb hosts giveaways funded by the people running them, not by entry fees. Enter with one tap, no card required, and see exactly how the winner is picked.",
     'hero.browseBtn': 'Browse giveaways',
     'hero.hostBtn': 'Host your own',
@@ -65,7 +69,11 @@ const TRANSLATIONS = {
     'winners.lede': "Every giveaway here is drawn the same way — uniformly at random, after the deadline, from everyone who entered. Here's who's won so far.",
     'winners.wonBy': 'Won by {name}',
     'winners.by': 'by {name}',
-    'winners.emptyBody': "No winners drawn yet — check back once the first giveaway closes, or <a href=\"/index.html\">browse what's open now</a>.",
+    // Split around the link for the same reason: the anchor is created, not
+    // parsed out of a translated string.
+    'winners.emptyBefore': 'No winners drawn yet — check back once the first giveaway closes, or ',
+    'winners.emptyLink': "browse what's open now",
+    'winners.emptyAfter': '.',
 
     'detail.status': 'Status',
     'detail.entriesSoFar': 'Entries so far',
@@ -124,7 +132,8 @@ const TRANSLATIONS = {
     'footer.bottom': '© {year} نصيب. كل تذكرة مجانية.',
 
     'hero.eyebrow': 'لا يُشترط الشراء',
-    'hero.headline': 'كل تذكرة مجانية.<br>كل سحب حقيقي.',
+    'hero.headlineLine1': 'كل تذكرة مجانية.',
+    'hero.headlineLine2': 'كل سحب حقيقي.',
     'hero.lede': 'تستضيف نصيب مسابقات يموّلها القائمون عليها، وليس رسوم المشاركة. شارك بضغطة واحدة، بلا بطاقة دفع، وشاهد بنفسك كيف يُختار الفائز.',
     'hero.browseBtn': 'تصفح المسابقات',
     'hero.hostBtn': 'استضف مسابقتك',
@@ -152,7 +161,9 @@ const TRANSLATIONS = {
     'winners.lede': 'كل مسابقة هنا تُسحب بنفس الطريقة — عشوائيًا بالكامل، بعد الموعد النهائي، من بين كل من شارك. إليك من فاز حتى الآن.',
     'winners.wonBy': 'فاز بها {name}',
     'winners.by': 'بواسطة {name}',
-    'winners.emptyBody': 'لم يُسحب أي فائز بعد — تابعنا بعد إغلاق أول مسابقة، أو <a href="/index.html">تصفح ما هو مفتوح الآن</a>.',
+    'winners.emptyBefore': 'لم يُسحب أي فائز بعد — تابعنا بعد إغلاق أول مسابقة، أو ',
+    'winners.emptyLink': 'تصفح ما هو مفتوح الآن',
+    'winners.emptyAfter': '.',
 
     'detail.status': 'الحالة',
     'detail.entriesSoFar': 'المشاركات حتى الآن',
@@ -204,11 +215,19 @@ function applyI18n() {
   const lang = getLang();
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-  document.querySelectorAll('[data-i18n]').forEach((el) => {
-    el.textContent = t(el.getAttribute('data-i18n'));
+  document.querySelectorAll('[data-i18n]').forEach((node) => {
+    node.textContent = t(node.getAttribute('data-i18n'));
   });
-  document.querySelectorAll('[data-i18n-html]').forEach((el) => {
-    el.innerHTML = t(el.getAttribute('data-i18n-html'));
+  // data-i18n-html is gone. It read a key out of an attribute and assigned the
+  // dictionary entry with innerHTML — the two entries that needed it are now
+  // split into text parts, and the two elements that used it declare their
+  // structure instead.
+  document.querySelectorAll('[data-i18n-lines]').forEach((node) => {
+    const key = node.getAttribute('data-i18n-lines');
+    while (node.firstChild) node.removeChild(node.firstChild);
+    node.appendChild(document.createTextNode(t(key + 'Line1')));
+    node.appendChild(document.createElement('br'));
+    node.appendChild(document.createTextNode(t(key + 'Line2')));
   });
 }
 

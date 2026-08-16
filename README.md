@@ -211,26 +211,56 @@ What that cost, and what it bought:
 | Inline `<style>` blocks | 3 | **0** |
 | `style=""` attributes | 317 | **0** |
 | `setAttribute('style', …)` calls | 0 | 0 |
-| `element.style` writes in JS | 82 | **13** (values computed at runtime) |
+| `element.style` writes in JS | 82 | **12** (values computed at runtime) |
 | Image origins accepted | any `http(s)` URL | an allowlist of 1 |
+| `innerHTML` / `insertAdjacentHTML` sites | 74 | **0** |
 
-Three things to know before touching the frontend:
+**Nothing in `public/js` builds markup at runtime.** Not with a template literal, not
+with an escaping helper, not once. Elements are created, text is set as text, and each
+URL goes through a validator picked for where it is going. `escapeHtml` is gone on
+purpose: HTML escaping is correct for exactly one context, so a general-purpose escaper
+is a helper that is wrong somewhere. `docs/DOM_SINKS.md` is the full inventory — every
+one of the 28 remaining sinks, what flows into it, and why it is safe. Reproduce its
+counts with `node scripts/dom-sink-inventory.js`.
+
+Four things to know before touching the frontend:
 
 1. **No inline scripts or styles, ever again.** Add a file under `public/js/pages/` and a
    class in `public/css/utilities.css`. A `style="..."` attribute or an `onclick=`
-   handler will silently not run in a browser, and `test/csp.test.js` will fail.
-2. **`element.style.property = value` still works**, and is the right tool when a value is
+   handler will silently not run in a browser, and `test/dom-safety.test.js` will fail.
+2. **Build with `NaseebDom.el` / `mount`, never `innerHTML`.** `el('p', {text: value})`
+   is the whole idiom; `mount(node, children)` replaces a container's contents. An
+   `innerHTML` assignment anywhere in `public/js` fails the test suite.
+3. **URLs have four validators, not one.** `safeInternalUrl` for our own pages,
+   `safeMediaUrl` for images and video, `safeExternalLinkUrl` for an advertiser's site,
+   `safeExternalRedirectUrl` for the Stripe hand-off. Never HTML-escape a URL — escaping
+   does nothing to `javascript:`.
+4. **`element.style.property = value` still works**, and is the right tool when a value is
    computed at runtime. What `style-src-attr 'none'` blocks is the style *attribute* —
    markup, and `setAttribute('style', …)`. `docs/CSP.md` §7 has the measurement, and the
    record of getting this backwards first.
-3. **Media origins are one list with two consumers.** `MEDIA_ORIGIN_ALLOWLIST` both
-   decides which image URLs the server will store and becomes `img-src`/`media-src`.
-   Adding an origin grants it on both sides at once.
+
+`MEDIA_ORIGIN_ALLOWLIST` is one list with two consumers: it decides which image URLs the
+server will store *and* becomes `img-src`/`media-src`. Adding an origin grants it on both
+sides at once.
+
+Two suites hold this in place, and they check different things:
+
+```bash
+npm test                                   # includes the static + validator guards
+TEST_DATABASE_URL=… node test/browser-hostile-data.js   # real Chromium, hostile data
+```
+
+The second seeds a fabricated payload into **every** field a person can type into — 43
+of them, across eleven payload families — serves them from the real app, and asks
+Chromium what happened: any execution, CSP violation, JavaScript error, injected element,
+hijacked form destination, clobbered global or unexpected network request fails the run.
+`HOSTILE_SELFTEST=1` injects a live payload on purpose, so you can confirm the detector
+still reports red before trusting it when it reports green.
 
 `docs/CSP.md` is the whole policy: every external origin and why it is there, the other
-seven security headers, the `innerHTML` sites that remain and what makes each safe, the
-media-URL rejection rules, how to add an asset without weakening anything, and the
-limitations that stand.
+seven security headers, the media-URL rejection rules, how to add an asset without
+weakening anything, and the limitations that stand.
 
 ## Environment variables
 

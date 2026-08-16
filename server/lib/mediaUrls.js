@@ -50,15 +50,29 @@ function mediaOrigins() {
 
 const CONTROL_CHARACTERS = /[\x00-\x1f\x7f-\u009f]/;
 
+// Whitespace inside a URL, and a backslash \u2014 which several browsers treat as a
+// path separator, so "/\evil.example" can navigate off-site while reading as a
+// local path.
+const WHITESPACE_OR_BACKSLASH = /[\s\\]/;
+
+// A '%' that does not start a valid escape. Malformed encoding is decoded
+// differently by different consumers, which is the whole basis of a smuggling
+// bug \u2014 so it is refused rather than normalised.
+const BAD_PERCENT_ENCODING = /%(?![0-9A-Fa-f]{2})/;
+
 const REJECTION = {
   EMPTY: 'A media URL is required.',
   MALFORMED: 'That does not look like a valid URL.',
   CONTROL_CHARACTERS: 'That URL contains characters that are not allowed.',
+  WHITESPACE: 'That URL contains whitespace or a backslash.',
+  BAD_ENCODING: 'That URL contains a malformed percent-escape.',
   PROTOCOL_RELATIVE: 'Media URLs must start with https://.',
   NOT_HTTPS: 'Media URLs must be served over https.',
   CREDENTIALS: 'Media URLs must not contain a username or password.',
   ORIGIN_NOT_ALLOWED: 'That image host is not on our allowed list.',
   TOO_LONG: 'That URL is too long.',
+  LINK_NOT_HTTP: 'A destination link must be an http or https URL.',
+  NO_HOST: 'That URL has no host.',
 };
 
 const MAX_URL_LENGTH = 2048;
@@ -80,6 +94,8 @@ function validateMediaUrl(raw) {
   // stripped control character is a filter bypass. A tab inside "java\tscript:"
   // is the classic one.
   if (CONTROL_CHARACTERS.test(value)) return { error: REJECTION.CONTROL_CHARACTERS };
+  if (WHITESPACE_OR_BACKSLASH.test(value)) return { error: REJECTION.WHITESPACE };
+  if (BAD_PERCENT_ENCODING.test(value)) return { error: REJECTION.BAD_ENCODING };
 
   // "//evil.example/x.png" inherits whatever scheme the page is on. It parses
   // as a relative reference rather than a URL, so this has to be caught by
@@ -124,6 +140,47 @@ function isRenderableMediaUrl(value) {
   return Boolean(validateMediaUrl(value).url);
 }
 
+// An advertiser's own website: the one class of URL here that legitimately
+// points anywhere. It gets its own validator rather than sharing the media one,
+// because the two answer different questions — "may we render this?" and "may we
+// send somebody here?" — and a single "is this URL safe" function would have to
+// answer both at once and get one of them wrong.
+//
+// No origin allowlist, by design; the rest of the checks are the same, and the
+// scheme is the part that matters. `javascript:` is not a website.
+function validateExternalLinkUrl(raw) {
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    return { error: REJECTION.EMPTY };
+  }
+  const value = String(raw).trim();
+
+  if (value.length > MAX_URL_LENGTH) return { error: REJECTION.TOO_LONG };
+  if (CONTROL_CHARACTERS.test(value)) return { error: REJECTION.CONTROL_CHARACTERS };
+  if (WHITESPACE_OR_BACKSLASH.test(value)) return { error: REJECTION.WHITESPACE };
+  if (BAD_PERCENT_ENCODING.test(value)) return { error: REJECTION.BAD_ENCODING };
+  if (value.startsWith('//')) return { error: REJECTION.PROTOCOL_RELATIVE };
+
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return { error: REJECTION.MALFORMED };
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return { error: REJECTION.LINK_NOT_HTTP };
+  if (url.username || url.password) return { error: REJECTION.CREDENTIALS };
+  if (!url.hostname) return { error: REJECTION.NO_HOST };
+
+  return { url: url.href };
+}
+
+// Whether a stored destination is still safe to redirect a visitor to. Asked on
+// the click-through path, because rows predating this validation may hold
+// anything and a 302 to a stored string is an open redirect with extra steps.
+function isSafeExternalLink(value) {
+  return Boolean(validateExternalLinkUrl(value).url);
+}
+
 module.exports = {
   DEFAULT_ORIGINS,
   MAX_URL_LENGTH,
@@ -131,4 +188,6 @@ module.exports = {
   mediaOrigins,
   validateMediaUrl,
   isRenderableMediaUrl,
+  validateExternalLinkUrl,
+  isSafeExternalLink,
 };

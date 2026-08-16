@@ -431,31 +431,30 @@ test('applicant, administrative and claim text is returned as data, not markup',
   assert.ok(!/<script>/.test(queue.headers['content-type']));
 });
 
-test('the frontend escaper neutralises every payload, including encoded and nested ones', () => {
-  // The renderer is a browser file, so it is loaded and exercised directly
-  // rather than described.
+test('the frontend has no HTML escaper left to forget to call', () => {
+  // The phase-2.2B answer to injection was an escaping tagged template. The
+  // amendment removed it, because escaping is only ever correct for one context
+  // and a general-purpose escaper invites use in the others. Its absence is the
+  // assertion: if `escapeHtml` reappears, something is building markup again.
   const source = fs.readFileSync(path.join(PUBLIC, 'js', 'dom.js'), 'utf8');
   const sandbox = { window: {} };
   // eslint-disable-next-line no-new-func -- loading the module under test, with
   // a literal file this test controls. Nothing user-supplied reaches here.
-  new Function('window', source)(sandbox.window);
+  new Function('window', 'document', source)(sandbox.window, undefined);
   const dom = sandbox.window.NaseebDom;
 
-  PAYLOADS.forEach((payload) => {
-    const escaped = dom.escapeHtmlText(payload);
-    assert.ok(!/<[a-z/]/i.test(escaped), `"${payload.slice(0, 24)}…" must not keep a tag opener`);
-    assert.ok(!/"/.test(escaped), 'no bare double quote may survive into an attribute');
-    assert.ok(!/'/.test(escaped), 'nor a single one');
+  ['escapeHtmlText', 'html', 'trusted', 'setHtml'].forEach((name) => {
+    assert.equal(dom[name], undefined, `NaseebDom.${name} should be gone`);
   });
 
-  // The tagged template escapes by default, so forgetting is not possible.
-  const rendered = dom.html`<p>${'<img src=x onerror=alert(1)>'}</p>`;
-  assert.ok(dom.isTrusted(rendered));
-  assert.ok(!rendered.__safeMarkup.includes('<img'), 'interpolations are escaped');
-  assert.match(rendered.__safeMarkup, /&lt;img/);
+  const scripts = scriptFiles().map((f) => f.text).join('\n');
+  assert.ok(!/function\s+escapeHtml\b/.test(scripts), 'no escapeHtml helper remains');
+  assert.ok(!/function\s+escapeAttr\b/.test(scripts), 'no escapeAttr helper remains');
 
-  // And a bare string cannot reach innerHTML through the helper.
-  assert.throws(() => dom.setHtml({}, '<b>raw</b>'), TypeError);
+  // What replaced it: element construction and per-context URL validators.
+  ['el', 'mount', 'setText', 'setHref', 'setExternalHref', 'setMediaSrc', 'navigate'].forEach((name) => {
+    assert.equal(typeof dom[name], 'function', `NaseebDom.${name} should exist`);
+  });
 });
 
 // ---------------------------------------------------------------------------

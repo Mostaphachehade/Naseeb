@@ -16,16 +16,19 @@
         { num: s.verified_hosts, label: 'Verified hosts' },
         { num: s.approved_hosts, label: 'Approved hosts' },
         { num: s.suspended_hosts, label: 'Suspended hosts', attention: s.suspended_hosts > 0 },
-        { num: s.active_ad ? s.active_ad.click_count : '—', label: s.active_ad ? `Clicks — ${escapeHtml(s.active_ad.business_name)}` : 'No active ad' },
+        // The advertiser's business name, inside a label. Text, like every
+        // other value on this page.
+        {
+          num: s.active_ad ? s.active_ad.click_count : '—',
+          label: s.active_ad ? `Clicks — ${s.active_ad.business_name}` : 'No active ad',
+        },
       ];
-      content.innerHTML = cards.map((c) => `
-        <div class="admin-stat ${c.attention ? 'attention' : ''}">
-          <div class="admin-stat-num">${c.num}</div>
-          <div class="admin-stat-label">${c.label}</div>
-        </div>
-      `).join('');
+      mount(content, cards.map((c) => el('div', { class: c.attention ? 'admin-stat attention' : 'admin-stat' }, [
+        el('div', { class: 'admin-stat-num', text: c.num }),
+        el('div', { class: 'admin-stat-label', text: c.label }),
+      ])));
     } catch (err) {
-      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      mount(content, emptyNode(err.message));
     }
   }
 
@@ -40,87 +43,174 @@
     withdrawn: 'Withdrawn',
   };
 
-  function appRow(a) {
-    const typeBadge = `<span class="pill-badge ${a.applicant_type === 'company' ? 'company' : ''}">${escapeHtml(a.applicant_type)}</span>`;
-    const statusBadge = `<span class="pill-badge">${escapeHtml(STATUS_LABELS[a.status] || a.status)}</span>`;
-    const submitted = new Date(a.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    const decided = a.decided_at
-      ? `${new Date(a.decided_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}${a.decided_by_name ? ` by ${escapeHtml(a.decided_by_name)}` : ''}`
-      : '<span class="u-a2aae0fb">—</span>';
-    const legacy = a.user_id
-      ? ''
-      : '<br><span class="u-73c3c8ab">Legacy enquiry — no account attached</span>';
-    return `
-      <tr class="${a.status !== 'pending' ? 'contacted' : ''}" data-id="${a.id}">
-        <td>${typeBadge}</td>
-        <td>${escapeHtml(a.display_name || '—')}${legacy}</td>
-        <td>${statusBadge}</td>
-        <td>${submitted}</td>
-        <td>${decided}</td>
-        <td class="u-a9efa544">
-          <button class="btn ghost app-open-btn u-51820e15">Review</button>
-          ${a.status === 'pending' ? '<button class="btn ghost app-close-btn u-51820e15">Close without deciding</button>' : ''}
-        </td>
-      </tr>
-      <tr class="app-detail-row u-c8be1ccb is-hidden" data-detail-for="${a.id}"><td colspan="6"></td></tr>
-    `;
+  function shortDate(value) {
+    return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
-  async function openApplication(id) {
-    const cell = document.querySelector(`tr[data-detail-for="${id}"] td`);
-    const row = cell.parentElement;
+  function pill(text, extraClass) {
+    return el('span', { class: extraClass ? 'pill-badge ' + extraClass : 'pill-badge', text });
+  }
+
+  // Returns { row, detailRow } rather than a string, so the handlers below close
+  // over the actual elements. Nothing looks a row up again by an interpolated
+  // selector — `tr[data-detail-for="${id}"]` was a CSS selector built from a
+  // database value, which is its own small injection surface even when the value
+  // happens to be a UUID today.
+  function appRow(a) {
+    const detailCell = el('td', { colSpan: 6 });
+    const detailRow = el('tr', { class: 'app-detail-row u-c8be1ccb is-hidden' }, detailCell);
+
+    const openBtn = el('button', {
+      class: 'btn ghost app-open-btn u-51820e15',
+      text: 'Review',
+      on: { click: () => openApplication(a.id, detailRow, detailCell) },
+    });
+
+    // Closes, never deletes. The row, its submission time, the account it
+    // belongs to and its status events all stay exactly where they are — "it was
+    // only spam" is a judgement that becomes unreviewable the moment the
+    // evidence for it is gone.
+    const closeBtn = a.status === 'pending'
+      ? el('button', {
+          class: 'btn ghost app-close-btn u-51820e15',
+          text: 'Close without deciding',
+          on: {
+            click: async (e) => {
+              const btn = e.currentTarget;
+              const reason = prompt('Why is this application being closed without a decision? Recorded against the application.');
+              if (reason === null) return;
+              if (!reason.trim()) { alert('A short reason is required.'); return; }
+              btn.disabled = true;
+              try {
+                await api(`/admin/host-applications/${encodeURIComponent(a.id)}/close`, {
+                  method: 'POST',
+                  body: JSON.stringify({ reason }),
+                });
+                load();
+                loadStats();
+              } catch (err) {
+                alert(err.message);
+                btn.disabled = false;
+              }
+            },
+          },
+        })
+      : null;
+
+    const row = el('tr', { class: a.status !== 'pending' ? 'contacted' : null }, [
+      tdNode(pill(a.applicant_type, a.applicant_type === 'company' ? 'company' : null)),
+      tdNode([
+        a.display_name || '—',
+        a.user_id ? null : el('br'),
+        a.user_id ? null : el('span', { class: 'u-73c3c8ab', text: 'Legacy enquiry — no account attached' }),
+      ]),
+      tdNode(pill(STATUS_LABELS[a.status] || a.status)),
+      td(shortDate(a.created_at)),
+      tdNode(a.decided_at
+        ? shortDate(a.decided_at) + (a.decided_by_name ? ` by ${a.decided_by_name}` : '')
+        : el('span', { class: 'u-a2aae0fb', text: '—' })),
+      tdNode(spaced([openBtn, closeBtn]), 'u-a9efa544'),
+    ]);
+
+    return [row, detailRow];
+  }
+
+  async function openApplication(id, row, cell) {
     if (!row.classList.contains('is-hidden')) {
       row.classList.add('is-hidden');
       return;
     }
     row.classList.remove('is-hidden');
-    cell.innerHTML = 'Loading…';
+    setText(cell, 'Loading…');
     try {
-      const a = await api(`/admin/host-applications/${id}`);
+      const a = await api(`/admin/host-applications/${encodeURIComponent(id)}`);
       const decided = a.status !== 'pending';
-      cell.innerHTML = `
-        <div class="u-1b074808">
-          <p class="u-a353e69c"><strong>${escapeHtml(a.business_name || a.full_name)}</strong>${a.business_name ? ` — contact: ${escapeHtml(a.full_name)}` : ''}</p>
-          <p class="u-3e786f67">
-            ${escapeHtml(a.account_email || a.contact_email || '—')}${a.contact_phone ? ` · ${escapeHtml(a.contact_phone)}` : ''}${a.trade_license ? ` · licence ${escapeHtml(a.trade_license)}` : ''}
-          </p>
-          ${a.plan ? `<p class="u-06519697">Submitted against the withdrawn "${escapeHtml(a.plan)}" plan, before hosting plans were removed.</p>` : ''}
-          ${a.message ? `<p class="u-f06aec11">${escapeHtml(a.message)}</p>` : ''}
-          <p class="u-acb85f03">Account host status: <strong>${escapeHtml(a.host_status || 'no account')}</strong></p>
-          ${decided
-            ? `<p class="u-45314556">${escapeHtml(STATUS_LABELS[a.status] || a.status)} on ${new Date(a.decided_at).toLocaleString()}${a.decided_by_name ? ` by ${escapeHtml(a.decided_by_name)}` : ''}${a.decision_reason ? ` — "${escapeHtml(a.decision_reason)}"` : ''}</p>`
-            : `<label for="reason-${a.id}" class="u-1964b55e">Reason (recorded against this decision, and shown to the applicant)</label>
-               <input id="reason-${a.id}" class="decision-reason" maxlength="1000" placeholder="Why this decision?" />
-               <div class="u-d8a81eac">
-                 <button class="btn primary decide-btn u-14da4875" data-decision="approved" data-id="${a.id}">Approve to host</button>
-                 <button class="btn ghost decide-btn u-a716ef8e" data-decision="rejected" data-id="${a.id}">Do not approve</button>
-               </div>
-               <p class="hint u-b1ecc496">Approving is the only thing that grants host access. Nothing else on this page does.</p>`}
-        </div>
-      `;
-      cell.querySelectorAll('.decide-btn').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const reason = cell.querySelector('.decision-reason').value;
-          if (!reason.trim()) {
-            alert('A short reason is required — it is recorded against the decision.');
-            return;
-          }
-          btn.disabled = true;
-          try {
-            await api(`/admin/host-applications/${btn.dataset.id}/decision`, {
-              method: 'POST',
-              body: JSON.stringify({ decision: btn.dataset.decision, reason }),
-            });
-            load();
-            loadStats();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
+
+      // Every field below was typed by the applicant: the business name, the
+      // contact name, the phone number, the trade licence, the free-text
+      // message. They are the reason this panel exists, and none of them is
+      // parsed as markup.
+      const contactLine = [
+        a.account_email || a.contact_email || '—',
+        a.contact_phone ? ` · ${a.contact_phone}` : '',
+        a.trade_license ? ` · licence ${a.trade_license}` : '',
+      ].join('');
+
+      let decisionBlock;
+      if (decided) {
+        decisionBlock = el('p', {
+          class: 'u-45314556',
+          text: `${STATUS_LABELS[a.status] || a.status} on ${new Date(a.decided_at).toLocaleString()}`
+            + (a.decided_by_name ? ` by ${a.decided_by_name}` : '')
+            + (a.decision_reason ? ` — "${a.decision_reason}"` : ''),
         });
-      });
+      } else {
+        const reasonInput = el('input', {
+          class: 'decision-reason',
+          maxLength: 1000,
+          placeholder: 'Why this decision?',
+        });
+        const decide = (decision, label, className) => el('button', {
+          class: className,
+          text: label,
+          on: {
+            click: async (e) => {
+              const btn = e.currentTarget;
+              if (!reasonInput.value.trim()) {
+                alert('A short reason is required — it is recorded against the decision.');
+                return;
+              }
+              btn.disabled = true;
+              try {
+                await api(`/admin/host-applications/${encodeURIComponent(a.id)}/decision`, {
+                  method: 'POST',
+                  body: JSON.stringify({ decision, reason: reasonInput.value }),
+                });
+                load();
+                loadStats();
+              } catch (err) {
+                alert(err.message);
+                btn.disabled = false;
+              }
+            },
+          },
+        });
+
+        decisionBlock = frag([
+          el('label', { class: 'u-1964b55e', text: 'Reason (recorded against this decision, and shown to the applicant)' }),
+          reasonInput,
+          el('div', { class: 'u-d8a81eac' }, [
+            decide('approved', 'Approve to host', 'btn primary decide-btn u-14da4875'),
+            decide('rejected', 'Do not approve', 'btn ghost decide-btn u-a716ef8e'),
+          ]),
+          el('p', {
+            class: 'hint u-b1ecc496',
+            text: 'Approving is the only thing that grants host access. Nothing else on this page does.',
+          }),
+        ]);
+      }
+
+      mount(cell, el('div', { class: 'u-1b074808' }, [
+        el('p', { class: 'u-a353e69c' }, [
+          el('strong', { text: a.business_name || a.full_name }),
+          a.business_name ? ` — contact: ${a.full_name}` : null,
+        ]),
+        el('p', { class: 'u-3e786f67', text: contactLine }),
+        a.plan
+          ? el('p', {
+              class: 'u-06519697',
+              text: `Submitted against the withdrawn "${a.plan}" plan, before hosting plans were removed.`,
+            })
+          : null,
+        a.message ? el('p', { class: 'u-f06aec11', text: a.message }) : null,
+        el('p', { class: 'u-acb85f03' }, [
+          'Account host status: ',
+          el('strong', { text: a.host_status || 'no account' }),
+        ]),
+        decisionBlock,
+      ]));
     } catch (err) {
-      cell.innerHTML = `<span class="form-error show">${escapeHtml(err.message)}</span>`;
+      mount(cell, el('span', { class: 'form-error show', text: err.message }));
     }
   }
 
@@ -129,66 +219,76 @@
     try {
       const applications = await api('/admin/host-applications');
       if (applications.length === 0) {
-        content.innerHTML = `<div class="empty">No applications yet.</div>`;
+        mount(content, emptyNode('No applications yet.'));
         return;
       }
-      content.innerHTML = `
-        <div class="table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Type</th><th>Who</th><th>Status</th><th>Submitted</th><th>Decided</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>${applications.map(appRow).join('')}</tbody>
-          </table>
-        </div>
-      `;
-      content.querySelectorAll('.app-open-btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => openApplication(e.target.closest('tr').dataset.id));
-      });
-      // Closes, never deletes. The row, its submission time, the account it
-      // belongs to and its status events all stay exactly where they are —
-      // "it was only spam" is a judgement that becomes unreviewable the moment
-      // the evidence for it is gone.
-      content.querySelectorAll('.app-close-btn').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          const reason = prompt('Why is this application being closed without a decision? Recorded against the application.');
-          if (reason === null) return;
-          if (!reason.trim()) { alert('A short reason is required.'); return; }
-          const id = e.target.closest('tr').dataset.id;
+      mount(content, dataTable(
+        ['Type', 'Who', 'Status', 'Submitted', 'Decided', 'Actions'],
+        applications.flatMap(appRow),
+        'No applications yet.'
+      ));
+    } catch (err) {
+      mount(content, emptyNode(err.message));
+    }
+  }
+
+  // Advertising inquiries are submitted by anyone who fills in the public form —
+  // the least-trusted data on this page. Business name, contact email, phone and
+  // the free-text message are all text nodes.
+  function adInquiryRow(a) {
+    const toggle = el('button', {
+      class: 'btn ghost inquiry-contacted-btn u-51820e15',
+      text: a.contacted ? 'Mark not contacted' : 'Mark contacted',
+      on: {
+        click: async (e) => {
+          const btn = e.currentTarget;
           btn.disabled = true;
           try {
-            await api(`/admin/host-applications/${id}/close`, {
-              method: 'POST',
-              body: JSON.stringify({ reason }),
+            await api(`/admin/ad-inquiries/${encodeURIComponent(a.id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ contacted: !a.contacted }),
             });
-            load();
+            loadAdInquiries();
             loadStats();
           } catch (err) {
             alert(err.message);
             btn.disabled = false;
           }
-        });
-      });
-    } catch (err) {
-      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
-    }
-  }
+        },
+      },
+    });
 
-  function adInquiryRow(a) {
-    return `
-      <tr class="${a.contacted ? 'contacted' : ''}" data-id="${a.id}">
-        <td>${escapeHtml(a.business_name)}</td>
-        <td>${escapeHtml(a.contact_email)}${a.contact_phone ? `<br><span class="u-c2238623">${escapeHtml(a.contact_phone)}</span>` : ''}</td>
-        <td class="u-71b5af5d">${a.message ? escapeHtml(a.message) : '<span class="u-a2aae0fb">—</span>'}</td>
-        <td>${new Date(a.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</td>
-        <td class="u-a9efa544">
-          <button class="btn ghost inquiry-contacted-btn u-51820e15" data-contacted="${a.contacted}">${a.contacted ? 'Mark not contacted' : 'Mark contacted'}</button>
-          <button class="btn ghost inquiry-delete-btn u-54750247">Delete</button>
-        </td>
-      </tr>
-    `;
+    const remove = el('button', {
+      class: 'btn ghost inquiry-delete-btn u-54750247',
+      text: 'Delete',
+      on: {
+        click: async (e) => {
+          const btn = e.currentTarget;
+          if (!confirm('Delete this inquiry? This cannot be undone.')) return;
+          btn.disabled = true;
+          try {
+            await api(`/admin/ad-inquiries/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
+            loadAdInquiries();
+            loadStats();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
+          }
+        },
+      },
+    });
+
+    return el('tr', { class: a.contacted ? 'contacted' : null }, [
+      td(a.business_name),
+      tdNode([
+        a.contact_email,
+        a.contact_phone ? el('br') : null,
+        a.contact_phone ? el('span', { class: 'u-c2238623', text: a.contact_phone }) : null,
+      ]),
+      tdNode(a.message || el('span', { class: 'u-a2aae0fb', text: '—' }), 'u-71b5af5d'),
+      td(shortDate(a.created_at)),
+      tdNode(spaced([toggle, remove]), 'u-a9efa544'),
+    ]);
   }
 
   async function loadAdInquiries() {
@@ -196,51 +296,16 @@
     try {
       const inquiries = await api('/admin/ad-inquiries');
       if (inquiries.length === 0) {
-        content.innerHTML = `<div class="empty">No ad inquiries yet.</div>`;
+        mount(content, emptyNode('No ad inquiries yet.'));
         return;
       }
-      content.innerHTML = `
-        <div class="table-wrap">
-          <table class="admin-table">
-            <thead><tr><th>Business</th><th>Contact</th><th>Message</th><th>Submitted</th><th>Actions</th></tr></thead>
-            <tbody>${inquiries.map(adInquiryRow).join('')}</tbody>
-          </table>
-        </div>
-      `;
-      content.querySelectorAll('.inquiry-contacted-btn').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          const row = e.target.closest('tr');
-          const id = row.dataset.id;
-          const nextContacted = btn.dataset.contacted !== 'true';
-          btn.disabled = true;
-          try {
-            await api(`/admin/ad-inquiries/${id}`, { method: 'PATCH', body: JSON.stringify({ contacted: nextContacted }) });
-            loadAdInquiries();
-            loadStats();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
-        });
-      });
-      content.querySelectorAll('.inquiry-delete-btn').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          if (!confirm('Delete this inquiry? This cannot be undone.')) return;
-          const row = e.target.closest('tr');
-          const id = row.dataset.id;
-          btn.disabled = true;
-          try {
-            await api(`/admin/ad-inquiries/${id}`, { method: 'DELETE' });
-            loadAdInquiries();
-            loadStats();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
-        });
-      });
+      mount(content, dataTable(
+        ['Business', 'Contact', 'Message', 'Submitted', 'Actions'],
+        inquiries.map(adInquiryRow),
+        'No ad inquiries yet.'
+      ));
     } catch (err) {
-      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      mount(content, emptyNode(err.message));
     }
   }
 
@@ -254,34 +319,89 @@
       const today = new Date().toISOString().slice(0, 10);
       const isLive = startsAt <= today && endsAt >= today;
       const label = isLive ? 'live' : (startsAt > today ? 'upcoming' : 'finished');
-      return `<span class="pill-badge company">paid · ${label}</span><br><span class="hint u-b98cacf2">${startsAt} – ${endsAt} · AED ${Number(a.amount_aed).toLocaleString()}</span>`;
+      return [
+        pill('paid · ' + label, 'company'),
+        el('br'),
+        el('span', {
+          class: 'hint u-b98cacf2',
+          text: `${startsAt} – ${endsAt} · AED ${Number(a.amount_aed).toLocaleString()}`,
+        }),
+      ];
     }
-    if (a.stripe_session_id) {
-      return `<span class="pill-badge">checkout pending</span>`;
-    }
-    return a.active ? '<span class="pill-badge company">active</span>' : '<span class="pill-badge">inactive</span>';
+    if (a.stripe_session_id) return pill('checkout pending');
+    return a.active ? pill('active', 'company') : pill('inactive');
   }
 
   function adRow(a) {
+    // The banner itself. Escaping a URL and dropping it into a src is what this
+    // used to do; the media validator is what it does now, and an ad whose media
+    // is not on an allowed origin shows no thumbnail rather than fetching from
+    // wherever the URL pointed.
     const thumb = a.media_type === 'video'
-      ? `<video src="${escapeHtml(a.image_url)}" muted class="u-6e0bccff"></video>`
-      : `<img src="${escapeHtml(a.image_url)}" alt="" class="u-6e0bccff" />`;
+      ? el('video', { muted: true, class: 'u-6e0bccff' })
+      : el('img', { alt: '', class: 'u-6e0bccff' });
+    NaseebDom.setMediaSrc(thumb, a.image_url);
+
+    // The destination is advertiser-supplied and genuinely off-site, so it gets
+    // the external-link validator rather than the internal one. A rejected
+    // destination is shown as plain text with no href — visible to the
+    // administrator reviewing it, and not clickable.
+    const destination = el('a', { target: '_blank', text: a.target_url });
+    NaseebDom.setExternalHref(destination, a.target_url);
+
     // Self-serve paid bookings are scheduled by date, not hand-toggled —
     // only manually-created admin ads get the activate/deactivate button.
     const isManual = !a.paid && !a.stripe_session_id;
-    return `
-      <tr data-id="${a.id}">
-        <td>${thumb}</td>
-        <td>${escapeHtml(a.business_name)} ${a.media_type === 'video' ? '<span class="pill-badge">video</span>' : ''}</td>
-        <td class="u-9f5261ae"><a href="${escapeHtml(a.target_url)}" target="_blank" rel="noopener">${escapeHtml(a.target_url)}</a></td>
-        <td class="mono">${a.click_count}</td>
-        <td>${adStatusCell(a)}</td>
-        <td>
-          ${isManual ? `<button class="btn ghost ad-toggle-btn u-cc20b935" data-active="${a.active}">${a.active ? 'Deactivate' : 'Activate'}</button>` : ''}
-          <button class="btn ghost ad-delete-btn u-162e4030">Delete</button>
-        </td>
-      </tr>
-    `;
+    const toggle = isManual
+      ? el('button', {
+          class: 'btn ghost ad-toggle-btn u-cc20b935',
+          text: a.active ? 'Deactivate' : 'Activate',
+          on: {
+            click: async (e) => {
+              const btn = e.currentTarget;
+              btn.disabled = true;
+              try {
+                await api(`/admin/ads/${encodeURIComponent(a.id)}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ active: !a.active }),
+                });
+                loadAds();
+              } catch (err) {
+                alert(err.message);
+                btn.disabled = false;
+              }
+            },
+          },
+        })
+      : null;
+
+    const remove = el('button', {
+      class: 'btn ghost ad-delete-btn u-162e4030',
+      text: 'Delete',
+      on: {
+        click: async (e) => {
+          const btn = e.currentTarget;
+          if (!confirm('Delete this ad? This cannot be undone.')) return;
+          btn.disabled = true;
+          try {
+            await api(`/admin/ads/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
+            loadAds();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
+          }
+        },
+      },
+    });
+
+    return el('tr', {}, [
+      tdNode(thumb),
+      tdNode([a.business_name, ' ', a.media_type === 'video' ? pill('video') : null]),
+      tdNode(destination, 'u-9f5261ae'),
+      td(a.click_count, 'mono'),
+      tdNode(adStatusCell(a)),
+      tdNode(spaced([toggle, remove])),
+    ]);
   }
 
   async function loadAds() {
@@ -289,73 +409,61 @@
     try {
       const ads = await api('/admin/ads');
       if (ads.length === 0) {
-        content.innerHTML = `<div class="empty">No ads yet. Add one above.</div>`;
+        mount(content, emptyNode('No ads yet. Add one above.'));
         return;
       }
-      content.innerHTML = `
-        <div class="table-wrap">
-          <table class="admin-table">
-            <thead><tr><th>Banner</th><th>Business</th><th>Destination</th><th>Clicks</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody>${ads.map(adRow).join('')}</tbody>
-          </table>
-        </div>
-      `;
-      content.querySelectorAll('.ad-toggle-btn').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          const row = e.target.closest('tr');
-          const id = row.dataset.id;
-          const nextActive = btn.dataset.active !== 'true';
-          btn.disabled = true;
-          try {
-            await api(`/admin/ads/${id}`, { method: 'PATCH', body: JSON.stringify({ active: nextActive }) });
-            loadAds();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
-        });
-      });
-      content.querySelectorAll('.ad-delete-btn').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          if (!confirm('Delete this ad? This cannot be undone.')) return;
-          const row = e.target.closest('tr');
-          const id = row.dataset.id;
-          btn.disabled = true;
-          try {
-            await api(`/admin/ads/${id}`, { method: 'DELETE' });
-            loadAds();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
-        });
-      });
+      mount(content, dataTable(
+        ['Banner', 'Business', 'Destination', 'Clicks', 'Status', 'Actions'],
+        ads.map(adRow),
+        'No ads yet. Add one above.'
+      ));
     } catch (err) {
-      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      mount(content, emptyNode(err.message));
     }
   }
 
   const GIVEAWAY_STATUS_CLASS = { active: 'company', cancelled: '', drawn: '' };
 
   function giveawayRow(g) {
-    const deadline = new Date(g.entry_deadline).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    const statusBadge = `<span class="pill-badge ${GIVEAWAY_STATUS_CLASS[g.status] || ''}">${escapeHtml(g.status)}</span>`;
-    let action = '<span class="u-c2238623">—</span>';
+    const statusChange = (status, label, className, confirmText) => el('button', {
+      class: className,
+      text: label,
+      on: {
+        click: async (e) => {
+          const btn = e.currentTarget;
+          if (confirmText && !confirm(confirmText)) return;
+          btn.disabled = true;
+          try {
+            await api(`/admin/giveaways/${encodeURIComponent(g.id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status }),
+            });
+            loadGiveaways();
+            loadStats();
+          } catch (err) {
+            alert(err.message);
+            btn.disabled = false;
+          }
+        },
+      },
+    });
+
+    let action = el('span', { class: 'u-c2238623', text: '—' });
     if (g.status === 'active') {
-      action = `<button class="btn ghost giveaway-cancel-btn u-162e4030">Cancel</button>`;
+      action = statusChange('cancelled', 'Cancel', 'btn ghost giveaway-cancel-btn u-162e4030',
+        'Cancel this giveaway? Entrants will no longer be able to enter.');
     } else if (g.status === 'cancelled') {
-      action = `<button class="btn ghost giveaway-reinstate-btn u-cc20b935">Reinstate</button>`;
+      action = statusChange('active', 'Reinstate', 'btn ghost giveaway-reinstate-btn u-cc20b935');
     }
-    return `
-      <tr data-id="${g.id}">
-        <td>${escapeHtml(g.title)}</td>
-        <td>${escapeHtml(g.host_name)}<br><span class="u-c2238623">${escapeHtml(g.host_email)}</span></td>
-        <td class="mono">${g.entry_count}</td>
-        <td>${deadline}</td>
-        <td>${statusBadge}</td>
-        <td>${action}</td>
-      </tr>
-    `;
+
+    return el('tr', {}, [
+      td(g.title),
+      tdNode([g.host_name, el('br'), el('span', { class: 'u-c2238623', text: g.host_email })]),
+      td(g.entry_count, 'mono'),
+      td(shortDate(g.entry_deadline)),
+      tdNode(pill(g.status, GIVEAWAY_STATUS_CLASS[g.status] || null)),
+      tdNode(action),
+    ]);
   }
 
   async function loadGiveaways() {
@@ -363,69 +471,75 @@
     try {
       const giveaways = await api('/admin/giveaways');
       if (giveaways.length === 0) {
-        content.innerHTML = `<div class="empty">No giveaways yet.</div>`;
+        mount(content, emptyNode('No giveaways yet.'));
         return;
       }
-      content.innerHTML = `
-        <div class="table-wrap">
-          <table class="admin-table">
-            <thead><tr><th>Title</th><th>Host</th><th>Entries</th><th>Deadline</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody>${giveaways.map(giveawayRow).join('')}</tbody>
-          </table>
-        </div>
-      `;
-      content.querySelectorAll('.giveaway-cancel-btn').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          if (!confirm('Cancel this giveaway? Entrants will no longer be able to enter.')) return;
-          const row = e.target.closest('tr');
-          const id = row.dataset.id;
-          btn.disabled = true;
-          try {
-            await api(`/admin/giveaways/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'cancelled' }) });
-            loadGiveaways();
-            loadStats();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
-        });
-      });
-      content.querySelectorAll('.giveaway-reinstate-btn').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          const row = e.target.closest('tr');
-          const id = row.dataset.id;
-          btn.disabled = true;
-          try {
-            await api(`/admin/giveaways/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'active' }) });
-            loadGiveaways();
-            loadStats();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
-        });
-      });
+      mount(content, dataTable(
+        ['Title', 'Host', 'Entries', 'Deadline', 'Status', 'Actions'],
+        giveaways.map(giveawayRow),
+        'No giveaways yet.'
+      ));
     } catch (err) {
-      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      mount(content, emptyNode(err.message));
     }
   }
 
   function userRow(u) {
-    const joined = new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const verifiedToggle = el('input', {
+      type: 'checkbox',
+      class: 'verified-toggle',
+      checked: Boolean(u.is_verified_business),
+      on: {
+        change: async (e) => {
+          const box = e.currentTarget;
+          const is_verified_business = box.checked;
+          box.disabled = true;
+          try {
+            await api(`/admin/users/${encodeURIComponent(u.id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ is_verified_business }),
+            });
+          } catch (err) {
+            box.checked = !is_verified_business;
+            alert(err.message);
+          } finally {
+            box.disabled = false;
+          }
+        },
+      },
+    });
+
     const deleteBtn = u.is_admin
-      ? '<span class="u-c2238623">—</span>'
-      : `<button class="btn ghost user-delete-btn u-54750247">Delete</button>`;
-    return `
-      <tr data-id="${u.id}">
-        <td>${escapeHtml(u.name)}${u.is_admin ? ' <span class="pill-badge company">admin</span>' : ''}</td>
-        <td>${escapeHtml(u.email)}</td>
-        <td class="mono">${u.giveaways_hosted}</td>
-        <td>${joined}</td>
-        <td><input type="checkbox" class="verified-toggle" ${u.is_verified_business ? 'checked' : ''} /></td>
-        <td>${hostStatusCell(u)}</td>
-        <td class="u-a9efa544">${hostActions(u)} ${deleteBtn}</td>
-      </tr>
-    `;
+      ? el('span', { class: 'u-c2238623', text: '—' })
+      : el('button', {
+          class: 'btn ghost user-delete-btn u-54750247',
+          text: 'Delete',
+          on: {
+            click: async (e) => {
+              const btn = e.currentTarget;
+              if (!confirm('Delete this host account? This cannot be undone.')) return;
+              btn.disabled = true;
+              try {
+                await api(`/admin/users/${encodeURIComponent(u.id)}`, { method: 'DELETE' });
+                loadUsers();
+                loadStats();
+              } catch (err) {
+                alert(err.message);
+                btn.disabled = false;
+              }
+            },
+          },
+        });
+
+    return el('tr', {}, [
+      tdNode([u.name, u.is_admin ? ' ' : null, u.is_admin ? pill('admin', 'company') : null]),
+      td(u.email),
+      td(u.giveaways_hosted, 'mono'),
+      td(shortDate(u.created_at)),
+      tdNode(verifiedToggle),
+      tdNode(hostStatusCell(u)),
+      tdNode(spaced([hostActions(u), deleteBtn]), 'u-a9efa544'),
+    ]);
   }
 
   const HOST_STATUS_LABELS = {
@@ -437,64 +551,34 @@
   };
 
   function hostStatusCell(u) {
-    const label = HOST_STATUS_LABELS[u.host_status] || u.host_status || '—';
-    const when = u.host_status_changed_at
-      ? `<br><span class="u-5e8e7900">${new Date(u.host_status_changed_at).toLocaleDateString()}</span>`
-      : '';
-    const exempt = u.is_admin
-      ? '<br><span class="u-5e8e7900">admin — this gate does not apply</span>'
-      : '';
-    return `<span class="pill-badge">${escapeHtml(label)}</span>${when}${exempt}`;
+    return [
+      pill(HOST_STATUS_LABELS[u.host_status] || u.host_status || '—'),
+      u.host_status_changed_at ? el('br') : null,
+      u.host_status_changed_at
+        ? el('span', {
+            class: 'u-5e8e7900',
+            text: new Date(u.host_status_changed_at).toLocaleDateString(),
+          })
+        : null,
+      u.is_admin ? el('br') : null,
+      u.is_admin ? el('span', { class: 'u-5e8e7900', text: 'admin — this gate does not apply' }) : null,
+    ];
   }
 
+  // Suspending and reinstating both need a reason, so both go through the same
+  // prompt. Neither deletes anything.
   function hostActions(u) {
-    // Suspending and reinstating both need a reason, so both go through the
-    // same prompt. Neither deletes anything.
-    if (u.host_status === 'approved') {
-      return `<button class="btn ghost host-status-btn u-51820e15" data-status="suspended">Suspend hosting</button>`;
-    }
-    if (u.host_status === 'suspended') {
-      return `<button class="btn ghost host-status-btn u-51820e15" data-status="approved">Reinstate</button>`;
-    }
-    return `<button class="btn ghost host-status-btn u-51820e15" data-status="approved">Grant hosting</button>`;
-  }
+    const status = u.host_status === 'approved' ? 'suspended' : 'approved';
+    const label = u.host_status === 'approved'
+      ? 'Suspend hosting'
+      : u.host_status === 'suspended' ? 'Reinstate' : 'Grant hosting';
 
-  async function loadUsers() {
-    const content = document.getElementById('users-content');
-    try {
-      const users = await api('/admin/users');
-      if (users.length === 0) {
-        content.innerHTML = `<div class="empty">No accounts yet.</div>`;
-        return;
-      }
-      content.innerHTML = `
-        <div class="table-wrap">
-          <table class="admin-table">
-            <thead><tr><th>Name</th><th>Email</th><th>Hosted</th><th>Joined</th><th>Verified</th><th>Host access</th><th>Actions</th></tr></thead>
-            <tbody>${users.map(userRow).join('')}</tbody>
-          </table>
-        </div>
-      `;
-      content.querySelectorAll('.verified-toggle').forEach((box) => {
-        box.addEventListener('change', async (e) => {
-          const row = e.target.closest('tr');
-          const id = row.dataset.id;
-          const is_verified_business = e.target.checked;
-          e.target.disabled = true;
-          try {
-            await api(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify({ is_verified_business }) });
-          } catch (err) {
-            e.target.checked = !is_verified_business;
-            alert(err.message);
-          } finally {
-            e.target.disabled = false;
-          }
-        });
-      });
-      content.querySelectorAll('.host-status-btn').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          const id = e.target.closest('tr').dataset.id;
-          const status = btn.dataset.status;
+    return el('button', {
+      class: 'btn ghost host-status-btn u-51820e15',
+      text: label,
+      on: {
+        click: async (e) => {
+          const btn = e.currentTarget;
           const reason = prompt(
             status === 'suspended'
               ? 'Why is hosting being suspended? This is recorded against the change and shown to the account.'
@@ -507,7 +591,7 @@
           }
           btn.disabled = true;
           try {
-            const result = await api(`/admin/hosts/${id}/status`, {
+            const result = await api(`/admin/hosts/${encodeURIComponent(u.id)}/status`, {
               method: 'POST',
               body: JSON.stringify({ status, reason }),
             });
@@ -523,26 +607,26 @@
             alert(err.message);
             btn.disabled = false;
           }
-        });
-      });
-      content.querySelectorAll('.user-delete-btn').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          const row = e.target.closest('tr');
-          const id = row.dataset.id;
-          if (!confirm('Delete this host account? This cannot be undone.')) return;
-          btn.disabled = true;
-          try {
-            await api(`/admin/users/${id}`, { method: 'DELETE' });
-            loadUsers();
-            loadStats();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
-        });
-      });
+        },
+      },
+    });
+  }
+
+  async function loadUsers() {
+    const content = document.getElementById('users-content');
+    try {
+      const users = await api('/admin/users');
+      if (users.length === 0) {
+        mount(content, emptyNode('No accounts yet.'));
+        return;
+      }
+      mount(content, dataTable(
+        ['Name', 'Email', 'Hosted', 'Joined', 'Verified', 'Host access', 'Actions'],
+        users.map(userRow),
+        'No accounts yet.'
+      ));
     } catch (err) {
-      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      mount(content, emptyNode(err.message));
     }
   }
 
@@ -591,18 +675,17 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
-      document.getElementById('ad_image_url').value = data.secure_url;
       const imgPreview = document.getElementById('ad-image-preview');
       const videoPreview = document.getElementById('ad-video-preview');
-      if (adMediaType === 'video') {
-        videoPreview.src = data.secure_url;
-        videoPreview.classList.remove('is-hidden');
-        imgPreview.classList.add('is-hidden');
-      } else {
-        imgPreview.src = data.secure_url;
-        imgPreview.classList.remove('is-hidden');
-        videoPreview.classList.add('is-hidden');
+      const target = adMediaType === 'video' ? videoPreview : imgPreview;
+      const other = adMediaType === 'video' ? imgPreview : videoPreview;
+      if (!NaseebDom.setMediaSrc(target, data.secure_url)) {
+        statusEl.textContent = 'Upload returned a media address we do not accept.';
+        return;
       }
+      document.getElementById('ad_image_url').value = data.secure_url;
+      target.classList.remove('is-hidden');
+      other.classList.add('is-hidden');
       statusEl.textContent = 'Uploaded.';
     } catch (err) {
       statusEl.textContent = err.message;
@@ -676,23 +759,111 @@
   };
 
   function rescueRow(r) {
+    const detailCell = el('td', { colSpan: 4 });
+    const detailRow = el('tr', { class: 'u-c8be1ccb is-hidden' }, detailCell);
+
     const next = r.action_available ? RESCUE_NEXT[r.claim_status] : null;
-    const waiting = !next
-      ? '<span class="u-c2238623">Nothing for you to do here — this one is waiting on the winner.</span>'
-      : '';
-    return `
-      <tr data-claim="${r.claim_id}">
-        <td>${escapeHtml(r.title)}<br><span class="u-a76e0798">host: ${escapeHtml(r.host_name)} · winner: ${escapeHtml(r.winner_name)}</span></td>
-        <td><span class="pill-badge">${escapeHtml(CLAIM_STATE_LABELS[r.claim_status] || r.claim_status)}</span></td>
-        <td>${new Date(r.opened_at).toLocaleDateString()}<br><span class="u-a76e0798">${escapeHtml(r.opened_reason || '')}</span></td>
-        <td class="u-a9efa544">
-          ${next ? `<button class="btn primary rescue-step u-51820e15" data-to="${next.to}">${next.label}</button>` : ''}
-          ${r.delivery_available ? '<button class="btn ghost rescue-details u-51820e15">Open delivery details</button>' : '<span class="u-73c3c8ab">no details available</span>'}
-          ${waiting}
-        </td>
-      </tr>
-      <tr data-details-for="${r.claim_id}" class="u-c8be1ccb is-hidden"><td colspan="4"></td></tr>
-    `;
+    const stepBtn = next
+      ? el('button', {
+          class: 'btn primary rescue-step u-51820e15',
+          text: next.label,
+          on: {
+            click: async (e) => {
+              const btn = e.currentTarget;
+              const reason = prompt('Why are you taking this step for the host? Recorded in the claim history.');
+              if (reason === null) return;
+              if (!reason.trim()) { alert('A short reason is required.'); return; }
+              btn.disabled = true;
+              try {
+                await api(`/claims/${encodeURIComponent(r.claim_id)}/rescue/transition`, {
+                  method: 'POST',
+                  body: JSON.stringify({ to: next.to, reason }),
+                });
+                loadRescueQueue();
+                loadClaims();
+              } catch (err) {
+                alert(err.message);
+                btn.disabled = false;
+              }
+            },
+          },
+        })
+      : null;
+
+    // A winner's address and phone number. Opened only on this deliberate
+    // click, for one claim, with a recorded reason — and rendered one field per
+    // element, as text. Nothing about a delivery address should ever be able to
+    // reach a parser.
+    const detailsBtn = r.delivery_available
+      ? el('button', {
+          class: 'btn ghost rescue-details u-51820e15',
+          text: 'Open delivery details',
+          on: {
+            click: async (e) => {
+              const btn = e.currentTarget;
+              if (!detailRow.classList.contains('is-hidden')) {
+                detailRow.classList.add('is-hidden');
+                clear(detailCell);
+                return;
+              }
+              const reason = prompt("Why do you need the winner's address? This is recorded against the claim.");
+              if (reason === null) return;
+              if (!reason.trim()) { alert('A short reason is required.'); return; }
+              btn.disabled = true;
+              try {
+                const result = await api(`/claims/${encodeURIComponent(r.claim_id)}/rescue/delivery-details`, {
+                  method: 'POST',
+                  body: JSON.stringify({ reason }),
+                });
+                const d = result.delivery.details;
+                detailRow.classList.remove('is-hidden');
+                mount(detailCell, el('div', { class: 'u-1b074808' }, [
+                  el('p', {
+                    class: 'u-06519697',
+                    text: `Opened for fulfilment and recorded in this claim's history. Winner consented ${new Date(result.delivery.consentedAt).toLocaleDateString()} (${result.delivery.consentVersion}).`,
+                  }),
+                  el('p', { class: 'u-1da9facb', text: `${d.recipient_name} · ${d.phone}` }),
+                  el('p', {
+                    class: 'u-1da9facb',
+                    text: d.address_line2 ? `${d.address_line1}, ${d.address_line2}` : d.address_line1,
+                  }),
+                  el('p', { class: 'u-1da9facb', text: `${d.city}, ${d.emirate}` }),
+                  d.notes ? el('p', { class: 'u-f1d2a576', text: d.notes }) : null,
+                ]));
+              } catch (err) {
+                alert(err.message);
+              } finally {
+                btn.disabled = false;
+              }
+            },
+          },
+        })
+      : el('span', { class: 'u-73c3c8ab', text: 'no details available' });
+
+    const row = el('tr', {}, [
+      tdNode([
+        r.title,
+        el('br'),
+        el('span', { class: 'u-a76e0798', text: `host: ${r.host_name} · winner: ${r.winner_name}` }),
+      ]),
+      tdNode(pill(CLAIM_STATE_LABELS[r.claim_status] || r.claim_status)),
+      tdNode([
+        new Date(r.opened_at).toLocaleDateString(),
+        el('br'),
+        // The reason an administrator typed when suspending the host.
+        el('span', { class: 'u-a76e0798', text: r.opened_reason || '' }),
+      ]),
+      tdNode(spaced([
+        stepBtn,
+        detailsBtn,
+        next ? null : el('span', {
+          class: 'u-c2238623',
+          text: 'Nothing for you to do here — this one is waiting on the winner.',
+        }),
+      ]), 'u-a9efa544'),
+    ]);
+
+    return [row, detailRow];
   }
 
   async function loadRescueQueue() {
@@ -700,74 +871,16 @@
     try {
       const rows = await api('/claims/admin/rescue-queue');
       if (rows.length === 0) {
-        content.innerHTML = '<div class="empty">No suspended host has an unfinished claim.</div>';
+        mount(content, emptyNode('No suspended host has an unfinished claim.'));
         return;
       }
-      content.innerHTML = `
-        <div class="table-wrap">
-          <table class="admin-table">
-            <thead><tr><th>Giveaway</th><th>Claim state</th><th>In the queue since</th><th>Actions</th></tr></thead>
-            <tbody>${rows.map(rescueRow).join('')}</tbody>
-          </table>
-        </div>
-      `;
-
-      content.querySelectorAll('.rescue-step').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          const claimId = e.target.closest('tr').dataset.claim;
-          const reason = prompt('Why are you taking this step for the host? Recorded in the claim history.');
-          if (reason === null) return;
-          if (!reason.trim()) { alert('A short reason is required.'); return; }
-          btn.disabled = true;
-          try {
-            await api(`/claims/${claimId}/rescue/transition`, {
-              method: 'POST',
-              body: JSON.stringify({ to: btn.dataset.to, reason }),
-            });
-            loadRescueQueue();
-            loadClaims();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
-        });
-      });
-
-      content.querySelectorAll('.rescue-details').forEach((btn) => {
-        btn.addEventListener('click', async (e) => {
-          const claimId = e.target.closest('tr').dataset.claim;
-          const cell = content.querySelector(`tr[data-details-for="${claimId}"] td`);
-          const row = cell.parentElement;
-          if (!row.classList.contains('is-hidden')) { row.classList.add('is-hidden'); cell.innerHTML = ''; return; }
-          const reason = prompt('Why do you need the winner\'s address? This is recorded against the claim.');
-          if (reason === null) return;
-          if (!reason.trim()) { alert('A short reason is required.'); return; }
-          btn.disabled = true;
-          try {
-            const result = await api(`/claims/${claimId}/rescue/delivery-details`, {
-              method: 'POST',
-              body: JSON.stringify({ reason }),
-            });
-            const d = result.delivery.details;
-            row.classList.remove('is-hidden');
-            cell.innerHTML = `
-              <div class="u-1b074808">
-                <p class="u-06519697">Opened for fulfilment and recorded in this claim's history. Winner consented ${new Date(result.delivery.consentedAt).toLocaleDateString()} (${escapeHtml(result.delivery.consentVersion)}).</p>
-                <p class="u-1da9facb">${escapeHtml(d.recipient_name)} · ${escapeHtml(d.phone)}</p>
-                <p class="u-1da9facb">${escapeHtml(d.address_line1)}${d.address_line2 ? `, ${escapeHtml(d.address_line2)}` : ''}</p>
-                <p class="u-1da9facb">${escapeHtml(d.city)}, ${escapeHtml(d.emirate)}</p>
-                ${d.notes ? `<p class="u-f1d2a576">${escapeHtml(d.notes)}</p>` : ''}
-              </div>
-            `;
-          } catch (err) {
-            alert(err.message);
-          } finally {
-            btn.disabled = false;
-          }
-        });
-      });
+      mount(content, dataTable(
+        ['Giveaway', 'Claim state', 'In the queue since', 'Actions'],
+        rows.flatMap(rescueRow),
+        'No suspended host has an unfinished claim.'
+      ));
     } catch (err) {
-      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      mount(content, emptyNode(err.message));
     }
   }
 

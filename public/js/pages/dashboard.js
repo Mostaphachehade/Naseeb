@@ -2,31 +2,43 @@
   // server rather than a synchronous read of browser storage.
   const ready = requireSession('/dashboard.html');
 
-  document.getElementById('hosted-grid').innerHTML = skeletonCards(3);
-  document.getElementById('entered-grid').innerHTML = skeletonCards(3);
+  mount(document.getElementById('hosted-grid'), skeletonCards(3));
+  mount(document.getElementById('entered-grid'), skeletonCards(3));
 
   // What the host half of this page says depends on host access, which is read
   // from the server. The hosted-giveaways endpoint enforces the same thing
   // independently — this only decides which explanation to show instead of a
   // bare error.
+  //
+  // `action` is a function that builds the button, not a string of markup: these
+  // are fixed internal links, and there is no reason for a fixed link to travel
+  // as text that something later parses.
   const HOST_STATE_NOTES = {
     not_requested: {
       note: 'Hosting is a closed beta. Apply and an administrator will review your request.',
-      action: '<a href="/host-apply.html" class="btn primary">Apply to host</a>',
+      action: () => el('a', { href: '/host-apply.html', class: 'btn primary', text: 'Apply to host' }),
     },
     pending: {
       note: 'Your application to host is with an administrator. It grants no access on its own, and we have not set a review deadline.',
-      action: '',
+      action: () => null,
     },
     rejected: {
       note: 'This account has not been approved to host giveaways.',
-      action: '<a href="/host-apply.html" class="btn ghost u-e21d2b9e">Apply again</a>',
+      action: () => el('a', { href: '/host-apply.html', class: 'btn ghost u-e21d2b9e', text: 'Apply again' }),
     },
     suspended: {
       note: 'Hosting access for this account is suspended. Nothing has been deleted — your giveaways, entries and records are all still on file — but new listings and draws are stopped, and any open prize claim is now handled by an administrator.',
-      action: '',
+      action: () => null,
     },
   };
+
+  function emptyWithLink(before, href, linkText, after) {
+    return el('div', { class: 'empty u-97294b20' }, [
+      before,
+      el('a', { href, text: linkText }),
+      after,
+    ]);
+  }
 
   async function loadHosted() {
     const hostedGrid = document.getElementById('hosted-grid');
@@ -42,25 +54,26 @@
 
     if (state && !state.can_host) {
       const info = HOST_STATE_NOTES[state.host_status] || HOST_STATE_NOTES.not_requested;
-      noteEl.innerHTML = `
-        <div class="card narrow u-5583aeec">
-          <p class="u-ecf28f6f">${info.note}</p>
-          ${state.status_reason ? `<p class="u-d02706d3">Reason given: ${escapeHtml(state.status_reason)}</p>` : ''}
-        </div>`;
-      actionEl.innerHTML = info.action;
-      hostedGrid.innerHTML = '';
+      mount(noteEl, el('div', { class: 'card narrow u-5583aeec' }, [
+        el('p', { class: 'u-ecf28f6f', text: info.note }),
+        // An administrator's free-typed reason. Text.
+        state.status_reason
+          ? el('p', { class: 'u-d02706d3', text: 'Reason given: ' + state.status_reason })
+          : null,
+      ]));
+      mount(actionEl, info.action());
+      clear(hostedGrid);
       return;
     }
 
-    actionEl.innerHTML = '<a href="/create.html" class="btn primary">Host a giveaway</a>';
+    mount(actionEl, el('a', { href: '/create.html', class: 'btn primary', text: 'Host a giveaway' }));
     try {
       const hosted = await api('/giveaways/mine/hosted');
-      hostedGrid.innerHTML = hosted.length
-        ? hosted.map(giveawayCard).join('')
-        : `<div class="empty u-97294b20">You haven't hosted a giveaway yet. <a href="/create.html">Start one</a>.</div>`;
-      applyCardImages(hostedGrid);
+      mount(hostedGrid, hosted.length
+        ? hosted.map(giveawayCard)
+        : emptyWithLink("You haven't hosted a giveaway yet. ", '/create.html', 'Start one', '.'));
     } catch (err) {
-      hostedGrid.innerHTML = `<p class="form-error show">${escapeHtml(err.message)}</p>`;
+      mount(hostedGrid, errorNode(err.message));
     }
   }
 
@@ -70,12 +83,11 @@
 
     try {
       const entered = await api('/giveaways/mine/entered');
-      enteredGrid.innerHTML = entered.length
-        ? entered.map(giveawayCard).join('')
-        : `<div class="empty u-97294b20">You haven't entered anything yet. <a href="/index.html">Browse open giveaways</a>.</div>`;
-      applyCardImages(enteredGrid);
+      mount(enteredGrid, entered.length
+        ? entered.map(giveawayCard)
+        : emptyWithLink("You haven't entered anything yet. ", '/index.html', 'Browse open giveaways', '.'));
     } catch (err) {
-      enteredGrid.innerHTML = `<p class="form-error show">${escapeHtml(err.message)}</p>`;
+      mount(enteredGrid, errorNode(err.message));
     }
   }
   ready.then(load);

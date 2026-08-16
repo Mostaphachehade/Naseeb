@@ -15,16 +15,23 @@
 
       document.title = `${g.title} — Naseeb`;
       document.getElementById('title').textContent = g.title;
-      document.getElementById('hosted-by').innerHTML = t('detail.hostedBy', { name: escapeHtml(g.host_name) }) + (g.host_verified ? verifiedBadge() : '');
+      // The host's display name is host-controlled. It is a text node beside the
+      // badge element, not a string concatenated into markup.
+      mount(document.getElementById('hosted-by'), [
+        t('detail.hostedBy', { name: g.host_name }),
+        g.host_verified ? verifiedBadge() : null,
+      ]);
       document.getElementById('description').textContent = g.description;
       document.getElementById('prize').textContent = g.prize_description;
       // The fallback used to be a hot-linked Unsplash photo, which meant
       // img-src would have had to admit an entire third-party image host for
       // one decorative default. It is a local file now, and the giveaway's own
       // image is validated before it is used at all.
-      const imageEl = document.getElementById('image');
-      const safeImage = NaseebDom.safeMediaUrl(g.image_url);
-      imageEl.src = safeImage || '/img/giveaway-placeholder.svg';
+      NaseebDom.setMediaSrc(
+        document.getElementById('image'),
+        g.image_url,
+        '/img/giveaway-placeholder.svg'
+      );
 
       document.getElementById('row-status').textContent = g.status === 'drawn' ? t('detail.winnerDrawn') : t('detail.open');
       document.getElementById('row-entries').textContent = g.entry_count;
@@ -43,7 +50,7 @@
       if (g.winner) {
         document.getElementById('winner-box').classList.remove('is-hidden');
         document.getElementById('winner-text').textContent = `${g.winner.name} (ticket #${g.winner.ticket_number})`;
-        document.getElementById('delivery-status').innerHTML = deliveryPill(g);
+        mount(document.getElementById('delivery-status'), deliveryPill(g));
 
         const celebratedKey = `naseeb_celebrated_${id}`;
         if (!sessionStorage.getItem(celebratedKey)) {
@@ -56,7 +63,7 @@
         enterBtn.classList.add('is-hidden');
       } else if (!user) {
         enterBtn.textContent = t('detail.signInToEnter');
-        enterBtn.onclick = () => (window.location.href = '/login.html');
+        enterBtn.onclick = () => NaseebDom.navigate('/login.html');
       } else if (g.already_entered) {
         enterBtn.textContent = t('detail.alreadyEntered');
         enterBtn.disabled = true;

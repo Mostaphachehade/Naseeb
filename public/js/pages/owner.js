@@ -24,9 +24,12 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
-      document.getElementById('qh_image_url').value = data.secure_url;
       const preview = document.getElementById('qh-image-preview');
-      preview.src = data.secure_url;
+      if (!NaseebDom.setMediaSrc(preview, data.secure_url)) {
+        statusEl.textContent = 'Upload returned an image address we do not accept.';
+        return;
+      }
+      document.getElementById('qh_image_url').value = data.secure_url;
       preview.classList.remove('is-hidden');
       statusEl.textContent = 'Uploaded.';
     } catch (err) {
@@ -77,43 +80,33 @@
     const content = document.getElementById('revenue-content');
     try {
       const r = await api('/admin/revenue');
-      const monthRows = r.by_month.length
-        ? r.by_month.map((m) => `<tr><td>${m.month}</td><td class="mono">${m.bookings}</td><td class="mono">AED ${m.revenue_aed.toLocaleString()}</td></tr>`).join('')
-        : '<tr><td colspan="3" class="u-a2aae0fb">No revenue yet.</td></tr>';
-      const bookingRows = r.recent_bookings.length
-        ? r.recent_bookings.map((b) => `<tr><td>${escapeHtml(b.business_name)}</td><td class="mono">AED ${Number(b.amount_aed).toLocaleString()}</td><td>${b.starts_at} – ${b.ends_at}</td></tr>`).join('')
-        : '<tr><td colspan="3" class="u-a2aae0fb">No bookings yet.</td></tr>';
-      content.innerHTML = `
-        <div class="admin-dashboard u-8b9688e6">
-          <div class="admin-stat">
-            <div class="admin-stat-num">AED ${r.total_revenue_aed.toLocaleString()}</div>
-            <div class="admin-stat-label">Total ad revenue</div>
-          </div>
-          <div class="admin-stat">
-            <div class="admin-stat-num">${r.total_bookings}</div>
-            <div class="admin-stat-label">Paid bookings</div>
-          </div>
-          <div class="admin-stat">
-            <div class="admin-stat-num">AED ${r.revenue_last_30_days_aed.toLocaleString()}</div>
-            <div class="admin-stat-label">Last 30 days</div>
-          </div>
-        </div>
-        <div class="table-wrap u-7dde5e56">
-          <table class="admin-table">
-            <thead><tr><th>Month</th><th>Bookings</th><th>Revenue</th></tr></thead>
-            <tbody>${monthRows}</tbody>
-          </table>
-        </div>
-        <p class="u-5bf9ad33">Recent bookings</p>
-        <div class="table-wrap">
-          <table class="admin-table">
-            <thead><tr><th>Business</th><th>Amount</th><th>Dates</th></tr></thead>
-            <tbody>${bookingRows}</tbody>
-          </table>
-        </div>
-      `;
+
+      // business_name is advertiser-supplied — it arrives from the inquiry form
+      // and is echoed straight back here. It is a cell's text, not a cell's
+      // markup.
+      const monthRows = r.by_month.map((m) => el('tr', {}, [
+        td(m.month),
+        td(m.bookings, 'mono'),
+        td('AED ' + m.revenue_aed.toLocaleString(), 'mono'),
+      ]));
+      const bookingRows = r.recent_bookings.map((b) => el('tr', {}, [
+        td(b.business_name),
+        td('AED ' + Number(b.amount_aed).toLocaleString(), 'mono'),
+        td(`${b.starts_at} – ${b.ends_at}`),
+      ]));
+
+      mount(content, [
+        el('div', { class: 'admin-dashboard u-8b9688e6' }, [
+          statCard('AED ' + r.total_revenue_aed.toLocaleString(), 'Total ad revenue'),
+          statCard(r.total_bookings, 'Paid bookings'),
+          statCard('AED ' + r.revenue_last_30_days_aed.toLocaleString(), 'Last 30 days'),
+        ]),
+        dataTable(['Month', 'Bookings', 'Revenue'], monthRows, 'No revenue yet.', 'u-7dde5e56'),
+        el('p', { class: 'u-5bf9ad33', text: 'Recent bookings' }),
+        dataTable(['Business', 'Amount', 'Dates'], bookingRows, 'No bookings yet.'),
+      ]);
     } catch (err) {
-      content.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      mount(content, emptyNode(err.message));
     }
   }
 

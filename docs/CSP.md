@@ -26,7 +26,7 @@ ambition.
 | Inline `<style>` blocks | 3 | **0** |
 | `style=""` attributes (markup) | 317 | **0** |
 | `setAttribute('style', …)` calls | 0 | 0 |
-| `element.style` writes in JS | 82 | **13** (three effects with runtime values) |
+| `element.style` writes in JS | 82 | **12** (three effects with runtime values) |
 | Inline event handlers (`onclick=`) | 0 | 0 |
 | `javascript:` URLs | 0 | 0 |
 | `eval` / `new Function` / string timers / `document.write` | 0 | 0 |
@@ -41,7 +41,8 @@ duplicates), plus one `.is-hidden` class that replaced every
 The `element.style` row is housekeeping, not enforcement: those writes were never
 blocked, and the 13 that remain are the three places where the value is computed
 at runtime (a validated background image, and the two confetti effects). §7
-explains how that row came to be misunderstood.
+explains how that row came to be misunderstood, and `docs/DOM_SINKS.md` lists
+every one of the twelve with its value source.
 
 ---
 
@@ -123,41 +124,21 @@ source per header.
 
 ---
 
-## 4. Remaining DOM sinks
+## 4. DOM sinks
 
-`innerHTML` and `insertAdjacentHTML` are still used to render lists and panels.
-Rewriting all 72 sites to `createElement` was not attempted; what was done
-instead is narrower and checkable:
+This section used to describe 72 surviving `innerHTML` sites and the escaping
+tagged template that guarded them. The DOM-safety amendment removed all of them:
+nothing in `public/js` builds markup at runtime any more, the escaper is gone,
+and every URL goes through a validator chosen for the context it is going into.
 
-1. **Every interpolation of user data is escaped.** `escapeHtml` / `escapeAttr`
-   in `public/js/app.js` were already used at most sites; this phase found and
-   fixed the handful that were not (`err.message`, `data.message`).
-2. **`public/js/dom.js` provides an `html` tagged template** that escapes every
-   interpolation *by default*. Opting out requires writing `trusted(...)`, and
-   `setHtml` throws on a plain string, so "forgot to escape one" is not an
-   available mistake in new code.
-3. **Nothing takes attacker-supplied markup and tries to make it safe.**
-   User-controlled rich HTML is not a feature and must not become one. There is
-   no homemade sanitizer here, because escaping text so it renders as text is a
-   much smaller and much more reliable job than sanitizing.
+The complete inventory, with the source of every value and the reason each of
+the 28 remaining sinks is safe, is **`docs/DOM_SINKS.md`**. Reproduce its counts
+with `node scripts/dom-sink-inventory.js`.
 
-The one remaining `element.style` write is `setBackgroundImage` in `dom.js`,
-which validates the URL against the media allowlist first and refuses anything
-containing a quote or a bracket before it reaches a CSS value.
-
-Values traced from the database to the browser, and how each is rendered:
-
-| Value | Sink | Safe because |
-|---|---|---|
-| Giveaway title, description, prize, funding disclosure | `innerHTML` via `giveawayCard`, and `textContent` on the detail page | escaped / text node |
-| Host name, winner name | `innerHTML` via card + `textContent` | escaped |
-| Applicant name, business, message | admin queue `innerHTML` | escaped |
-| Administrative reasons | admin panels `innerHTML` | escaped |
-| Winner delivery details (name, phone, address, notes) | `textContent`, one line per `<div>` | never markup, by construction |
-| Claim and delivery statuses | fixed label maps, keyed by an enum | no interpolation of stored text |
-| Owner-configured maintenance message | `innerHTML` | escaped |
-| Error messages and query parameters | `innerHTML` | escaped |
-| Media URLs | `img.src` / `data-bg` → CSSOM | validated server-side **and** client-side |
+What matters for the policy specifically: `style-src-attr 'none'` refuses the
+style *attribute*, and the one CSSOM write that takes a URL —
+`setBackgroundImage` in `dom.js` — validates against the media allowlist and
+re-checks for `"`, `)` and `\` before the value reaches a CSS `url()` token.
 
 ---
 

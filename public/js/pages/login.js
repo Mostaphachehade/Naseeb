@@ -1,5 +1,8 @@
   const redirectTo = safeRedirect(new URLSearchParams(window.location.search).get('redirect')) || '/index.html';
-  document.getElementById('signup-link').href = `/signup.html?redirect=${encodeURIComponent(redirectTo)}`;
+  NaseebDom.setHref(
+    document.getElementById('signup-link'),
+    '/signup.html?redirect=' + encodeURIComponent(redirectTo)
+  );
 
   document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -17,7 +20,9 @@
         }),
       });
       adoptSession(result);
-      window.location.href = redirectTo;
+      // Validated once when it was read out of the query string, and validated
+      // again by navigate() before the browser is sent anywhere.
+      if (!NaseebDom.navigate(redirectTo)) NaseebDom.navigate('/index.html');
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.add('show');

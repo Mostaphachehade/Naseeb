@@ -1,5 +1,10 @@
 const API = '/api';
 
+// Every page builds its DOM through these. Nothing in this file, or in any page
+// script, assigns markup — see public/js/dom.js for why that is a different
+// thing from escaping carefully.
+const { el, frag, mount, append, clear, setText } = NaseebDom;
+
 // Skips the admin panel so the site owner's own visits don't skew traffic
 // numbers. No-ops entirely if GA_MEASUREMENT_ID isn't set on the server.
 (function loadAnalytics() {
@@ -12,10 +17,17 @@ const API = '/api';
   fetch(`${API}/config`)
     .then((r) => r.json())
     .then((config) => {
-      if (!config.ga_measurement_id) return;
+      // Owner-configured, arriving over our own API, and about to become the
+      // src of a script tag — which makes it the highest-consequence string on
+      // the site. It is held to the shape a measurement id actually has, and the
+      // URL is assembled from a fixed origin plus an encoded parameter rather
+      // than interpolated. CSP would refuse a script from anywhere else anyway;
+      // this makes the code say so too.
+      if (!/^G-[A-Z0-9]{4,24}$/i.test(String(config.ga_measurement_id || ''))) return;
       const script = document.createElement('script');
       script.async = true;
-      script.src = `https://www.googletagmanager.com/gtag/js?id=${config.ga_measurement_id}`;
+      script.src =
+        'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(config.ga_measurement_id);
       document.head.appendChild(script);
       window.dataLayer = window.dataLayer || [];
       window.gtag = function gtag() { window.dataLayer.push(arguments); };
@@ -96,7 +108,7 @@ async function requireSession(redirectTo) {
   await sessionReady;
   if (session.authenticated) return session;
   const target = redirectTo || window.location.pathname + window.location.search;
-  window.location.href = `/login.html?redirect=${encodeURIComponent(target)}`;
+  NaseebDom.navigate('/login.html?redirect=' + encodeURIComponent(target));
   // Never resolves: the page is navigating away, and callers should not
   // continue rendering a screen the visitor is not entitled to see.
   return new Promise(() => {});
@@ -148,20 +160,24 @@ async function api(path, options = {}) {
   return data;
 }
 
-function langSwitcherHtml() {
+function langSwitcher() {
   const lang = getLang();
-  return `
-    <span class="lang-switch" role="group" aria-label="Language">
-      <button type="button" class="lang-btn ${lang === 'en' ? 'active' : ''}" data-lang="en">EN</button>
-      <button type="button" class="lang-btn ${lang === 'ar' ? 'active' : ''}" data-lang="ar">عربي</button>
-    </span>
-  `;
+  const button = (code, label) =>
+    el('button', {
+      type: 'button',
+      class: 'lang-btn' + (lang === code ? ' active' : ''),
+      text: label,
+      dataset: { lang: code },
+      on: { click: () => setLang(code) },
+    });
+  return el('span', { class: 'lang-switch', attrs: { role: 'group' }, aria: { label: 'Language' } }, [
+    button('en', 'EN'),
+    button('ar', 'عربي'),
+  ]);
 }
 
-function wireLangSwitcher() {
-  document.querySelectorAll('.lang-btn').forEach((btn) => {
-    btn.addEventListener('click', () => setLang(btn.dataset.lang));
-  });
+function navLink(href, label, props) {
+  return el('a', Object.assign({ href, text: label }, props || {}));
 }
 
 function renderHeader() {
@@ -170,44 +186,59 @@ function renderHeader() {
   const user = getUser();
 
   if (user) {
-    nav.innerHTML = `
-      <a href="/index.html">${t('nav.browse')}</a>
-      <a href="/winners.html">${t('nav.winners')}</a>
-      <a href="/about.html">${t('nav.about')}</a>
-      <a href="/dashboard.html">${t('nav.myGiveaways')}</a>
-      <a href="/pricing.html">${t('nav.pricing')}</a>
-      ${user.is_admin ? `<a href="/admin.html">${t('nav.admin')}</a><a href="/owner.html">${t('nav.owner')}</a>` : ''}
-      <a href="/host-apply.html" id="nav-host-cta" class="btn-gold u-ba0c32d8">${t('nav.applyToHost')}</a>
-      <span class="u-68433eba">${t('nav.hi', { name: escapeHtml(user.name) })}</span>
-      <button id="logout-btn">${t('nav.signOut')}</button>
-      ${langSwitcherHtml()}
-    `;
-    document.getElementById('logout-btn').addEventListener('click', async (e) => {
-      e.currentTarget.disabled = true;
-      try {
-        // Signing out is a server-side revocation, not a browser-side delete.
-        // The old version removed the localStorage copy and left the token
-        // valid for the rest of its thirty days.
-        await api('/auth/logout', { method: 'POST' });
-      } catch (err) {
-        // The cookie is cleared by the response either way; if the request
-        // never landed, the session still expires on its own.
-      }
-      forgetSession();
-      window.location.href = '/index.html';
+    // The visitor's own name is set as text on its own node. It was previously
+    // escaped and interpolated into a translation string, which worked, and
+    // worked for the same reason a lock works while you remember to turn it.
+    const greeting = el('span', { class: 'u-68433eba', text: t('nav.hi', { name: user.name }) });
+
+    const logout = el('button', {
+      id: 'logout-btn',
+      text: t('nav.signOut'),
+      on: {
+        click: async (e) => {
+          e.currentTarget.disabled = true;
+          try {
+            // Signing out is a server-side revocation, not a browser-side
+            // delete. The old version removed the localStorage copy and left
+            // the token valid for the rest of its thirty days.
+            await api('/auth/logout', { method: 'POST' });
+          } catch (err) {
+            // The cookie is cleared by the response either way; if the request
+            // never landed, the session still expires on its own.
+          }
+          forgetSession();
+          NaseebDom.navigate('/index.html');
+        },
+      },
     });
+
+    mount(nav, [
+      navLink('/index.html', t('nav.browse')),
+      navLink('/winners.html', t('nav.winners')),
+      navLink('/about.html', t('nav.about')),
+      navLink('/dashboard.html', t('nav.myGiveaways')),
+      navLink('/pricing.html', t('nav.pricing')),
+      user.is_admin ? navLink('/admin.html', t('nav.admin')) : null,
+      user.is_admin ? navLink('/owner.html', t('nav.owner')) : null,
+      navLink('/host-apply.html', t('nav.applyToHost'), {
+        id: 'nav-host-cta',
+        class: 'btn-gold u-ba0c32d8',
+      }),
+      greeting,
+      logout,
+      langSwitcher(),
+    ]);
   } else {
-    nav.innerHTML = `
-      <a href="/index.html">${t('nav.browse')}</a>
-      <a href="/winners.html">${t('nav.winners')}</a>
-      <a href="/about.html">${t('nav.about')}</a>
-      <a href="/pricing.html">${t('nav.pricing')}</a>
-      <a href="/login.html">${t('nav.signIn')}</a>
-      <a href="/signup.html" class="btn-gold u-ba0c32d8">${t('nav.joinFree')}</a>
-      ${langSwitcherHtml()}
-    `;
+    mount(nav, [
+      navLink('/index.html', t('nav.browse')),
+      navLink('/winners.html', t('nav.winners')),
+      navLink('/about.html', t('nav.about')),
+      navLink('/pricing.html', t('nav.pricing')),
+      navLink('/login.html', t('nav.signIn')),
+      navLink('/signup.html', t('nav.joinFree'), { class: 'btn-gold u-ba0c32d8' }),
+      langSwitcher(),
+    ]);
   }
-  wireLangSwitcher();
   syncHostCta();
 }
 
@@ -226,7 +257,7 @@ async function syncHostCta() {
   try {
     const state = await api('/host-applications/me');
     if (state.can_host) {
-      cta.href = '/create.html';
+      NaseebDom.setHref(cta, '/create.html');
       cta.textContent = t('nav.hostGiveaway');
     }
   } catch (err) {
@@ -235,60 +266,44 @@ async function syncHostCta() {
 }
 
 function renderFooter() {
-  const el = document.getElementById('site-footer');
-  if (!el) return;
+  const host = document.getElementById('site-footer');
+  if (!host) return;
   const year = new Date().getFullYear();
-  el.innerHTML = `
-    <footer class="site">
-      <div class="wrap footer-grid">
-        <div class="footer-brand">
-          <a href="/index.html" class="brand u-da71aab0">Naseeb<span class="dot">.</span></a>
-          <p>${t('footer.tagline')}</p>
-        </div>
-        <div class="footer-links">
-          <span class="footer-heading">${t('footer.explore')}</span>
-          <a href="/index.html">${t('footer.browseGiveaways')}</a>
-          <a href="/winners.html">${t('footer.pastWinners')}</a>
-          <a href="/host-apply.html">${t('nav.applyToHost')}</a>
-          <a href="/pricing.html">${t('nav.pricing')}</a>
-          <a href="/about.html">${t('footer.aboutNaseeb')}</a>
-          <a href="/advertise.html">${t('footer.advertise')}</a>
-          <a href="/partners.html">${t('footer.partners')}</a>
-        </div>
-        <div class="footer-links">
-          <span class="footer-heading">${t('footer.legal')}</span>
-          <a href="/terms.html">${t('footer.terms')}</a>
-          <a href="/privacy.html">${t('footer.privacy')}</a>
-        </div>
-      </div>
-      <div class="wrap footer-bottom">${t('footer.bottom', { year })}</div>
-    </footer>
-  `;
+
+  const brand = el('a', { href: '/index.html', class: 'brand u-da71aab0' }, [
+    'Naseeb',
+    el('span', { class: 'dot', text: '.' }),
+  ]);
+
+  mount(host, el('footer', { class: 'site' }, [
+    el('div', { class: 'wrap footer-grid' }, [
+      el('div', { class: 'footer-brand' }, [brand, el('p', { text: t('footer.tagline') })]),
+      el('div', { class: 'footer-links' }, [
+        el('span', { class: 'footer-heading', text: t('footer.explore') }),
+        navLink('/index.html', t('footer.browseGiveaways')),
+        navLink('/winners.html', t('footer.pastWinners')),
+        navLink('/host-apply.html', t('nav.applyToHost')),
+        navLink('/pricing.html', t('nav.pricing')),
+        navLink('/about.html', t('footer.aboutNaseeb')),
+        navLink('/advertise.html', t('footer.advertise')),
+        navLink('/partners.html', t('footer.partners')),
+      ]),
+      el('div', { class: 'footer-links' }, [
+        el('span', { class: 'footer-heading', text: t('footer.legal') }),
+        navLink('/terms.html', t('footer.terms')),
+        navLink('/privacy.html', t('footer.privacy')),
+      ]),
+    ]),
+    el('div', { class: 'wrap footer-bottom', text: t('footer.bottom', { year }) }),
+  ]));
 }
 
-// Only allow same-site relative paths (e.g. "/create.html") so a crafted
-// ?redirect= query param can't send someone off-site after login/signup.
+// A ?redirect= parameter is a URL the page will navigate to on the visitor's
+// behalf, so it gets the same validator a link does: same-site absolute paths
+// only, no scheme, no protocol-relative host, no control characters or
+// backslashes dressed up as a path.
 function safeRedirect(path) {
-  if (!path || !path.startsWith('/') || path.startsWith('//')) return null;
-  return path;
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-// escapeHtml alone doesn't encode quotes, so it's not safe for values placed
-// inside an HTML attribute (e.g. style="...${value}..."). This also encodes
-// ' and " so a value can't break out of the surrounding quotes.
-function escapeAttr(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return NaseebDom.safeInternalUrl(path);
 }
 
 function timeLeft(deadlineIso) {
@@ -302,54 +317,49 @@ function timeLeft(deadlineIso) {
 }
 
 function verifiedBadge() {
-  return `<svg class="verified-badge" viewBox="0 0 20 20" width="14" height="14" role="img"><title>Verified business</title><circle cx="10" cy="10" r="9" fill="#C9A15A"/><path d="M6 10.3l2.6 2.6L14 7.3" stroke="#072925" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return NaseebDom.verifiedBadgeIcon('Verified business');
 }
 
 // Purely a trust signal (see server/db.js) — visible wherever a drawn
 // giveaway is shown, not just on the giveaway's own page, so it can't be
 // quietly ignored.
 function deliveryPill(g) {
-  if (g.status !== 'drawn') return '';
+  if (g.status !== 'drawn') return null;
   return g.prize_delivered
-    ? `<span class="delivery-pill delivered">&check; ${t('delivery.delivered')}</span>`
-    : `<span class="delivery-pill pending">${t('delivery.pending')}</span>`;
+    ? el('span', { class: 'delivery-pill delivered', text: '✓ ' + t('delivery.delivered') })
+    : el('span', { class: 'delivery-pill pending', text: t('delivery.pending') });
 }
 
-// Applies validated media URLs to every card that has just been rendered.
+// The card the homepage, the dashboard and the winners page all render.
 //
-// The URL travels in a data-bg attribute and is set through the CSSOM, not an
-// inline style attribute — style-src 'self' blocks the latter, and a media URL
-// interpolated into a CSS string is exactly the kind of thing a policy should
-// block. NaseebDom.setBackgroundImage refuses anything that is not an https URL
-// on an allowed media origin, and leaves the card's placeholder showing instead
-// of rendering a broken or hostile image.
-function applyCardImages(root) {
-  (root || document).querySelectorAll('[data-bg]').forEach((el) => {
-    NaseebDom.setBackgroundImage(el, el.getAttribute('data-bg'));
-    el.removeAttribute('data-bg');
-  });
-}
-
+// Every value on it comes from the database and is host-controlled: the title,
+// the prize text, the host's display name, and the image URL. None of them is
+// interpolated into markup. The text values are set as text; the image URL goes
+// through the media validator and lands in a CSS background, so a rejected URL
+// leaves the placeholder showing rather than a broken or hostile image; and the
+// only URL this card builds is its own link, from an id the server generated.
 function giveawayCard(g) {
-  const img = g.image_url || '';
   const statusLabel = g.status === 'drawn' ? t('detail.winnerDrawn') : timeLeft(g.entry_deadline);
-  const statusClass = g.status === 'drawn' ? 'drawn' : '';
-  return `
-    <a class="stub" href="/giveaway.html?id=${g.id}">
-      <div class="img" data-bg="${escapeAttr(img)}">
-        <span class="status-pill ${statusClass}">${statusLabel}</span>
-      </div>
-      <div class="body">
-        <h3>${escapeHtml(g.title)}</h3>
-        <p class="prize">${escapeHtml(g.prize_description)}</p>
-        <div class="meta">
-          <span class="num">${t('detail.enteredCount', { n: g.entry_count })}</span>
-          <span>${t('winners.by', { name: escapeHtml(g.host_name) })}${g.host_verified ? verifiedBadge() : ''}</span>
-        </div>
-        ${deliveryPill(g)}
-      </div>
-    </a>
-  `;
+  const image = el('div', { class: 'img' }, [
+    el('span', { class: 'status-pill' + (g.status === 'drawn' ? ' drawn' : ''), text: statusLabel }),
+  ]);
+  NaseebDom.setBackgroundImage(image, g.image_url);
+
+  return el('a', { class: 'stub', href: '/giveaway.html?id=' + encodeURIComponent(g.id) }, [
+    image,
+    el('div', { class: 'body' }, [
+      el('h3', { text: g.title }),
+      el('p', { class: 'prize', text: g.prize_description }),
+      el('div', { class: 'meta' }, [
+        el('span', { class: 'num', text: t('detail.enteredCount', { n: g.entry_count }) }),
+        el('span', {}, [
+          t('winners.by', { name: g.host_name }),
+          g.host_verified ? verifiedBadge() : null,
+        ]),
+      ]),
+      deliveryPill(g),
+    ]),
+  ]);
 }
 
 function renderVerificationBanner() {
@@ -358,29 +368,33 @@ function renderVerificationBanner() {
   const header = document.querySelector('header.site');
   if (!header || document.querySelector('.verify-banner')) return;
 
-  const banner = document.createElement('div');
-  banner.className = 'verify-banner';
-  banner.innerHTML = `
-    <div class="wrap">
-      <span>Verify your email to host or enter giveaways — check your inbox.</span>
-      <button id="resend-verify-btn">Resend email</button>
-    </div>
-  `;
-  header.insertAdjacentElement('afterend', banner);
-
-  document.getElementById('resend-verify-btn').addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    btn.textContent = 'Sending…';
-    try {
-      await api('/auth/resend-verification', { method: 'POST' });
-      btn.textContent = 'Sent — check your inbox';
-    } catch (err) {
-      btn.textContent = 'Resend email';
-      btn.disabled = false;
-      alert(err.message);
-    }
+  const resend = el('button', {
+    id: 'resend-verify-btn',
+    text: 'Resend email',
+    on: {
+      click: async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        try {
+          await api('/auth/resend-verification', { method: 'POST' });
+          btn.textContent = 'Sent — check your inbox';
+        } catch (err) {
+          btn.textContent = 'Resend email';
+          btn.disabled = false;
+          alert(err.message);
+        }
+      },
+    },
   });
+
+  const banner = el('div', { class: 'verify-banner' }, [
+    el('div', { class: 'wrap' }, [
+      el('span', { text: 'Verify your email to host or enter giveaways — check your inbox.' }),
+      resend,
+    ]),
+  ]);
+  header.insertAdjacentElement('afterend', banner);
 }
 
 // Owner-toggled, informational only — doesn't block any functionality,
@@ -394,20 +408,26 @@ async function renderMaintenanceBanner() {
     const header = document.querySelector('header.site');
     if (!header || document.querySelector('.maintenance-banner')) return;
 
-    const banner = document.createElement('div');
-    banner.className = 'maintenance-banner';
-    banner.innerHTML = `
-      <div class="wrap">
-        <span>${escapeHtml(config.maintenance_message)}</span>
-        <button id="dismiss-maintenance-btn" aria-label="Dismiss">&times;</button>
-      </div>
-    `;
+    // Owner-configured free text, straight out of the settings table. Text node,
+    // not markup — the owner is trusted to run the site, not to be the one
+    // account whose typing is executed.
+    const banner = el('div', { class: 'maintenance-banner' }, [
+      el('div', { class: 'wrap' }, [
+        el('span', { text: config.maintenance_message }),
+        el('button', {
+          id: 'dismiss-maintenance-btn',
+          text: '×',
+          aria: { label: 'Dismiss' },
+          on: {
+            click: () => {
+              sessionStorage.setItem('naseeb_maintenance_dismissed', 'true');
+              banner.remove();
+            },
+          },
+        }),
+      ]),
+    ]);
     header.insertAdjacentElement('afterend', banner);
-
-    document.getElementById('dismiss-maintenance-btn').addEventListener('click', () => {
-      sessionStorage.setItem('naseeb_maintenance_dismissed', 'true');
-      banner.remove();
-    });
   } catch (err) {
     // Non-critical — no banner is better than a broken page over this.
   }
@@ -445,19 +465,76 @@ function celebrate() {
 }
 
 function skeletonCards(n) {
-  return Array.from({ length: n }, () => `
-    <div class="stub skeleton-card">
-      <div class="img skeleton-block"></div>
-      <div class="body">
-        <div class="skeleton-line u-77148b4e"></div>
-        <div class="skeleton-line u-3801d6f9"></div>
-        <div class="meta">
-          <div class="skeleton-line u-91bb8b7c"></div>
-          <div class="skeleton-line u-91bb8b7c"></div>
-        </div>
-      </div>
-    </div>
-  `).join('');
+  return Array.from({ length: n }, () =>
+    el('div', { class: 'stub skeleton-card' }, [
+      el('div', { class: 'img skeleton-block' }),
+      el('div', { class: 'body' }, [
+        el('div', { class: 'skeleton-line u-77148b4e' }),
+        el('div', { class: 'skeleton-line u-3801d6f9' }),
+        el('div', { class: 'meta' }, [
+          el('div', { class: 'skeleton-line u-91bb8b7c' }),
+          el('div', { class: 'skeleton-line u-91bb8b7c' }),
+        ]),
+      ]),
+    ])
+  );
+}
+
+// The one shape every page's catch block renders. Centralised because an error
+// message is not always ours: it can be a server string, and on a bad day it
+// carries back something a visitor typed.
+function errorNode(message, className) {
+  return el('p', { class: className || 'form-error show', text: message });
+}
+
+function emptyNode(message) {
+  return el('div', { class: 'empty', text: message });
+}
+
+// The admin and owner panels are mostly tables, and a table built by hand is
+// where a "just this once" template literal reappears. These build the whole
+// shape from cells, so a row is data rather than markup.
+function td(value, className) {
+  return el('td', { class: className || null, text: value === null || value === undefined ? '' : value });
+}
+
+function tdNode(children, className) {
+  return el('td', { class: className || null }, children);
+}
+
+function dataTable(headings, rows, emptyText, wrapClass) {
+  const body = rows.length
+    ? rows
+    : [el('tr', {}, td(emptyText || 'Nothing yet.', 'u-a2aae0fb'))];
+  if (!rows.length) body[0].firstChild.colSpan = headings.length;
+
+  return el('div', { class: wrapClass ? 'table-wrap ' + wrapClass : 'table-wrap' }, [
+    el('table', { class: 'admin-table' }, [
+      el('thead', {}, el('tr', {}, headings.map((h) => el('th', { text: h })))),
+      el('tbody', {}, body),
+    ]),
+  ]);
+}
+
+// Inline elements that used to sit on separate lines inside a template literal
+// were separated by a rendered space, and several of the button pairs in the
+// admin tables rely on it for their gap. Appended nodes have no such space, so
+// it is put back explicitly — changing the CSS instead would be a design change,
+// and this amendment is not allowed to be one.
+function spaced(nodes) {
+  const out = [];
+  nodes.filter(Boolean).forEach((node, i) => {
+    if (i) out.push(' ');
+    out.push(node);
+  });
+  return out;
+}
+
+function statCard(number, label) {
+  return el('div', { class: 'admin-stat' }, [
+    el('div', { class: 'admin-stat-num', text: number }),
+    el('div', { class: 'admin-stat-label', text: label }),
+  ]);
 }
 
 // The header cannot be drawn until the server has said who this is — there is

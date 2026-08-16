@@ -5,6 +5,7 @@ const { adCheckoutLimiter } = require('../middleware/rateLimit');
 const { createCheckoutSession } = require('../lib/stripe');
 const { getAdPriceQuote, totalFilsFor, formatFils, MAX_WEEKS } = require('../lib/adPricing');
 const { isAdsCheckoutEnabled } = require('../lib/featureFlags');
+const { validateExternalLinkUrl, isSafeExternalLink } = require('../lib/mediaUrls');
 const {
   addDays,
   toDateStr,
@@ -125,14 +126,11 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
     if (!image_url || !image_url.trim()) {
       return res.status(400).json({ error: 'A banner image is required.' });
     }
-    let normalizedTargetUrl;
-    try {
-      const parsed = new URL(target_url.trim());
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('bad protocol');
-      normalizedTargetUrl = parsed.href;
-    } catch {
-      return res.status(400).json({ error: 'Destination link must be a valid http(s) URL.' });
+    const checkedTarget = validateExternalLinkUrl(target_url);
+    if (!checkedTarget.url) {
+      return res.status(400).json({ error: checkedTarget.error, code: 'TARGET_URL_REJECTED' });
     }
+    const normalizedTargetUrl = checkedTarget.url;
     const weeksNum = Number(weeks);
     if (!Number.isInteger(weeksNum) || weeksNum < 1 || weeksNum > MAX_WEEKS) {
       return res.status(400).json({ error: `Choose between 1 and ${MAX_WEEKS} weeks.` });
@@ -336,6 +334,13 @@ router.get('/:id/click', async (req, res) => {
     );
     const ad = result.rows[0];
     if (!ad) return res.status(404).send('Ad not found.');
+    // Re-checked on the way out. Rows written before this validation existed may
+    // hold anything, and a 302 to a stored string is an open redirect with extra
+    // steps. The click is still counted — the row is real, the destination is
+    // what we decline to honour.
+    if (!isSafeExternalLink(ad.target_url)) {
+      return res.status(400).send('This advertisement has an unusable destination link.');
+    }
     res.redirect(302, ad.target_url);
   } catch (err) {
     console.error(err);

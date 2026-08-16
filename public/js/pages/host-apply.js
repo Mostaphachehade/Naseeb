@@ -26,14 +26,18 @@
   });
   syncApplicantType();
 
-  function panel(title, body, actionHtml) {
-    return `
-      <div class="status-panel">
-        <h3>${title}</h3>
-        ${body}
-        ${actionHtml || ''}
-      </div>
-    `;
+  function panel(title, body, action) {
+    return el('div', { class: 'status-panel' }, [
+      el('h3', { text: title }),
+      body,
+      action || null,
+    ]);
+  }
+
+  // The administrator's reason for a rejection or suspension, shown to the
+  // account it concerns. Text node, never markup.
+  function reasonNode(reason) {
+    return reason ? el('p', { class: 'reason', text: 'Reason given: ' + reason }) : null;
   }
 
   // Everything below decides what to SHOW. The server decides what is allowed,
@@ -41,54 +45,62 @@
   // anyway still gets a 403 from POST /api/host-applications.
   function render(state) {
     if (state.is_admin) {
-      statusPanel.innerHTML = panel(
+      mount(statusPanel, panel(
         'You are an administrator',
-        `<p>Administrator accounts can host without an approval, so there is nothing to apply for.</p>`,
-        `<a class="btn primary" href="/create.html">Host a giveaway</a>`
-      );
+        el('p', { text: 'Administrator accounts can host without an approval, so there is nothing to apply for.' }),
+        el('a', { class: 'btn primary', href: '/create.html', text: 'Host a giveaway' })
+      ));
       return;
     }
     if (!state.email_verified) {
-      statusPanel.innerHTML = panel(
+      mount(statusPanel, panel(
         'Verify your email first',
-        `<p>We need a working email address on your account before you can apply. Check your inbox, or resend the verification email from the banner above.</p>`
-      );
+        el('p', { text: 'We need a working email address on your account before you can apply. Check your inbox, or resend the verification email from the banner above.' })
+      ));
       return;
     }
 
     switch (state.host_status) {
       case 'approved':
-        statusPanel.innerHTML = panel(
+        mount(statusPanel, panel(
           'You are approved to host',
-          `<p>Your account has host access. There is nothing further to apply for.</p>`,
-          `<a class="btn primary" href="/create.html">Host a giveaway</a>`
-        );
+          el('p', { text: 'Your account has host access. There is nothing further to apply for.' }),
+          el('a', { class: 'btn primary', href: '/create.html', text: 'Host a giveaway' })
+        ));
         return;
       case 'pending':
-        statusPanel.innerHTML = panel(
+        mount(statusPanel, panel(
           'Your application is with an administrator',
-          `<p>Submitted ${state.application ? new Date(state.application.created_at).toLocaleDateString() : 'recently'}. It grants no hosting access on its own.</p>
-           <p>We have not set a review deadline, so we are not going to promise you one.</p>`,
-          `<a class="btn ghost u-e21d2b9e" href="/dashboard.html">Back to my giveaways</a>`
-        );
+          [
+            el('p', {
+              text: `Submitted ${state.application ? new Date(state.application.created_at).toLocaleDateString() : 'recently'}. It grants no hosting access on its own.`,
+            }),
+            el('p', { text: 'We have not set a review deadline, so we are not going to promise you one.' }),
+          ],
+          el('a', { class: 'btn ghost u-e21d2b9e', href: '/dashboard.html', text: 'Back to my giveaways' })
+        ));
         return;
       case 'rejected':
-        statusPanel.innerHTML = panel(
+        mount(statusPanel, panel(
           'This account has not been approved to host',
-          `<p>An administrator reviewed your application and did not approve it.</p>
-           ${state.status_reason ? `<p class="reason">Reason given: ${escapeHtml(state.status_reason)}</p>` : ''}
-           <p>You can apply again if something has changed since.</p>`
-        );
+          [
+            el('p', { text: 'An administrator reviewed your application and did not approve it.' }),
+            reasonNode(state.status_reason),
+            el('p', { text: 'You can apply again if something has changed since.' }),
+          ]
+        ));
         applyForm.classList.remove('is-hidden');
         return;
       case 'suspended':
-        statusPanel.innerHTML = panel(
+        mount(statusPanel, panel(
           'Hosting access is suspended',
-          `<p>An administrator has suspended hosting for this account. Your existing giveaways, entries and records are unchanged — what has stopped is publishing new giveaways and drawing winners.</p>
-           ${state.status_reason ? `<p class="reason">Reason given: ${escapeHtml(state.status_reason)}</p>` : ''}
-           <p>Applying again will not lift a suspension. Please get in touch.</p>`,
-          `<a class="btn ghost u-e21d2b9e" href="/about.html#get-in-touch">Contact us</a>`
-        );
+          [
+            el('p', { text: 'An administrator has suspended hosting for this account. Your existing giveaways, entries and records are unchanged — what has stopped is publishing new giveaways and drawing winners.' }),
+            reasonNode(state.status_reason),
+            el('p', { text: 'Applying again will not lift a suspension. Please get in touch.' }),
+          ],
+          el('a', { class: 'btn ghost u-e21d2b9e', href: '/about.html#get-in-touch', text: 'Contact us' })
+        ));
         return;
       default:
         applyForm.classList.remove('is-hidden');
@@ -99,18 +111,20 @@
     await sessionReady;
     if (!isSignedIn()) {
       document.getElementById('form-head').classList.add('is-hidden');
-      statusPanel.innerHTML = panel(
+      mount(statusPanel, panel(
         'Sign in to apply',
-        `<p>An application is attached to your account, so we need you signed in with a verified email address before you can make one.</p>`,
-        `<a class="btn primary" href="/login.html?redirect=%2Fhost-apply.html">Sign in</a>
-         <a class="btn ghost u-f7228bba" href="/signup.html?redirect=%2Fhost-apply.html">Create a free account</a>`
-      );
+        el('p', { text: 'An application is attached to your account, so we need you signed in with a verified email address before you can make one.' }),
+        frag([
+          el('a', { class: 'btn primary', href: '/login.html?redirect=%2Fhost-apply.html', text: 'Sign in' }),
+          el('a', { class: 'btn ghost u-f7228bba', href: '/signup.html?redirect=%2Fhost-apply.html', text: 'Create a free account' }),
+        ])
+      ));
       return;
     }
     try {
       render(await api('/host-applications/me'));
     } catch (err) {
-      statusPanel.innerHTML = `<p class="form-error show">${escapeHtml(err.message)}</p>`;
+      mount(statusPanel, errorNode(err.message));
     }
   }
 

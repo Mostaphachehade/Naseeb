@@ -6,14 +6,19 @@
   const accessPanel = document.getElementById('host-access-panel');
   const createForm = document.getElementById('create-form');
 
-  function accessPanelHtml(title, body, actionHtml) {
-    return `
-      <div class="card narrow u-8c71f6a5">
-        <h3 class="u-291b7bbb">${title}</h3>
-        ${body}
-        ${actionHtml || ''}
-      </div>
-    `;
+  function accessPanel_(title, bodyNodes, action) {
+    return el('div', { class: 'card narrow u-8c71f6a5' }, [
+      el('h3', { class: 'u-291b7bbb', text: title }),
+      bodyNodes,
+      action || null,
+    ]);
+  }
+
+  // An administrator's typed reason for a rejection or a suspension. It is shown
+  // to the account it is about, which makes it the shortest path from one user's
+  // keyboard to another user's screen anywhere in the product — text node.
+  function reasonNode(reason) {
+    return reason ? el('p', { class: 'u-3a46e857', text: 'Reason given: ' + reason }) : null;
   }
 
   async function gateOnHostAccess() {
@@ -21,7 +26,7 @@
     try {
       state = await api('/host-applications/me');
     } catch (err) {
-      accessPanel.innerHTML = `<p class="form-error show">${escapeHtml(err.message)}</p>`;
+      mount(accessPanel, errorNode(err.message));
       return false;
     }
 
@@ -31,39 +36,57 @@
     }
 
     if (!state.email_verified) {
-      accessPanel.innerHTML = accessPanelHtml(
+      mount(accessPanel, accessPanel_(
         'Verify your email first',
-        `<p class="u-a2aae0fb">We need a working email address on your account before you can host. Check your inbox, or resend the verification email from the banner above.</p>`
-      );
+        el('p', {
+          class: 'u-a2aae0fb',
+          text: 'We need a working email address on your account before you can host. Check your inbox, or resend the verification email from the banner above.',
+        })
+      ));
       return false;
     }
 
     const panels = {
-      not_requested: [
+      not_requested: () => accessPanel_(
         'Hosting is a closed beta',
-        `<p class="u-a2aae0fb">Host access is granted one account at a time. Apply, and an administrator will review it.</p>`,
-        `<a class="btn primary" href="/host-apply.html">Apply to host</a>`,
-      ],
-      pending: [
+        el('p', {
+          class: 'u-a2aae0fb',
+          text: 'Host access is granted one account at a time. Apply, and an administrator will review it.',
+        }),
+        el('a', { class: 'btn primary', href: '/host-apply.html', text: 'Apply to host' })
+      ),
+      pending: () => accessPanel_(
         'Your application is with an administrator',
-        `<p class="u-a2aae0fb">You cannot publish a giveaway while an application is open. We have not set a review deadline, so we are not promising one.</p>`,
-        `<a class="btn ghost u-e21d2b9e" href="/dashboard.html">Back to my giveaways</a>`,
-      ],
-      rejected: [
+        el('p', {
+          class: 'u-a2aae0fb',
+          text: 'You cannot publish a giveaway while an application is open. We have not set a review deadline, so we are not promising one.',
+        }),
+        el('a', { class: 'btn ghost u-e21d2b9e', href: '/dashboard.html', text: 'Back to my giveaways' })
+      ),
+      rejected: () => accessPanel_(
         'This account has not been approved to host',
-        `<p class="u-a2aae0fb">An administrator reviewed your application and did not approve it.</p>
-         ${state.status_reason ? `<p class="u-3a46e857">Reason given: ${escapeHtml(state.status_reason)}</p>` : ''}`,
-        `<a class="btn primary" href="/host-apply.html">Apply again</a>`,
-      ],
-      suspended: [
+        [
+          el('p', {
+            class: 'u-a2aae0fb',
+            text: 'An administrator reviewed your application and did not approve it.',
+          }),
+          reasonNode(state.status_reason),
+        ],
+        el('a', { class: 'btn primary', href: '/host-apply.html', text: 'Apply again' })
+      ),
+      suspended: () => accessPanel_(
         'Hosting access is suspended',
-        `<p class="u-a2aae0fb">Your existing giveaways, entries and records are unchanged. What has stopped is publishing new giveaways and drawing winners.</p>
-         ${state.status_reason ? `<p class="u-3a46e857">Reason given: ${escapeHtml(state.status_reason)}</p>` : ''}`,
-        `<a class="btn ghost u-e21d2b9e" href="/about.html#get-in-touch">Contact us</a>`,
-      ],
+        [
+          el('p', {
+            class: 'u-a2aae0fb',
+            text: 'Your existing giveaways, entries and records are unchanged. What has stopped is publishing new giveaways and drawing winners.',
+          }),
+          reasonNode(state.status_reason),
+        ],
+        el('a', { class: 'btn ghost u-e21d2b9e', href: '/about.html#get-in-touch', text: 'Contact us' })
+      ),
     };
-    const chosen = panels[state.host_status] || panels.not_requested;
-    accessPanel.innerHTML = accessPanelHtml(...chosen);
+    mount(accessPanel, (panels[state.host_status] || panels.not_requested)());
     return false;
   }
 
@@ -93,9 +116,15 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
-      document.getElementById('image_url').value = data.secure_url;
+      // Cloudinary's response is third-party JSON. It is the API we asked, but
+      // it is still a URL arriving over the network, so it goes through the same
+      // validator as a stored one before it becomes a src.
       const preview = document.getElementById('image-preview');
-      preview.src = data.secure_url;
+      if (!NaseebDom.setMediaSrc(preview, data.secure_url)) {
+        statusEl.textContent = 'Upload returned an image address we do not accept.';
+        return;
+      }
+      document.getElementById('image_url').value = data.secure_url;
       preview.classList.remove('is-hidden');
       statusEl.textContent = 'Uploaded.';
     } catch (err) {
@@ -120,7 +149,7 @@
           entry_deadline: new Date(document.getElementById('entry_deadline').value).toISOString(),
         }),
       });
-      window.location.href = `/giveaway.html?id=${g.id}`;
+      NaseebDom.navigate('/giveaway.html?id=' + encodeURIComponent(g.id));
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.add('show');
