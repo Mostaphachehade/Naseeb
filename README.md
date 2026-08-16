@@ -40,7 +40,8 @@ product and needs advice from a qualified lawyer before it is built, let alone l
 
 ## Stack
 
-- **Backend:** Node.js, Express, Postgres (via `pg`), JWT auth, bcrypt password hashing
+- **Backend:** Node.js, Express, Postgres (via `pg`), bcrypt password hashing, and
+  database-backed sessions in an HttpOnly cookie (see `docs/SESSIONS.md`)
 - **Frontend:** Plain HTML/CSS/JS (no build step, no framework) — just open and deploy
 - **Database:** Any hosted Postgres works (Neon, Supabase, Render Postgres, etc). A free
   hosted Postgres is required — local SQLite files don't survive restarts on most free
@@ -111,7 +112,10 @@ naseeb/
     lib/email.js             # Resend wrapper — logs to console if RESEND_API_KEY isn't set
     middleware/auth.js        # JWT auth middleware (requireAuth, optionalAuth, requireAdmin)
     middleware/rateLimit.js   # rate limiters for auth, entry, and application endpoints
-    routes/auth.js            # signup / login / email verification / password reset
+    routes/auth.js            # signup / login / logout / session bootstrap / verification / reset
+    middleware/auth.js        # cookie session -> req.userId. No bearer path exists.
+    lib/sessions.js           # opaque tokens, hashes, expiry, revocation, rotation
+    lib/csrf.js               # session-bound CSRF token + Origin/Referer check
     routes/giveaways.js       # browse (paginated), create, enter, draw, dashboard
     routes/hostApplications.js # private-beta host application (sign-in required) + own status
     routes/admin.js            # admin-only: review applications, grant/suspend host access
@@ -134,10 +138,32 @@ naseeb/
     js/app.js               # shared auth/session helpers + rendering
 ```
 
+## Sessions, CSRF and signing in
+
+Browser authentication is an opaque random token in an **HttpOnly cookie**, with only its
+SHA-256 hash stored in Postgres. It is not readable by JavaScript, it can be revoked from the
+server at any moment, and it lasts 12 hours rather than the 30 days the previous JWT-in-
+localStorage scheme did. Every state-changing request also needs a session-bound CSRF token in
+an `X-CSRF-Token` header and an `Origin`/`Referer` matching `APP_URL`.
+
+Three things to know before deploying:
+
+1. **Set `SESSION_SECRET`** (48 random bytes) and make sure `APP_URL` is your real https origin.
+   Production refuses to start without both, and a wrong `APP_URL` makes every write fail with
+   `403 ORIGIN_NOT_ALLOWED`.
+2. **Everyone signs in once** after this ships. Old localStorage tokens are cleared on sight and
+   are never exchanged for a session — that is deliberate, not an oversight.
+3. **Local development** runs over plain http, so `COOKIE_SECURE` stays `false` there. Production
+   cannot make that choice; it is checked at startup.
+
+`docs/SESSIONS.md` has the whole model: cookie attributes and why `SameSite=Lax`, the rotation
+and renewal policy, every revocation trigger, the single Stripe-webhook CSRF exclusion, and what
+is still open (notably: **this is not XSS hardening — there is still no CSP**).
+
 ## Environment variables
 
-See `.env.example` for the full list. `JWT_SECRET` and `DATABASE_URL` are required — the app
-won't start without them. Everything else is optional and degrades gracefully if unset:
+See `.env.example` for the full list. `SESSION_SECRET` and `DATABASE_URL` are required in
+production — the app won't start without them. Everything else is optional and degrades gracefully if unset:
 
 - **`RESEND_API_KEY`** — without it, verification/reset/notification emails are logged to the
   server console instead of sent. Get a free key at [resend.com](https://resend.com).

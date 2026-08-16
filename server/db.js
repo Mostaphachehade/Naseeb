@@ -105,6 +105,54 @@ async function init() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS host_status_reason TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS host_status_changed_by TEXT REFERENCES users(id);
 
+    -- Whether the account itself may be used at all.
+    --
+    -- Kept strictly apart from host_status, which is authorization: losing
+    -- permission to publish giveaways must not sign somebody out of the account
+    -- they enter giveaways with. This one is authentication — a suspended or
+    -- deactivated account holds no valid session and cannot obtain one.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status_changed_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status_reason TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status_changed_by TEXT REFERENCES users(id);
+
+    -- Browser sessions.
+    --
+    -- Authentication used to be a 30-day JWT in localStorage: readable by any
+    -- script on the page, impossible to revoke, and invisible to the server,
+    -- which held no record that a session existed. This table is that record.
+    --
+    -- token_hash holds SHA-256 of a 256-bit random token and nothing else. The
+    -- raw token exists only in the Set-Cookie header and the browser's cookie
+    -- jar — never here, never in a log, never in an API body, never in a URL.
+    -- A dump of this table contains no credential.
+    --
+    -- No IP address and no user-agent string, deliberately: nothing in this
+    -- application reads them, so storing them would be collecting identifiable
+    -- data for nobody to look at. See server/lib/sessions.js.
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      -- CASCADE because a deleted account cannot have live sessions, and a
+      -- session row that outlived its user would be an orphan nothing could
+      -- authenticate anyway.
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_used_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      revoked_at TIMESTAMPTZ,
+      revocation_reason TEXT,
+      -- The rotation chain, in both directions, so a session's history can be
+      -- followed without guessing.
+      replaced_by_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+      rotated_from_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+      -- How long a token replaced by a rotation stays usable, so requests
+      -- already in flight in another tab do not fail.
+      rotation_grace_until TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id) WHERE revoked_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+
     -- Intentionally no price/amount/payment columns on giveaways or entries.
     -- Entry into a giveaway must always be free; prizes are funded by the host
     -- as a marketing cost, never from participant payments.
@@ -218,6 +266,10 @@ async function init() {
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_host_status_valid') THEN
         ALTER TABLE users ADD CONSTRAINT users_host_status_valid
           CHECK (host_status IN ('not_requested', 'pending', 'approved', 'rejected', 'suspended'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_account_status_valid') THEN
+        ALTER TABLE users ADD CONSTRAINT users_account_status_valid
+          CHECK (account_status IN ('active', 'suspended', 'deactivated'));
       END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'host_applications_status_valid') THEN
         ALTER TABLE host_applications ADD CONSTRAINT host_applications_status_valid

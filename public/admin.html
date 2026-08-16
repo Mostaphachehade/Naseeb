@@ -149,9 +149,10 @@
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
 <script>
-  if (!getToken()) {
-    window.location.href = '/login.html?redirect=%2Fadmin.html';
-  }
+  // Cosmetic only. Every route this page calls re-reads users.is_admin from
+  // Postgres on the request, so reaching this page without being an
+  // administrator produces a screen full of 403s rather than an admin panel.
+  const ready = requireSession('/admin.html');
 
 
   async function loadStats() {
@@ -1138,7 +1139,7 @@
     }
   }
 
-  if (getToken()) {
+  ready.then(() => {
     loadStats();
     loadClaims();
     loadRescueQueue();
@@ -1148,7 +1149,7 @@
     loadAds();
     loadGiveaways();
     loadUsers();
-  }
+  });
 </script>
 </body>
 </html>

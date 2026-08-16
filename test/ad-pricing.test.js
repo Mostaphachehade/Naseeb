@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuid } = require('uuid');
 const Stripe = require('stripe');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
 const { aedToFils, formatFils, getAdPriceQuote, PRICE_SETTING_KEY } = require('../server/lib/adPricing');
 const { setSetting, DEFAULTS } = require('../server/lib/settings');
 
@@ -559,24 +559,16 @@ test('the owner panel rejects prices that cannot be charged exactly', async () =
   );
 
   try {
-    const login = await api()
-      .post('/api/auth/login')
-      .set('X-Forwarded-For', nextIp())
-      .send({ email: adminEmail, password: 'correcthorse123' });
-    assert.equal(login.status, 200);
-    const token = login.body.token;
+    const adminSession = await signIn(adminEmail, 'correcthorse123', { ip: nextIp() });
 
     for (const bad of ['1e3', '5.005', '-100', '0', 'free', '']) {
-      const res = await api()
+      const res = await adminSession
         .patch('/api/admin/settings')
-        .set('Authorization', `Bearer ${token}`)
         .send({ ad_price_per_week_aed: bad });
       assert.equal(res.status, 400, `"${bad}" must be rejected as a price`);
     }
 
-    const ok = await api()
-      .patch('/api/admin/settings')
-      .set('Authorization', `Bearer ${token}`)
+    const ok = await adminSession.patch('/api/admin/settings')
       .send({ ad_price_per_week_aed: '650.25' });
     assert.equal(ok.status, 200);
     assert.equal((await getAdPriceQuote(pool)).pricePerWeekFils, 65025);

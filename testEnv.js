@@ -119,11 +119,21 @@ function configureTestEnv() {
     process.env.DATABASE_SSL = 'false';
   }
 
-  // A fixed, obviously-fake signing key. Tests assert on auth behaviour, not
-  // on secret strength, and hard-coding it means the suite can never fall back
-  // to the real JWT_SECRET and mint tokens that would be valid in production.
+  // Fixed, obviously-fake secrets. Tests assert on auth behaviour, not on
+  // secret strength, and hard-coding them means the suite can never fall back
+  // to a real one and mint credentials that would be valid in production.
+  //
+  // SESSION_SECRET signs CSRF tokens. JWT_SECRET is set only so that anything
+  // still reading it fails loudly against a value that is obviously not real —
+  // browser authentication no longer uses a JWT at all.
+  process.env.SESSION_SECRET =
+    'test-only-session-secret-not-valid-outside-the-test-suite-0123456789';
   process.env.JWT_SECRET = 'test-only-jwt-secret-not-valid-outside-the-test-suite';
   process.env.APP_URL = process.env.APP_URL || 'http://localhost:3000';
+  // Tests speak plain http to an in-process server; a Secure cookie would never
+  // be sent back. Production cannot make this choice — see
+  // sessions.assertCookieSecurity, which refuses to start on it.
+  process.env.COOKIE_SECURE = process.env.COOKIE_SECURE || 'false';
 
   // Third-party credentials are stripped rather than trusted. Without these,
   // the app's own fallbacks take over: emails log to the console, Sentry stays

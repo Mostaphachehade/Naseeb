@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
 
 const policies = require('../server/lib/policies');
 const { POLICY_STATUS, PolicyNotAcceptableError } = policies;

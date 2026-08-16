@@ -16,6 +16,7 @@ const adminRoutes = require('./routes/admin');
 const configRoutes = require('./routes/config');
 const webhookRoutes = require('./routes/webhooks');
 const claimRoutes = require('./routes/claims');
+const { csrfProtection } = require('./lib/csrf');
 
 const app = express();
 
@@ -40,6 +41,13 @@ app.use(cors({ origin: process.env.APP_URL || 'http://localhost:3000' }));
 app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhookRoutes);
 
 app.use(express.json());
+
+// Runs in front of every remaining API router, and deliberately AFTER the
+// webhook mount above so Stripe's raw-body path never reaches it. Checks
+// Origin/Referer on every unsafe request, and requires a session-bound CSRF
+// token on every unsafe request that carries a session cookie — both before any
+// handler runs, so a refused request has written nothing.
+app.use('/api', csrfProtection);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/giveaways', giveawayRoutes);

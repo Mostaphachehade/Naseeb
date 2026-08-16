@@ -8,7 +8,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, nextTestIp } = require('../testHelpers');
 
 const createdUserIds = [];
 const createdGiveawayIds = [];
@@ -53,8 +53,10 @@ async function createVerifiedUser(tag) {
   );
   createdUserIds.push(id);
 
-  const login = await api().post('/api/auth/login').send({ email, password });
-  return { id, token: login.body.token };
+  // A cookie jar, not a token: authentication is an HttpOnly cookie the page
+  // cannot read, so a test cannot hold one either.
+  const session = await signIn(email, password, { ip: nextTestIp() });
+  return { ...session, id, email };
 }
 
 // Inserted directly (rather than via POST /api/giveaways) so the deadline
@@ -80,8 +82,8 @@ test('two simultaneous entries get distinct ticket numbers, not a collision', as
   ]);
 
   const [resA, resB] = await Promise.all([
-    api().post(`/api/giveaways/${giveawayId}/enter`).set('Authorization', `Bearer ${entrantA.token}`).send(),
-    api().post(`/api/giveaways/${giveawayId}/enter`).set('Authorization', `Bearer ${entrantB.token}`).send(),
+    entrantA.post(`/api/giveaways/${giveawayId}/enter`).send(),
+    entrantB.post(`/api/giveaways/${giveawayId}/enter`).send(),
   ]);
 
   assert.equal(resA.status, 201);
@@ -99,8 +101,8 @@ test('the same person entering twice at once only gets counted once', async () =
   const entrant = await createVerifiedUser('dupe-entrant');
 
   const [resA, resB] = await Promise.all([
-    api().post(`/api/giveaways/${giveawayId}/enter`).set('Authorization', `Bearer ${entrant.token}`).send(),
-    api().post(`/api/giveaways/${giveawayId}/enter`).set('Authorization', `Bearer ${entrant.token}`).send(),
+    entrant.post(`/api/giveaways/${giveawayId}/enter`).send(),
+    entrant.post(`/api/giveaways/${giveawayId}/enter`).send(),
   ]);
 
   const statuses = [resA.status, resB.status].sort();
@@ -121,8 +123,8 @@ test('two simultaneous draws only let one succeed', async () => {
   );
 
   const [resA, resB] = await Promise.all([
-    api().post(`/api/giveaways/${giveawayId}/draw`).set('Authorization', `Bearer ${host.token}`).send(),
-    api().post(`/api/giveaways/${giveawayId}/draw`).set('Authorization', `Bearer ${host.token}`).send(),
+    host.post(`/api/giveaways/${giveawayId}/draw`).send(),
+    host.post(`/api/giveaways/${giveawayId}/draw`).send(),
   ]);
 
   const statuses = [resA.status, resB.status].sort();
@@ -144,9 +146,7 @@ test('only the host can draw a winner', async () => {
     [uuid(), giveawayId, entrant.id]
   );
 
-  const res = await api()
-    .post(`/api/giveaways/${giveawayId}/draw`)
-    .set('Authorization', `Bearer ${stranger.token}`)
+  const res = await stranger.post(`/api/giveaways/${giveawayId}/draw`)
     .send();
 
   assert.equal(res.status, 403);

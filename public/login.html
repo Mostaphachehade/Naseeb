@@ -50,14 +50,17 @@
     const errorEl = document.getElementById('error');
     errorEl.classList.remove('show');
     try {
-      const { token, user } = await api('/auth/login', {
+      // The response carries no session token — the server set an HttpOnly
+      // cookie this page cannot read. What comes back is who you are and the
+      // CSRF token to send with future writes, both held in memory only.
+      const result = await api('/auth/login', {
         method: 'POST',
         body: JSON.stringify({
           email: document.getElementById('email').value,
           password: document.getElementById('password').value,
         }),
       });
-      setSession(token, user);
+      adoptSession(result);
       window.location.href = redirectTo;
     } catch (err) {
       errorEl.textContent = err.message;

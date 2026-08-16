@@ -31,36 +31,120 @@ const API = '/api';
     .catch(() => {});
 })();
 
-function getToken() { return localStorage.getItem('naseeb_token'); }
-function getUser() {
-  const raw = localStorage.getItem('naseeb_user');
-  if (!raw) return null;
+// ---------------------------------------------------------------------------
+// Session
+// ---------------------------------------------------------------------------
+//
+// There is no token in this file, and there is nowhere in the browser it could
+// be kept. Authentication is an HttpOnly cookie the server sets and this script
+// cannot read, cannot copy and cannot accidentally log. What used to live here
+// was a 30-day JWT in localStorage plus an Authorization header built by hand —
+// readable by any script that ever ran on any page of this site.
+//
+// What is held in memory is who you are (for rendering) and a CSRF token (for
+// sending). Both die with the page. Neither is a credential on its own: the
+// CSRF token is useless without the cookie, and the cookie is useless
+// cross-site without the token.
+
+let session = { authenticated: false, user: null, csrf: null };
+
+// Anything left over from the old scheme is removed on sight, and never
+// exchanged for a session. A token found here has been sitting in a place we
+// now consider unsafe, possibly for a month; the only correct thing to do with
+// it is throw it away. Everyone signs in once after this ships.
+(function purgeLegacyTokens() {
   try {
-    return JSON.parse(raw);
+    ['naseeb_token', 'naseeb_user'].forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
   } catch (err) {
-    // Corrupted session data (e.g. a browser extension mangled localStorage)
-    // — treat it as signed out rather than crashing every page's header.
-    clearSession();
-    return null;
+    // Storage can be disabled entirely. Nothing here depends on it.
   }
+})();
+
+// Resolved once per page load, before anything renders. Every page that needs
+// to know whether somebody is signed in awaits this rather than reading storage.
+const sessionReady = (async function loadSession() {
+  try {
+    const res = await fetch(`${API}/auth/session`, {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return session;
+    const data = await res.json();
+    session = {
+      authenticated: Boolean(data.authenticated),
+      user: data.user || null,
+      csrf: data.csrf_token || null,
+    };
+  } catch (err) {
+    // Offline or a server blip. Renders as signed out, which is the safe
+    // direction — no page grants anything on the strength of this.
+  }
+  return session;
+})();
+
+function getUser() { return session.user; }
+function isSignedIn() { return session.authenticated; }
+
+// Sends the browser to the sign-in page if there is no session, and resolves
+// only when there is one. Replaces the `if (!getToken()) location.href = ...`
+// that every authenticated page used to open with — which was synchronous
+// because the token was synchronous, and cannot be any more.
+async function requireSession(redirectTo) {
+  await sessionReady;
+  if (session.authenticated) return session;
+  const target = redirectTo || window.location.pathname + window.location.search;
+  window.location.href = `/login.html?redirect=${encodeURIComponent(target)}`;
+  // Never resolves: the page is navigating away, and callers should not
+  // continue rendering a screen the visitor is not entitled to see.
+  return new Promise(() => {});
 }
-function setSession(token, user) {
-  localStorage.setItem('naseeb_token', token);
-  localStorage.setItem('naseeb_user', JSON.stringify(user));
+
+// Adopts the session a login or signup response just established. Stores
+// nothing — the cookie is already set by the server, and this only records what
+// to render and which CSRF token to send.
+function adoptSession(payload) {
+  session = {
+    authenticated: true,
+    user: payload.user || null,
+    csrf: payload.csrf_token || null,
+  };
 }
-function clearSession() {
-  localStorage.removeItem('naseeb_token');
-  localStorage.removeItem('naseeb_user');
+
+function forgetSession() {
+  session = { authenticated: false, user: null, csrf: null };
 }
+
+const UNSAFE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
 async function api(path, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API}${path}`, { ...options, headers });
+  // The CSRF token travels in a custom header and only there. Never a query
+  // string (it would reach access logs and Referer headers), never a form
+  // field, never storage.
+  if (UNSAFE_METHODS.includes(method)) {
+    await sessionReady;
+    if (session.csrf) headers['X-CSRF-Token'] = session.csrf;
+  }
+
+  const res = await fetch(`${API}${path}`, {
+    ...options,
+    headers,
+    // Sends the session cookie on same-origin requests and nothing else.
+    credentials: 'same-origin',
+  });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+
+  if (!res.ok) {
+    // A session that ended server-side (expired, revoked, password reset,
+    // account suspended) should stop the page pretending otherwise.
+    if (res.status === 401) forgetSession();
+    throw new Error(data.error || 'Something went wrong. Please try again.');
+  }
   return data;
 }
 
@@ -98,8 +182,18 @@ function renderHeader() {
       <button id="logout-btn">${t('nav.signOut')}</button>
       ${langSwitcherHtml()}
     `;
-    document.getElementById('logout-btn').addEventListener('click', () => {
-      clearSession();
+    document.getElementById('logout-btn').addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      try {
+        // Signing out is a server-side revocation, not a browser-side delete.
+        // The old version removed the localStorage copy and left the token
+        // valid for the rest of its thirty days.
+        await api('/auth/logout', { method: 'POST' });
+      } catch (err) {
+        // The cookie is cleared by the response either way; if the request
+        // never landed, the session still expires on its own.
+      }
+      forgetSession();
       window.location.href = '/index.html';
     });
   } else {
@@ -128,7 +222,7 @@ function renderHeader() {
 // renders.
 async function syncHostCta() {
   const cta = document.getElementById('nav-host-cta');
-  if (!cta || !getToken()) return;
+  if (!cta || !isSignedIn()) return;
   try {
     const state = await api('/host-applications/me');
     if (state.can_host) {
@@ -346,9 +440,12 @@ function skeletonCards(n) {
   `).join('');
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  renderHeader();
+// The header cannot be drawn until the server has said who this is — there is
+// no synchronous copy of that answer any more, which is the point.
+document.addEventListener('DOMContentLoaded', async () => {
   renderFooter();
-  renderVerificationBanner();
   renderMaintenanceBanner();
+  await sessionReady;
+  renderHeader();
+  renderVerificationBanner();
 });

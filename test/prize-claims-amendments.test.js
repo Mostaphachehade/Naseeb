@@ -21,7 +21,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const request = require('supertest');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, TEST_ORIGIN } = require('../testHelpers');
 
 const app = require('../server/app');
 const claims = require('../server/lib/claims');
@@ -101,11 +101,10 @@ async function createUser(tag, { admin = false } = {}) {
     [id, `Fabricated ${tag}`, email, bcrypt.hashSync('correcthorse123', 4), admin]
   );
   createdUserIds.push(id);
-  const login = await api()
-    .post('/api/auth/login')
-    .set('X-Forwarded-For', nextIp())
-    .send({ email, password: 'correcthorse123' });
-  return { id, email, token: login.body.token };
+  // A cookie jar, not a token: authentication is an HttpOnly cookie the page
+  // cannot read, so a test cannot hold one either.
+  const session = await signIn(email, 'correcthorse123', { ip: nextIp() });
+  return { ...session, id, email };
 }
 
 // A drawn giveaway with no claim — exactly what a giveaway drawn before this
@@ -244,14 +243,14 @@ test('the token never appears in a request target or Referer, end to end', async
   const lookup = await request(recorder)
     .post('/api/claims/lookup')
     .set('X-Forwarded-For', nextIp())
-    .set('Referer', 'http://127.0.0.1/claim.html')
+    .set('Referer', `${TEST_ORIGIN}/claim.html`)
     .send({ token });
-  assert.equal(lookup.status, 200);
+  assert.equal(lookup.status, 200, JSON.stringify(lookup.body));
 
   const redeem = await request(recorder)
     .post('/api/claims/redeem')
     .set('X-Forwarded-For', nextIp())
-    .set('Referer', 'http://127.0.0.1/claim.html')
+    .set('Referer', `${TEST_ORIGIN}/claim.html`)
     .send({
       token,
       consent: true,
@@ -283,7 +282,7 @@ test('the claim page strips the fragment before any other script runs', () => {
 
   // Analytics must not initialise on this page at all.
   const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app.js'), 'utf8');
-  const analytics = appJs.slice(appJs.indexOf('loadAnalytics'), appJs.indexOf('function getToken'));
+  const analytics = appJs.slice(appJs.indexOf('loadAnalytics'), appJs.indexOf('// Session'));
   assert.ok(analytics.includes("'/claim.html'"), 'analytics is skipped on the claim page');
 });
 
@@ -425,9 +424,7 @@ test('an exhausted invitation stops retrying and says so loudly', async () => {
   // Which is exactly what the admin reissue path is for.
   const admin = await createUser('exhausted-admin', { admin: true });
   const sent = captureSentEmails();
-  const reissued = await api()
-    .post(`/api/claims/${claim.id}/admin/reissue`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const reissued = await admin.post(`/api/claims/${claim.id}/admin/reissue`)
     .set('X-Forwarded-For', nextIp())
     .send({ note: 'winner reported never receiving it' });
 
@@ -458,9 +455,7 @@ test('drawing a winner never leaves an unhandled rejection when email fails', as
     );
 
     failAllEmails();
-    const drawn = await api()
-      .post(`/api/giveaways/${giveawayId}/draw`)
-      .set('Authorization', `Bearer ${host.token}`)
+    const drawn = await host.post(`/api/giveaways/${giveawayId}/draw`)
       .send();
     assert.equal(drawn.status, 200, 'the draw itself still succeeds');
 
@@ -502,9 +497,7 @@ test('scheduled maintenance erases eligible details and leaves everything else',
     [STATES.DELIVERED_PENDING_CONFIRMATION, done.host],
     [STATES.DELIVERED, done.winner],
   ]) {
-    await api()
-      .post(`/api/claims/${doneClaim.id}/transition`)
-      .set('Authorization', `Bearer ${actor.token}`)
+    await actor.post(`/api/claims/${doneClaim.id}/transition`)
       .set('X-Forwarded-For', nextIp())
       .send({ to: state });
   }
@@ -526,9 +519,7 @@ test('scheduled maintenance erases eligible details and leaves everything else',
       consent_version: claims.CONSENT_VERSION,
       delivery: FABRICATED_DELIVERY,
     });
-  await api()
-    .post(`/api/claims/${openClaim.id}/transition`)
-    .set('Authorization', `Bearer ${open.winner.token}`)
+  await open.winner.post(`/api/claims/${openClaim.id}/transition`)
     .set('X-Forwarded-For', nextIp())
     .send({ to: STATES.DISPUTED, note: 'Never arrived (fabricated).' });
   await pool.query("UPDATE prize_claims SET disputed_at = NOW() - INTERVAL '400 days' WHERE id = $1", [
@@ -569,9 +560,7 @@ test('the scheduler is not reachable over HTTP', async () => {
   assert.equal(anonymous.status, 401);
 
   const ordinary = await createUser('not-an-admin');
-  const denied = await api()
-    .post('/api/claims/admin/maintenance')
-    .set('Authorization', `Bearer ${ordinary.token}`)
+  const denied = await ordinary.post('/api/claims/admin/maintenance')
     .send({});
   assert.equal(denied.status, 403);
 });
@@ -584,16 +573,12 @@ test('an admin can issue a claim for a giveaway drawn before this workflow exist
   const ctx = await createDrawnGiveawayWithoutClaim();
   const admin = await createUser('backfill-admin', { admin: true });
 
-  const listed = await api()
-    .get('/api/claims/admin/missing-claims')
-    .set('Authorization', `Bearer ${admin.token}`);
+  const listed = await admin.get('/api/claims/admin/missing-claims');
   assert.equal(listed.status, 200);
   assert.ok(listed.body.some((row) => row.giveaway_id === ctx.giveawayId));
 
   const sent = captureSentEmails();
-  const created = await api()
-    .post(`/api/claims/admin/backfill/${ctx.giveawayId}`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const created = await admin.post(`/api/claims/admin/backfill/${ctx.giveawayId}`)
     .set('X-Forwarded-For', nextIp())
     .send({});
 
@@ -625,9 +610,7 @@ test('backfill refuses a giveaway with no drawn winner', async () => {
   );
   createdGiveawayIds.push(giveawayId);
 
-  const res = await api()
-    .post(`/api/claims/admin/backfill/${giveawayId}`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const res = await admin.post(`/api/claims/admin/backfill/${giveawayId}`)
     .set('X-Forwarded-For', nextIp())
     .send({});
 
@@ -641,9 +624,9 @@ test('repeated and concurrent backfill attempts produce exactly one claim', asyn
 
   captureSentEmails();
   const attempts = await Promise.all([
-    api().post(`/api/claims/admin/backfill/${ctx.giveawayId}`).set('Authorization', `Bearer ${admin.token}`).set('X-Forwarded-For', nextIp()).send({}),
-    api().post(`/api/claims/admin/backfill/${ctx.giveawayId}`).set('Authorization', `Bearer ${admin.token}`).set('X-Forwarded-For', nextIp()).send({}),
-    api().post(`/api/claims/admin/backfill/${ctx.giveawayId}`).set('Authorization', `Bearer ${admin.token}`).set('X-Forwarded-For', nextIp()).send({}),
+    admin.post(`/api/claims/admin/backfill/${ctx.giveawayId}`).set('X-Forwarded-For', nextIp()).send({}),
+    admin.post(`/api/claims/admin/backfill/${ctx.giveawayId}`).set('X-Forwarded-For', nextIp()).send({}),
+    admin.post(`/api/claims/admin/backfill/${ctx.giveawayId}`).set('X-Forwarded-For', nextIp()).send({}),
   ]);
 
   assert.ok(attempts.every((r) => r.status === 200 || r.status === 201));
@@ -655,9 +638,7 @@ test('repeated and concurrent backfill attempts produce exactly one claim', asyn
   assert.equal(count.rows[0].c, 1);
 
   // A fourth, later attempt is a no-op rather than an error.
-  const again = await api()
-    .post(`/api/claims/admin/backfill/${ctx.giveawayId}`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const again = await admin.post(`/api/claims/admin/backfill/${ctx.giveawayId}`)
     .set('X-Forwarded-For', nextIp())
     .send({});
   assert.equal(again.status, 200);
@@ -674,8 +655,8 @@ test('reissuing invalidates every previous unused token, including concurrently'
   const original = tokenFromEmail(sent[0].html);
 
   const reissues = await Promise.all([
-    api().post(`/api/claims/${claim.id}/admin/reissue`).set('Authorization', `Bearer ${admin.token}`).set('X-Forwarded-For', nextIp()).send({}),
-    api().post(`/api/claims/${claim.id}/admin/reissue`).set('Authorization', `Bearer ${admin.token}`).set('X-Forwarded-For', nextIp()).send({}),
+    admin.post(`/api/claims/${claim.id}/admin/reissue`).set('X-Forwarded-For', nextIp()).send({}),
+    admin.post(`/api/claims/${claim.id}/admin/reissue`).set('X-Forwarded-For', nextIp()).send({}),
   ]);
   assert.ok(reissues.every((r) => r.status === 200));
 
@@ -706,16 +687,12 @@ test('with claims disabled the workflow is inert and the old unsafe path stays c
     assert.equal(lookup.status, 503);
     assert.equal(lookup.body.code, 'CLAIMS_DISABLED');
 
-    const view = await api()
-      .get(`/api/claims/giveaway/${ctx.giveawayId}`)
-      .set('Authorization', `Bearer ${ctx.host.token}`);
+    const view = await ctx.host.get(`/api/claims/giveaway/${ctx.giveawayId}`);
     assert.equal(view.status, 503);
 
     // Critically, the host still cannot declare delivery on their own. Turning
     // claims off must not reopen the door this whole phase closed.
-    const legacy = await api()
-      .post(`/api/giveaways/${ctx.giveawayId}/confirm-delivery`)
-      .set('Authorization', `Bearer ${ctx.host.token}`)
+    const legacy = await ctx.host.post(`/api/giveaways/${ctx.giveawayId}/confirm-delivery`)
       .send({});
     assert.equal(legacy.status, 409);
     assert.equal(legacy.body.code, 'USE_CLAIM_WORKFLOW');
@@ -757,8 +734,6 @@ test('sensitive claim responses are marked no-store', async () => {
   const lookup = await api().post('/api/claims/lookup').set('X-Forwarded-For', nextIp()).send({ token: claim.token });
   assert.match(lookup.headers['cache-control'], /no-store/);
 
-  const view = await api()
-    .get(`/api/claims/giveaway/${ctx.giveawayId}`)
-    .set('Authorization', `Bearer ${ctx.host.token}`);
+  const view = await ctx.host.get(`/api/claims/giveaway/${ctx.giveawayId}`);
   assert.match(view.headers['cache-control'], /no-store/);
 });

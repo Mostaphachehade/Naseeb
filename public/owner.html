@@ -102,9 +102,7 @@
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
 <script>
-  if (!getToken()) {
-    window.location.href = '/login.html?redirect=%2Fowner.html';
-  }
+  const ready = requireSession('/owner.html');
 
   // ---- Quick-host ----
   let qhCloudinaryConfig = null;
@@ -275,10 +273,10 @@
     }
   });
 
-  if (getToken()) {
+  ready.then(() => {
     loadRevenue();
     loadSettings();
-  }
+  });
 </script>
 </body>
 </html>

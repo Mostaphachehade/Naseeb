@@ -179,7 +179,8 @@
   }
 
   async function load() {
-    if (!getToken()) {
+    await sessionReady;
+    if (!isSignedIn()) {
       document.getElementById('form-head').style.display = 'none';
       statusPanel.innerHTML = panel(
         'Sign in to apply',

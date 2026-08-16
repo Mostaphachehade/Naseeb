@@ -11,7 +11,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
 
 const { HOST_STATUS } = require('../server/lib/hostAccess');
 
@@ -68,11 +68,10 @@ async function createUser(tag, { admin = false, hostStatus = HOST_STATUS.NOT_REQ
     [id, `Host Access ${tag}`, email, bcrypt.hashSync(PASSWORD, 4), verified, admin, hostStatus]
   );
   createdUserIds.push(id);
-  const login = await api()
-    .post('/api/auth/login')
-    .set('X-Forwarded-For', uniqueIp())
-    .send({ email, password: PASSWORD });
-  return { id, email, token: login.body.token };
+  // A cookie jar, not a token: authentication is an HttpOnly cookie the page
+  // cannot read, so a test cannot hold one either.
+  const session = await signIn(email, PASSWORD, { ip: uniqueIp() });
+  return { ...session, id, email };
 }
 
 function giveawayPayload(n) {
@@ -86,7 +85,7 @@ function giveawayPayload(n) {
 }
 
 function createGiveaway(token, n) {
-  return api().post('/api/giveaways').set('Authorization', `Bearer ${token}`).send(giveawayPayload(n));
+  return token.post('/api/giveaways').send(giveawayPayload(n));
 }
 
 async function setStatus(userId, status, reason = 'test fixture') {
@@ -122,7 +121,7 @@ test('a brand new account starts as not_requested and holds no host access', asy
 
 test('a verified account that has never applied cannot create a giveaway', async () => {
   const user = await createUser('not-requested');
-  const res = await createGiveaway(user.token, 'not-requested');
+  const res = await createGiveaway(user, 'not-requested');
 
   assert.equal(res.status, 403);
   assert.equal(res.body.code, 'HOST_APPROVAL_REQUIRED');
@@ -134,28 +133,28 @@ test('a verified account that has never applied cannot create a giveaway', async
 
 test('an account waiting for review cannot create a giveaway', async () => {
   const user = await createUser('pending', { hostStatus: HOST_STATUS.PENDING });
-  const res = await createGiveaway(user.token, 'pending');
+  const res = await createGiveaway(user, 'pending');
   assert.equal(res.status, 403);
   assert.equal(res.body.code, 'HOST_APPROVAL_PENDING');
 });
 
 test('a rejected account cannot create a giveaway', async () => {
   const user = await createUser('rejected', { hostStatus: HOST_STATUS.REJECTED });
-  const res = await createGiveaway(user.token, 'rejected');
+  const res = await createGiveaway(user, 'rejected');
   assert.equal(res.status, 403);
   assert.equal(res.body.code, 'HOST_APPROVAL_REJECTED');
 });
 
 test('an approved account can create a giveaway', async () => {
   const user = await createUser('approved', { hostStatus: HOST_STATUS.APPROVED });
-  const res = await createGiveaway(user.token, 'approved');
+  const res = await createGiveaway(user, 'approved');
   assert.equal(res.status, 201, JSON.stringify(res.body));
   createdGiveawayIds.push(res.body.id);
 });
 
 test('an unverified email is still refused, even when approved to host', async () => {
   const user = await createUser('unverified', { hostStatus: HOST_STATUS.APPROVED, verified: false });
-  const res = await createGiveaway(user.token, 'unverified');
+  const res = await createGiveaway(user, 'unverified');
   assert.equal(res.status, 403);
   assert.equal(res.body.code, 'EMAIL_VERIFICATION_REQUIRED');
 });
@@ -167,14 +166,14 @@ test('an unverified email is still refused, even when approved to host', async (
 test('suspension takes effect on the very next request, with no new sign-in', async () => {
   const user = await createUser('suspend-live', { hostStatus: HOST_STATUS.APPROVED });
 
-  const before = await createGiveaway(user.token, 'suspend-before');
+  const before = await createGiveaway(user, 'suspend-before');
   assert.equal(before.status, 201);
   createdGiveawayIds.push(before.body.id);
 
   // The token is untouched. Only the database changed.
   await setStatus(user.id, HOST_STATUS.SUSPENDED, 'suspended mid-session by a test');
 
-  const after = await createGiveaway(user.token, 'suspend-after');
+  const after = await createGiveaway(user, 'suspend-after');
   assert.equal(after.status, 403, 'the same 30-day token must not keep asserting approval');
   assert.equal(after.body.code, 'HOST_ACCESS_SUSPENDED');
 
@@ -183,14 +182,27 @@ test('suspension takes effect on the very next request, with no new sign-in', as
   assert.equal(kept.rows[0].c, 1, 'a suspended host keeps every record they had');
 });
 
-test('the session token carries no host status a client could forge', async () => {
+test('the session asserts nothing a client could forge', async () => {
   const user = await createUser('token-shape', { hostStatus: HOST_STATUS.APPROVED });
-  const [, payload] = user.token.split('.');
-  const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
 
-  assert.deepEqual(Object.keys(claims).sort(), ['exp', 'iat', 'name', 'sub']);
-  assert.equal(claims.host_status, undefined);
-  assert.equal(claims.is_admin, undefined);
+  // There is nothing in the browser to read a status out of. The session is an
+  // opaque random token in an HttpOnly cookie; every claim about this account —
+  // its host status, whether it is an administrator — is looked up in Postgres
+  // on the request that needs it.
+  const bootstrap = await user.get('/api/auth/session');
+  assert.equal(bootstrap.status, 200);
+  assert.equal(bootstrap.body.host_status, undefined, 'host status is not part of the session');
+  assert.equal(bootstrap.body.token, undefined);
+  assert.equal(bootstrap.body.session_token, undefined);
+
+  // And sending one changes nothing.
+  const forged = await user
+    .post('/api/giveaways')
+    .send({ ...giveawayPayload('forged'), host_status: 'approved', is_admin: true, userId: 'someone-else' });
+  assert.equal(forged.status, 201);
+  createdGiveawayIds.push(forged.body.id);
+  const row = await pool.query('SELECT host_id FROM giveaways WHERE id = $1', [forged.body.id]);
+  assert.equal(row.rows[0].host_id, user.id, 'the host is the session owner, not a field in the body');
 });
 
 // ---------------------------------------------------------------------------
@@ -203,7 +215,7 @@ test('an administrator can host without ever having been approved', async () => 
   // Six in a row: well past the most restrictive plan cap that the old pricing
   // page advertised, and past anything a future quota would plausibly set.
   for (let i = 0; i < 6; i++) {
-    const res = await createGiveaway(admin.token, `admin-${i}`);
+    const res = await createGiveaway(admin, `admin-${i}`);
     assert.equal(res.status, 201, `giveaway ${i}: ${JSON.stringify(res.body)}`);
     createdGiveawayIds.push(res.body.id);
   }
@@ -213,7 +225,7 @@ test('an administrator can host even while their own host_status says suspended'
   // The site owner must not be able to lock themselves out of their own
   // platform by fat-fingering a status change.
   const admin = await createUser('admin-suspended', { admin: true, hostStatus: HOST_STATUS.SUSPENDED });
-  const res = await createGiveaway(admin.token, 'admin-suspended');
+  const res = await createGiveaway(admin, 'admin-suspended');
   assert.equal(res.status, 201, JSON.stringify(res.body));
   createdGiveawayIds.push(res.body.id);
 });
@@ -226,33 +238,27 @@ test('an approved host cannot draw, or manage delivery on, another host of their
   const owner = await createUser('owner', { hostStatus: HOST_STATUS.APPROVED });
   const other = await createUser('other', { hostStatus: HOST_STATUS.APPROVED });
 
-  const created = await createGiveaway(owner.token, 'ownership');
+  const created = await createGiveaway(owner, 'ownership');
   assert.equal(created.status, 201);
   createdGiveawayIds.push(created.body.id);
 
-  const draw = await api()
-    .post(`/api/giveaways/${created.body.id}/draw`)
-    .set('Authorization', `Bearer ${other.token}`);
+  const draw = await other.post(`/api/giveaways/${created.body.id}/draw`);
   assert.equal(draw.status, 403, 'approval must not grant access to somebody else\'s giveaway');
   assert.match(draw.body.error, /Only the host of this giveaway/i);
 
-  const delivery = await api()
-    .post(`/api/giveaways/${created.body.id}/confirm-delivery`)
-    .set('Authorization', `Bearer ${other.token}`);
+  const delivery = await other.post(`/api/giveaways/${created.body.id}/confirm-delivery`);
   assert.equal(delivery.status, 403);
 });
 
 test('a suspended host cannot draw their own giveaway', async () => {
   const host = await createUser('draw-suspended', { hostStatus: HOST_STATUS.APPROVED });
-  const created = await createGiveaway(host.token, 'draw-suspended');
+  const created = await createGiveaway(host, 'draw-suspended');
   assert.equal(created.status, 201);
   createdGiveawayIds.push(created.body.id);
 
   await setStatus(host.id, HOST_STATUS.SUSPENDED, 'suspended before the draw');
 
-  const draw = await api()
-    .post(`/api/giveaways/${created.body.id}/draw`)
-    .set('Authorization', `Bearer ${host.token}`);
+  const draw = await host.post(`/api/giveaways/${created.body.id}/draw`);
   assert.equal(draw.status, 403);
   assert.equal(draw.body.code, 'HOST_ACCESS_SUSPENDED');
 
@@ -269,23 +275,23 @@ test('a suspended host cannot draw their own giveaway', async () => {
 
 test('host-only dashboard data is refused to an account with no host access', async () => {
   const nobody = await createUser('dash-nobody');
-  const res = await api().get('/api/giveaways/mine/hosted').set('Authorization', `Bearer ${nobody.token}`);
+  const res = await nobody.get('/api/giveaways/mine/hosted');
   assert.equal(res.status, 403);
   assert.equal(res.body.code, 'HOST_APPROVAL_REQUIRED');
 });
 
 test('a suspended host loses the hosted list but keeps the giveaways behind it', async () => {
   const host = await createUser('dash-suspended', { hostStatus: HOST_STATUS.APPROVED });
-  const created = await createGiveaway(host.token, 'dash-suspended');
+  const created = await createGiveaway(host, 'dash-suspended');
   createdGiveawayIds.push(created.body.id);
 
-  const before = await api().get('/api/giveaways/mine/hosted').set('Authorization', `Bearer ${host.token}`);
+  const before = await host.get('/api/giveaways/mine/hosted');
   assert.equal(before.status, 200);
   assert.equal(before.body.length, 1);
 
   await setStatus(host.id, HOST_STATUS.SUSPENDED, 'suspended for a dashboard test');
 
-  const after = await api().get('/api/giveaways/mine/hosted').set('Authorization', `Bearer ${host.token}`);
+  const after = await host.get('/api/giveaways/mine/hosted');
   assert.equal(after.status, 403);
 
   const stillThere = await pool.query('SELECT COUNT(*)::int AS c FROM giveaways WHERE host_id = $1', [host.id]);
@@ -298,19 +304,17 @@ test('a suspended host loses the hosted list but keeps the giveaways behind it',
 
 test('entering giveaways is untouched by host status', async () => {
   const host = await createUser('entry-host', { hostStatus: HOST_STATUS.APPROVED });
-  const created = await createGiveaway(host.token, 'entry-target');
+  const created = await createGiveaway(host, 'entry-target');
   createdGiveawayIds.push(created.body.id);
 
   // Someone who may not host at all can still enter, which is the whole point
   // of the platform.
   const entrant = await createUser('entrant', { hostStatus: HOST_STATUS.REJECTED });
-  const entered = await api()
-    .post(`/api/giveaways/${created.body.id}/enter`)
-    .set('Authorization', `Bearer ${entrant.token}`)
+  const entered = await entrant.post(`/api/giveaways/${created.body.id}/enter`)
     .set('X-Forwarded-For', uniqueIp());
   assert.equal(entered.status, 201, JSON.stringify(entered.body));
 
-  const mine = await api().get('/api/giveaways/mine/entered').set('Authorization', `Bearer ${entrant.token}`);
+  const mine = await entrant.get('/api/giveaways/mine/entered');
   assert.equal(mine.status, 200, 'the entrant dashboard is not host-only');
   assert.equal(mine.body.length, 1);
 });
@@ -335,9 +339,7 @@ test('applying requires a signed-in account', async () => {
 
 test('applying requires a verified email', async () => {
   const user = await createUser('apply-unverified', { verified: false });
-  const res = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${user.token}`)
+  const res = await user.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send(applicationPayload());
   assert.equal(res.status, 403);
@@ -347,9 +349,7 @@ test('applying requires a verified email', async () => {
 test('applying grants nothing — it moves the account to pending and stops there', async () => {
   const user = await createUser('apply-grants-nothing');
 
-  const applied = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${user.token}`)
+  const applied = await user.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send(applicationPayload());
   assert.equal(applied.status, 201, JSON.stringify(applied.body));
@@ -360,16 +360,14 @@ test('applying grants nothing — it moves the account to pending and stops ther
   assert.equal(row.rows[0].host_status, HOST_STATUS.PENDING);
 
   // The point of the whole phase: an application is not an approval.
-  const create = await createGiveaway(user.token, 'apply-grants-nothing');
+  const create = await createGiveaway(user, 'apply-grants-nothing');
   assert.equal(create.status, 403);
   assert.equal(create.body.code, 'HOST_APPROVAL_PENDING');
 });
 
 test('applying stores no plan, and the application route knows nothing about payment', async () => {
   const user = await createUser('apply-no-plan');
-  const applied = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${user.token}`)
+  const applied = await user.post('/api/host-applications')
     // A client sending a plan gets it ignored rather than stored.
     .send(applicationPayload({ plan: 'partner' }));
   assert.equal(applied.status, 201);
@@ -390,9 +388,7 @@ test('the application route never reaches Stripe', async () => {
     return realFetch(input, init);
   };
   try {
-    const applied = await api()
-      .post('/api/host-applications')
-      .set('Authorization', `Bearer ${user.token}`)
+    const applied = await user.post('/api/host-applications')
       .set('X-Forwarded-For', uniqueIp())
       .send(applicationPayload());
     assert.equal(applied.status, 201);
@@ -426,9 +422,7 @@ test('two applications submitted at the same instant produce exactly one', async
 
   const attempts = await Promise.all(
     Array.from({ length: 5 }, () =>
-      api()
-        .post('/api/host-applications')
-        .set('Authorization', `Bearer ${user.token}`)
+      user.post('/api/host-applications')
         .set('X-Forwarded-For', uniqueIp())
         .send(applicationPayload())
     )
@@ -457,9 +451,7 @@ test('two applications submitted at the same instant produce exactly one', async
 
 test('an approved account is told there is nothing to apply for', async () => {
   const user = await createUser('apply-already', { hostStatus: HOST_STATUS.APPROVED });
-  const res = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${user.token}`)
+  const res = await user.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send(applicationPayload());
   assert.equal(res.status, 409);
@@ -468,9 +460,7 @@ test('an approved account is told there is nothing to apply for', async () => {
 
 test('a suspended account cannot apply its way out of a suspension', async () => {
   const user = await createUser('apply-suspended', { hostStatus: HOST_STATUS.SUSPENDED });
-  const res = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${user.token}`)
+  const res = await user.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send(applicationPayload());
   assert.equal(res.status, 409);
@@ -482,9 +472,7 @@ test('a suspended account cannot apply its way out of a suspension', async () =>
 
 test('the application uses the account email, not one typed into the form', async () => {
   const user = await createUser('apply-email');
-  const applied = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${user.token}`)
+  const applied = await user.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send(applicationPayload({ contact_email: 'someone-else@example.com' }));
   assert.equal(applied.status, 201);
@@ -501,9 +489,7 @@ test('the application uses the account email, not one typed into the form', asyn
 // ---------------------------------------------------------------------------
 
 async function applyAs(user) {
-  const res = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${user.token}`)
+  const res = await user.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send(applicationPayload());
   assert.equal(res.status, 201, JSON.stringify(res.body));
@@ -516,9 +502,7 @@ test('approving records the reason, the decision-maker and the time, and grants 
   const applicant = await createUser('decided-approve');
   const applicationId = await applyAs(applicant);
 
-  const decision = await api()
-    .post(`/api/admin/host-applications/${applicationId}/decision`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const decision = await admin.post(`/api/admin/host-applications/${applicationId}/decision`)
     .send({ decision: 'approved', reason: 'Spoke to them; they fund their own prizes.' });
   assert.equal(decision.status, 200, JSON.stringify(decision.body));
   assert.equal(decision.body.host_status, HOST_STATUS.APPROVED);
@@ -542,7 +526,7 @@ test('approving records the reason, the decision-maker and the time, and grants 
   assert.equal(event.rows[0].source, 'admin_decision');
   assert.equal(event.rows[0].changed_by, admin.id);
 
-  const created = await createGiveaway(applicant.token, 'after-approval');
+  const created = await createGiveaway(applicant, 'after-approval');
   assert.equal(created.status, 201, JSON.stringify(created.body));
   createdGiveawayIds.push(created.body.id);
 });
@@ -552,9 +536,7 @@ test('a decision without a reason is refused, and changes nothing', async () => 
   const applicant = await createUser('decided-noreason');
   const applicationId = await applyAs(applicant);
 
-  const res = await api()
-    .post(`/api/admin/host-applications/${applicationId}/decision`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const res = await admin.post(`/api/admin/host-applications/${applicationId}/decision`)
     .send({ decision: 'approved', reason: '   ' });
   assert.equal(res.status, 400);
   assert.equal(res.body.code, 'REASON_REQUIRED');
@@ -568,13 +550,11 @@ test('rejecting refuses hosting and is recorded the same way', async () => {
   const applicant = await createUser('decided-reject');
   const applicationId = await applyAs(applicant);
 
-  const decision = await api()
-    .post(`/api/admin/host-applications/${applicationId}/decision`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const decision = await admin.post(`/api/admin/host-applications/${applicationId}/decision`)
     .send({ decision: 'rejected', reason: 'Could not confirm who is behind the account.' });
   assert.equal(decision.status, 200);
 
-  const create = await createGiveaway(applicant.token, 'after-rejection');
+  const create = await createGiveaway(applicant, 'after-rejection');
   assert.equal(create.status, 403);
   assert.equal(create.body.code, 'HOST_APPROVAL_REJECTED');
 });
@@ -584,30 +564,22 @@ test('a decided application cannot be decided twice, or closed over', async () =
   const applicant = await createUser('decided-twice');
   const applicationId = await applyAs(applicant);
 
-  const first = await api()
-    .post(`/api/admin/host-applications/${applicationId}/decision`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const first = await admin.post(`/api/admin/host-applications/${applicationId}/decision`)
     .send({ decision: 'approved', reason: 'first decision' });
   assert.equal(first.status, 200);
 
-  const second = await api()
-    .post(`/api/admin/host-applications/${applicationId}/decision`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const second = await admin.post(`/api/admin/host-applications/${applicationId}/decision`)
     .send({ decision: 'rejected', reason: 'second decision' });
   assert.equal(second.status, 409);
   assert.equal(second.body.code, 'ALREADY_DECIDED');
 
   // There is no delete route on this resource at all — see
   // test/host-rescue.test.js, which proves that and guards the source.
-  const deleted = await api()
-    .delete(`/api/admin/host-applications/${applicationId}`)
-    .set('Authorization', `Bearer ${admin.token}`);
+  const deleted = await admin.delete(`/api/admin/host-applications/${applicationId}`);
   assert.equal(deleted.status, 404, 'nothing may delete an application');
 
   // And closing it afterwards would write a second outcome over the first.
-  const closed = await api()
-    .post(`/api/admin/host-applications/${applicationId}/close`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const closed = await admin.post(`/api/admin/host-applications/${applicationId}/close`)
     .send({ reason: 'trying to reopen a settled question' });
   assert.equal(closed.status, 409, 'a decision is part of the audit record');
   assert.equal(closed.body.code, 'ALREADY_DECIDED');
@@ -622,29 +594,23 @@ test('suspending and reinstating both need a reason and are both recorded', asyn
   const admin = await createUser('suspender', { admin: true });
   const host = await createUser('suspendee', { hostStatus: HOST_STATUS.APPROVED });
 
-  const noReason = await api()
-    .post(`/api/admin/hosts/${host.id}/status`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const noReason = await admin.post(`/api/admin/hosts/${host.id}/status`)
     .send({ status: 'suspended' });
   assert.equal(noReason.status, 400);
   assert.equal(noReason.body.code, 'REASON_REQUIRED');
 
-  const suspended = await api()
-    .post(`/api/admin/hosts/${host.id}/status`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const suspended = await admin.post(`/api/admin/hosts/${host.id}/status`)
     .send({ status: 'suspended', reason: 'Two undelivered prizes.' });
   assert.equal(suspended.status, 200);
   assert.equal(suspended.body.host_status, HOST_STATUS.SUSPENDED);
 
-  assert.equal((await createGiveaway(host.token, 'while-suspended')).status, 403);
+  assert.equal((await createGiveaway(host, 'while-suspended')).status, 403);
 
-  const reinstated = await api()
-    .post(`/api/admin/hosts/${host.id}/status`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const reinstated = await admin.post(`/api/admin/hosts/${host.id}/status`)
     .send({ status: 'approved', reason: 'Both prizes delivered and confirmed.' });
   assert.equal(reinstated.status, 200);
 
-  const back = await createGiveaway(host.token, 'after-reinstatement');
+  const back = await createGiveaway(host, 'after-reinstatement');
   assert.equal(back.status, 201);
   createdGiveawayIds.push(back.body.id);
 
@@ -665,15 +631,11 @@ test('a non-admin cannot decide an application or change anyone\'s host access',
   const applicant = await createUser('victim');
   const applicationId = await applyAs(applicant);
 
-  const decision = await api()
-    .post(`/api/admin/host-applications/${applicationId}/decision`)
-    .set('Authorization', `Bearer ${approved.token}`)
+  const decision = await approved.post(`/api/admin/host-applications/${applicationId}/decision`)
     .send({ decision: 'approved', reason: 'approving myself a friend' });
   assert.equal(decision.status, 403);
 
-  const selfGrant = await api()
-    .post(`/api/admin/hosts/${approved.id}/status`)
-    .set('Authorization', `Bearer ${approved.token}`)
+  const selfGrant = await approved.post(`/api/admin/hosts/${approved.id}/status`)
     .send({ status: 'approved', reason: 'me' });
   assert.equal(selfGrant.status, 403);
 
@@ -684,9 +646,7 @@ test('a non-admin cannot decide an application or change anyone\'s host access',
 test('the admin review queue carries no applicant contact details', async () => {
   const admin = await createUser('queue-reader', { admin: true });
   const applicant = await createUser('queue-subject');
-  const applicationId = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${applicant.token}`)
+  const applicationId = await applicant.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send(
       applicationPayload({
@@ -703,7 +663,7 @@ test('the admin review queue carries no applicant contact details', async () => 
       return r.body.id;
     });
 
-  const queue = await api().get('/api/admin/host-applications').set('Authorization', `Bearer ${admin.token}`);
+  const queue = await admin.get('/api/admin/host-applications');
   assert.equal(queue.status, 200);
   const serialised = JSON.stringify(queue.body);
 
@@ -715,9 +675,7 @@ test('the admin review queue carries no applicant contact details', async () => 
   assert.equal(row.display_name, 'Fabricated Trading LLC');
 
   // The detail view, opened deliberately, does carry them.
-  const detail = await api()
-    .get(`/api/admin/host-applications/${applicationId}`)
-    .set('Authorization', `Bearer ${admin.token}`);
+  const detail = await admin.get(`/api/admin/host-applications/${applicationId}`);
   assert.equal(detail.status, 200);
   assert.equal(detail.body.contact_phone, '+971 50 000 0000');
   assert.equal(detail.body.trade_license, 'CN-0000000');
@@ -765,22 +723,16 @@ test('a suspended host loses claim access, and every record survives it', async 
   }
 
   // While approved, the host is the host.
-  const before = await api()
-    .get(`/api/claims/giveaway/${giveawayId}`)
-    .set('Authorization', `Bearer ${host.token}`);
+  const before = await host.get(`/api/claims/giveaway/${giveawayId}`);
   assert.equal(before.status, 200);
   assert.equal(before.body.role, 'host');
 
   await setStatus(host.id, HOST_STATUS.SUSPENDED, 'suspended with a claim open');
 
-  const after = await api()
-    .get(`/api/claims/giveaway/${giveawayId}`)
-    .set('Authorization', `Bearer ${host.token}`);
+  const after = await host.get(`/api/claims/giveaway/${giveawayId}`);
   assert.equal(after.status, 403, 'a suspended host may not read a winner\'s delivery details');
 
-  const move = await api()
-    .post(`/api/claims/${claim.id}/transition`)
-    .set('Authorization', `Bearer ${host.token}`)
+  const move = await host.post(`/api/claims/${claim.id}/transition`)
     .set('X-Forwarded-For', uniqueIp())
     .send({ to: 'preparing_delivery' });
   assert.equal(move.status, 403);
@@ -790,9 +742,7 @@ test('a suspended host loses claim access, and every record survives it', async 
   const stillThere = await pool.query('SELECT status FROM prize_claims WHERE id = $1', [claim.id]);
   assert.equal(stillThere.rows[0].status, 'awaiting_claim', 'a refused transition changes nothing');
 
-  const winnerView = await api()
-    .get(`/api/claims/giveaway/${giveawayId}`)
-    .set('Authorization', `Bearer ${winner.token}`);
+  const winnerView = await winner.get(`/api/claims/giveaway/${giveawayId}`);
   assert.equal(winnerView.status, 200, 'the winner keeps their claim');
   assert.equal(winnerView.body.role, 'winner');
 });
@@ -828,9 +778,7 @@ test('suspending a host reports how many open claims it hands to administrators'
     client.release();
   }
 
-  const res = await api()
-    .post(`/api/admin/hosts/${host.id}/status`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const res = await admin.post(`/api/admin/hosts/${host.id}/status`)
     .send({ status: 'suspended', reason: 'A fabricated suspension.' });
   assert.equal(res.status, 200);
   assert.equal(res.body.open_claims_affected, 1, 'the administrator must be told what they just took on');

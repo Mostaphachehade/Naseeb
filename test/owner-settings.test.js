@@ -2,7 +2,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, nextTestIp } = require('../testHelpers');
 const { DEFAULTS } = require('../server/lib/settings');
 
 const createdUserIds = [];
@@ -32,28 +32,28 @@ async function createVerifiedUser(tag, { admin = false } = {}) {
     [id, `Owner Test ${tag}`, email, bcrypt.hashSync(password, 4), admin]
   );
   createdUserIds.push(id);
-  const login = await api().post('/api/auth/login').send({ email, password });
-  return { id, token: login.body.token };
+  // A cookie jar, not a token: authentication is an HttpOnly cookie the page
+  // cannot read, so a test cannot hold one either.
+  const session = await signIn(email, password, { ip: nextTestIp() });
+  return { ...session, id, email };
 }
 
 test('a non-admin cannot read site settings', async () => {
   const user = await createVerifiedUser('nonadmin-read');
-  const res = await api().get('/api/admin/settings').set('Authorization', `Bearer ${user.token}`);
+  const res = await user.get('/api/admin/settings');
   assert.equal(res.status, 403);
 });
 
 test('a non-admin cannot write site settings', async () => {
   const user = await createVerifiedUser('nonadmin-write');
-  const res = await api()
-    .patch('/api/admin/settings')
-    .set('Authorization', `Bearer ${user.token}`)
+  const res = await user.patch('/api/admin/settings')
     .send({ ad_price_per_week_aed: '999' });
   assert.equal(res.status, 403);
 });
 
 test('an admin can read settings and gets the documented defaults', async () => {
   const admin = await createVerifiedUser('read-defaults', { admin: true });
-  const res = await api().get('/api/admin/settings').set('Authorization', `Bearer ${admin.token}`);
+  const res = await admin.get('/api/admin/settings');
   assert.equal(res.status, 200);
   assert.equal(res.body.ad_price_per_week_aed, DEFAULTS.ad_price_per_week_aed);
   assert.equal(res.body.maintenance_mode, DEFAULTS.maintenance_mode);
@@ -61,14 +61,12 @@ test('an admin can read settings and gets the documented defaults', async () => 
 
 test('an admin can update a setting and it persists on re-read', async () => {
   const admin = await createVerifiedUser('write-persist', { admin: true });
-  const patch = await api()
-    .patch('/api/admin/settings')
-    .set('Authorization', `Bearer ${admin.token}`)
+  const patch = await admin.patch('/api/admin/settings')
     .send({ ad_price_per_week_aed: '750' });
   assert.equal(patch.status, 200);
   assert.equal(patch.body.ad_price_per_week_aed, '750');
 
-  const reread = await api().get('/api/admin/settings').set('Authorization', `Bearer ${admin.token}`);
+  const reread = await admin.get('/api/admin/settings');
   assert.equal(reread.body.ad_price_per_week_aed, '750');
 
   // And it's what the public ad-availability endpoint actually charges. Since
@@ -83,18 +81,14 @@ test('an admin can update a setting and it persists on re-read', async () => {
 
 test('settings updates reject an unknown key', async () => {
   const admin = await createVerifiedUser('unknown-key', { admin: true });
-  const res = await api()
-    .patch('/api/admin/settings')
-    .set('Authorization', `Bearer ${admin.token}`)
+  const res = await admin.patch('/api/admin/settings')
     .send({ not_a_real_setting: 'x' });
   assert.equal(res.status, 400);
 });
 
 test('settings updates reject an invalid value for a known key', async () => {
   const admin = await createVerifiedUser('invalid-value', { admin: true });
-  const res = await api()
-    .patch('/api/admin/settings')
-    .set('Authorization', `Bearer ${admin.token}`)
+  const res = await admin.patch('/api/admin/settings')
     .send({ maintenance_mode: 'not-a-boolean' });
   assert.equal(res.status, 400);
 });
@@ -117,28 +111,26 @@ test('public /api/config exposes maintenance state with no auth, and no hosting 
 test('the settings API refuses to store a hosting plan price at all', async () => {
   const admin = await createVerifiedUser('no-host-price', { admin: true });
 
-  const res = await api()
-    .patch('/api/admin/settings')
-    .set('Authorization', `Bearer ${admin.token}`)
+  const res = await admin.patch('/api/admin/settings')
     .send({ hosting_plan_standard_price_aed: '250' });
 
   assert.equal(res.status, 400, 'a removed setting must not quietly come back');
   assert.match(res.body.error, /Unknown setting/i);
 
-  const settings = await api().get('/api/admin/settings').set('Authorization', `Bearer ${admin.token}`);
+  const settings = await admin.get('/api/admin/settings');
   assert.equal(settings.body.hosting_plan_standard_price_aed, undefined);
   assert.equal(settings.body.hosting_plan_partner_price_aed, undefined);
 });
 
 test('a non-admin cannot read the revenue summary', async () => {
   const user = await createVerifiedUser('nonadmin-revenue');
-  const res = await api().get('/api/admin/revenue').set('Authorization', `Bearer ${user.token}`);
+  const res = await user.get('/api/admin/revenue');
   assert.equal(res.status, 403);
 });
 
 test('an admin can read the revenue summary with the documented shape', async () => {
   const admin = await createVerifiedUser('revenue-shape', { admin: true });
-  const res = await api().get('/api/admin/revenue').set('Authorization', `Bearer ${admin.token}`);
+  const res = await admin.get('/api/admin/revenue');
   assert.equal(res.status, 200);
   assert.equal(typeof res.body.total_revenue_aed, 'number');
   assert.equal(typeof res.body.total_bookings, 'number');

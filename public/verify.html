@@ -44,11 +44,9 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
 
-      const user = getUser();
-      if (user) {
-        user.email_verified = true;
-        setSession(getToken(), user);
-      }
+      // Nothing is written client-side. The account's verified flag lives in
+      // Postgres, and the next page load reads it back from /auth/session
+      // rather than trusting a copy this page edited.
 
       content.innerHTML = `
         <h2>You're verified.</h2>

@@ -4,6 +4,12 @@ const { pool } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 const { getAllSettings, setSetting } = require('../lib/settings');
 const { HOST_STATUS, ADMIN_SETTABLE, setHostStatus } = require('../lib/hostAccess');
+const sessions = require('../lib/sessions');
+
+// Account status is authentication; host status is authorization. Two columns,
+// two routes, and deliberately no path that changes one as a side effect of the
+// other. See docs/SESSIONS.md.
+const ACCOUNT_STATUSES = ['active', 'suspended', 'deactivated'];
 const { PRICE_FORMAT } = require('../lib/adPricing');
 
 const router = express.Router();
@@ -270,6 +276,96 @@ router.post('/hosts/:userId/status', requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   } finally {
     client.release();
+  }
+});
+
+// Suspend, deactivate or restore an account.
+//
+// Kept firmly apart from host access above, and the distinction is the whole
+// reason there are two columns. Host status decides whether somebody may
+// publish a giveaway; account status decides whether they may sign in at all.
+// A host who loses hosting keeps their account, their entries and their tickets
+// — a suspended host is still an entrant, and signing them out of the platform
+// because they may no longer host would punish them for something they can
+// still perfectly well do.
+router.post('/users/:id/account-status', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { status, reason } = req.body || {};
+    if (!ACCOUNT_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `status must be one of: ${ACCOUNT_STATUSES.join(', ')}.` });
+    }
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({ error: 'A short reason is required.', code: 'REASON_REQUIRED' });
+    }
+    if (req.params.id === req.userId) {
+      return res.status(400).json({ error: "You can't change your own account status here." });
+    }
+
+    await client.query('BEGIN');
+    const target = await client.query(
+      'SELECT id, is_admin, account_status FROM users WHERE id = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    if (!target.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+    if (target.rows[0].is_admin) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: "Administrator accounts can't be suspended here." });
+    }
+
+    await client.query(
+      `UPDATE users
+          SET account_status = $1, account_status_changed_at = NOW(),
+              account_status_reason = $2, account_status_changed_by = $3
+        WHERE id = $4`,
+      [status, String(reason).trim(), req.userId, req.params.id]
+    );
+
+    // Anything other than active means every live session ends now, not when
+    // its cookie happens to expire.
+    let revoked = 0;
+    if (status !== 'active') {
+      revoked = await sessions.revokeAllForUser(
+        client,
+        req.params.id,
+        sessions.REVOCATION.ACCOUNT_SUSPENDED
+      );
+    }
+
+    await client.query('COMMIT');
+    res.set('Cache-Control', 'no-store');
+    res.json({ user_id: req.params.id, account_status: status, sessions_revoked: revoked });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Account status change failed:', err.message);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
+  }
+});
+
+// End every session for one account without changing what the account is
+// allowed to do — for a "someone else has my laptop" report, where suspending
+// the account would be the wrong answer.
+router.post('/users/:id/revoke-sessions', requireAdmin, async (req, res) => {
+  try {
+    const target = await pool.query('SELECT id FROM users WHERE id = $1', [req.params.id]);
+    if (!target.rows[0]) {
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+    const revoked = await sessions.revokeAllForUser(
+      pool,
+      req.params.id,
+      sessions.REVOCATION.ADMIN_REVOKED
+    );
+    res.set('Cache-Control', 'no-store');
+    res.json({ user_id: req.params.id, sessions_revoked: revoked });
+  } catch (err) {
+    console.error('Session revocation failed:', err.message);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -546,6 +642,7 @@ router.get('/users', requireAdmin, async (req, res) => {
       SELECT
         users.id, users.name, users.email, users.is_admin, users.is_verified_business, users.created_at,
         users.host_status, users.host_status_changed_at, users.host_status_reason,
+        users.account_status, users.account_status_changed_at, users.account_status_reason,
         (SELECT COUNT(*)::int FROM giveaways WHERE giveaways.host_id = users.id) AS giveaways_hosted
       FROM users
       ORDER BY users.is_verified_business ASC, users.created_at DESC

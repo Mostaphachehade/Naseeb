@@ -22,7 +22,7 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const { spawn } = require('child_process');
 const { v4: uuid } = require('uuid');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
 const {
   ensureSlotExclusionConstraint,
   isSlotProtectionActive,

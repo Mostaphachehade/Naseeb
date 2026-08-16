@@ -94,6 +94,7 @@
 <script src="/js/app.js"></script>
 <script>
   const id = new URLSearchParams(window.location.search).get('id');
+  await sessionReady;
   const user = getUser();
   let currentGiveaway = null;
 

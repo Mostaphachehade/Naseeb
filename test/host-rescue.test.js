@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
 
 const { HOST_STATUS } = require('../server/lib/hostAccess');
 const { STATES, ROLES, RESCUE_ELIGIBLE_STATES } = require('../server/lib/claimStateMachine');
@@ -94,11 +94,10 @@ async function createUser(tag, { admin = false, hostStatus = HOST_STATUS.NOT_REQ
     [id, `Rescue ${tag}`, email, bcrypt.hashSync(PASSWORD, 4), admin, hostStatus]
   );
   createdUserIds.push(id);
-  const login = await api()
-    .post('/api/auth/login')
-    .set('X-Forwarded-For', uniqueIp())
-    .send({ email, password: PASSWORD });
-  return { id, email, token: login.body.token };
+  // A cookie jar, not a token: authentication is an HttpOnly cookie the page
+  // cannot read, so a test cannot hold one either.
+  const session = await signIn(email, PASSWORD, { ip: uniqueIp() });
+  return { ...session, id, email };
 }
 
 // A drawn giveaway with a live claim, and the raw token the winner would have
@@ -153,31 +152,25 @@ function redeem(token) {
     });
 }
 
-function suspend(adminToken, hostId, reason = 'Fabricated suspension for a test.') {
-  return api()
-    .post(`/api/admin/hosts/${hostId}/status`)
-    .set('Authorization', `Bearer ${adminToken}`)
+function suspend(adminSession, hostId, reason = 'Fabricated suspension for a test.') {
+  return adminSession.post(`/api/admin/hosts/${hostId}/status`)
     .send({ status: 'suspended', reason });
 }
 
-function rescueStep(adminToken, claimId, to, reason = 'Taking over for an unavailable host.') {
-  return api()
-    .post(`/api/claims/${claimId}/rescue/transition`)
-    .set('Authorization', `Bearer ${adminToken}`)
+function rescueStep(adminSession, claimId, to, reason = 'Taking over for an unavailable host.') {
+  return adminSession.post(`/api/claims/${claimId}/rescue/transition`)
     .set('X-Forwarded-For', uniqueIp())
     .send({ to, reason });
 }
 
-function openDetails(adminToken, claimId, reason = 'Need the address to arrange courier collection.') {
-  return api()
-    .post(`/api/claims/${claimId}/rescue/delivery-details`)
-    .set('Authorization', `Bearer ${adminToken}`)
+function openDetails(adminSession, claimId, reason = 'Need the address to arrange courier collection.') {
+  return adminSession.post(`/api/claims/${claimId}/rescue/delivery-details`)
     .set('X-Forwarded-For', uniqueIp())
     .send({ reason });
 }
 
-function rescueQueue(adminToken) {
-  return api().get('/api/claims/admin/rescue-queue').set('Authorization', `Bearer ${adminToken}`);
+function rescueQueue(adminSession) {
+  return adminSession.get('/api/claims/admin/rescue-queue');
 }
 
 // A claim that the winner has opened, so delivery details exist and the claim
@@ -189,7 +182,7 @@ async function claimedAndSuspended(tag) {
   const redeemed = await redeem(scene.token);
   assert.equal(redeemed.status, 200, JSON.stringify(redeemed.body));
 
-  const suspended = await suspend(admin.token, scene.host.id);
+  const suspended = await suspend(admin, scene.host.id);
   assert.equal(suspended.status, 200, JSON.stringify(suspended.body));
 
   return { ...scene, admin };
@@ -203,14 +196,10 @@ test('suspending a host removes their claim-management access immediately', asyn
   const scene = await claimedAndSuspended('immediate');
 
   // The host's session is untouched — only the database changed.
-  const view = await api()
-    .get(`/api/claims/giveaway/${scene.giveawayId}`)
-    .set('Authorization', `Bearer ${scene.host.token}`);
+  const view = await scene.host.get(`/api/claims/giveaway/${scene.giveawayId}`);
   assert.equal(view.status, 403, 'a suspended host may not read the winner\'s details');
 
-  const move = await api()
-    .post(`/api/claims/${scene.claim.id}/transition`)
-    .set('Authorization', `Bearer ${scene.host.token}`)
+  const move = await scene.host.post(`/api/claims/${scene.claim.id}/transition`)
     .set('X-Forwarded-For', uniqueIp())
     .send({ to: STATES.PREPARING_DELIVERY });
   assert.equal(move.status, 403);
@@ -222,7 +211,7 @@ test('suspending a host removes their claim-management access immediately', asyn
 test('the affected claim appears exactly once in the rescue queue, with no winner asked to do anything', async () => {
   const scene = await claimedAndSuspended('queue-once');
 
-  const queue = await rescueQueue(scene.admin.token);
+  const queue = await rescueQueue(scene.admin);
   assert.equal(queue.status, 200);
 
   const mine = queue.body.filter((r) => r.claim_id === scene.claim.id);
@@ -241,7 +230,7 @@ test('repeated and concurrent suspensions create no duplicate queue items', asyn
   const scene = await claimedAndSuspended('no-dupes');
 
   // Same status again: setHostStatus short-circuits, so nothing at all happens.
-  const again = await suspend(scene.admin.token, scene.host.id, 'Suspending an already suspended host.');
+  const again = await suspend(scene.admin, scene.host.id, 'Suspending an already suspended host.');
   assert.equal(again.status, 200);
   assert.equal(again.body.status_changed, false);
 
@@ -249,9 +238,7 @@ test('repeated and concurrent suspensions create no duplicate queue items', asyn
   // leaves one open row.
   await Promise.all(
     Array.from({ length: 5 }, (_, i) =>
-      api()
-        .post(`/api/admin/hosts/${scene.host.id}/status`)
-        .set('Authorization', `Bearer ${scene.admin.token}`)
+      scene.admin.post(`/api/admin/hosts/${scene.host.id}/status`)
         .send({ status: 'suspended', reason: `Concurrent suspension attempt ${i}.` })
     )
   );
@@ -262,7 +249,7 @@ test('repeated and concurrent suspensions create no duplicate queue items', asyn
   );
   assert.equal(rows.rows[0].c, 1);
 
-  const queue = await rescueQueue(scene.admin.token);
+  const queue = await rescueQueue(scene.admin);
   assert.equal(queue.body.filter((r) => r.claim_id === scene.claim.id).length, 1);
 });
 
@@ -287,24 +274,22 @@ test('the database itself refuses a second open queue row for one claim', async 
 test('an administrator can take the host-side steps, each with a required reason', async () => {
   const scene = await claimedAndSuspended('steps');
 
-  const noReason = await api()
-    .post(`/api/claims/${scene.claim.id}/rescue/transition`)
-    .set('Authorization', `Bearer ${scene.admin.token}`)
+  const noReason = await scene.admin.post(`/api/claims/${scene.claim.id}/rescue/transition`)
     .set('X-Forwarded-For', uniqueIp())
     .send({ to: STATES.PREPARING_DELIVERY });
   assert.equal(noReason.status, 400);
   assert.equal(noReason.body.code, 'REASON_REQUIRED');
 
-  const prep = await rescueStep(scene.admin.token, scene.claim.id, STATES.PREPARING_DELIVERY);
+  const prep = await rescueStep(scene.admin, scene.claim.id, STATES.PREPARING_DELIVERY);
   assert.equal(prep.status, 200, JSON.stringify(prep.body));
   assert.equal(prep.body.status, STATES.PREPARING_DELIVERY);
   assert.equal(prep.body.acted_as, ROLES.ADMIN_RESCUE);
 
-  const shipped = await rescueStep(scene.admin.token, scene.claim.id, STATES.SHIPPED_OR_ARRANGED);
+  const shipped = await rescueStep(scene.admin, scene.claim.id, STATES.SHIPPED_OR_ARRANGED);
   assert.equal(shipped.status, 200);
 
   const reported = await rescueStep(
-    scene.admin.token,
+    scene.admin,
     scene.claim.id,
     STATES.DELIVERED_PENDING_CONFIRMATION
   );
@@ -317,10 +302,10 @@ test('an administrator cannot claim on the winner\'s behalf', async () => {
   const scene = await drawnGiveawayWithClaim('no-claim');
 
   // Suspended before the winner ever opened the link.
-  const suspended = await suspend(admin.token, scene.host.id);
+  const suspended = await suspend(admin, scene.host.id);
   assert.equal(suspended.status, 200);
 
-  const attempt = await rescueStep(admin.token, scene.claim.id, STATES.CLAIMED);
+  const attempt = await rescueStep(admin, scene.claim.id, STATES.CLAIMED);
   assert.equal(attempt.status, 409, JSON.stringify(attempt.body));
   assert.equal(attempt.body.code, 'NOT_RESCUE_ELIGIBLE');
 
@@ -336,20 +321,18 @@ test('an administrator cannot claim on the winner\'s behalf', async () => {
 test('an administrator cannot confirm delivery on the winner\'s behalf', async () => {
   const scene = await claimedAndSuspended('no-confirm');
 
-  await rescueStep(scene.admin.token, scene.claim.id, STATES.PREPARING_DELIVERY);
-  await rescueStep(scene.admin.token, scene.claim.id, STATES.SHIPPED_OR_ARRANGED);
-  await rescueStep(scene.admin.token, scene.claim.id, STATES.DELIVERED_PENDING_CONFIRMATION);
+  await rescueStep(scene.admin, scene.claim.id, STATES.PREPARING_DELIVERY);
+  await rescueStep(scene.admin, scene.claim.id, STATES.SHIPPED_OR_ARRANGED);
+  await rescueStep(scene.admin, scene.claim.id, STATES.DELIVERED_PENDING_CONFIRMATION);
 
   // Through the rescue route.
-  const viaRescue = await rescueStep(scene.admin.token, scene.claim.id, STATES.DELIVERED);
+  const viaRescue = await rescueStep(scene.admin, scene.claim.id, STATES.DELIVERED);
   assert.equal(viaRescue.status, 409);
   assert.equal(viaRescue.body.code, 'NOT_RESCUE_ELIGIBLE');
 
   // And through the ordinary admin transition route, which is the same refusal
   // for a different reason: no role reaches delivered from here except winner.
-  const viaAdmin = await api()
-    .post(`/api/claims/${scene.claim.id}/transition`)
-    .set('Authorization', `Bearer ${scene.admin.token}`)
+  const viaAdmin = await scene.admin.post(`/api/claims/${scene.claim.id}/transition`)
     .set('X-Forwarded-For', uniqueIp())
     .send({ to: STATES.DELIVERED, note: 'I am sure it arrived.' });
   assert.ok([403, 409].includes(viaAdmin.status), `expected a refusal, got ${viaAdmin.status}`);
@@ -384,32 +367,30 @@ test('an administrator cannot rescue a claim whose host is still approved', asyn
   const redeemed = await redeem(scene.token);
   assert.equal(redeemed.status, 200);
 
-  const attempt = await rescueStep(admin.token, scene.claim.id, STATES.PREPARING_DELIVERY);
+  const attempt = await rescueStep(admin, scene.claim.id, STATES.PREPARING_DELIVERY);
   assert.equal(attempt.status, 409);
   assert.equal(attempt.body.code, 'HOST_NOT_SUSPENDED');
 
-  const details = await openDetails(admin.token, scene.claim.id);
+  const details = await openDetails(admin, scene.claim.id);
   assert.equal(details.status, 409);
   assert.equal(details.body.code, 'HOST_NOT_SUSPENDED');
 
-  const queue = await rescueQueue(admin.token);
+  const queue = await rescueQueue(admin);
   assert.equal(queue.body.filter((r) => r.claim_id === scene.claim.id).length, 0);
 });
 
 test('reinstating the host closes the queue item and ends rescue authority at once', async () => {
   const scene = await claimedAndSuspended('reinstate');
 
-  const reinstated = await api()
-    .post(`/api/admin/hosts/${scene.host.id}/status`)
-    .set('Authorization', `Bearer ${scene.admin.token}`)
+  const reinstated = await scene.admin.post(`/api/admin/hosts/${scene.host.id}/status`)
     .send({ status: 'approved', reason: 'Explained themselves; access restored.' });
   assert.equal(reinstated.status, 200);
 
-  const attempt = await rescueStep(scene.admin.token, scene.claim.id, STATES.PREPARING_DELIVERY);
+  const attempt = await rescueStep(scene.admin, scene.claim.id, STATES.PREPARING_DELIVERY);
   assert.equal(attempt.status, 409);
   assert.equal(attempt.body.code, 'HOST_NOT_SUSPENDED');
 
-  const queue = await rescueQueue(scene.admin.token);
+  const queue = await rescueQueue(scene.admin);
   assert.equal(queue.body.filter((r) => r.claim_id === scene.claim.id).length, 0);
 
   const closed = await pool.query(
@@ -421,9 +402,7 @@ test('reinstating the host closes the queue item and ends rescue authority at on
   assert.equal(closed.rows[0].closed_by, scene.admin.id);
 
   // And the host has their own claim back.
-  const view = await api()
-    .get(`/api/claims/giveaway/${scene.giveawayId}`)
-    .set('Authorization', `Bearer ${scene.host.token}`);
+  const view = await scene.host.get(`/api/claims/giveaway/${scene.giveawayId}`);
   assert.equal(view.status, 200);
   assert.equal(view.body.role, 'host');
 });
@@ -432,15 +411,15 @@ test('a rescuer cannot make an out-of-order or invented move', async () => {
   const scene = await claimedAndSuspended('out-of-order');
 
   // Skipping a step.
-  const skip = await rescueStep(scene.admin.token, scene.claim.id, STATES.SHIPPED_OR_ARRANGED);
+  const skip = await rescueStep(scene.admin, scene.claim.id, STATES.SHIPPED_OR_ARRANGED);
   assert.equal(skip.status, 409);
 
   // A state that does not exist.
-  const nonsense = await rescueStep(scene.admin.token, scene.claim.id, 'teleported');
+  const nonsense = await rescueStep(scene.admin, scene.claim.id, 'teleported');
   assert.equal(nonsense.status, 400);
 
   // A state a rescuer has no business in.
-  const cancel = await rescueStep(scene.admin.token, scene.claim.id, STATES.CANCELLED);
+  const cancel = await rescueStep(scene.admin, scene.claim.id, STATES.CANCELLED);
   assert.equal(cancel.status, 403, JSON.stringify(cancel.body));
 
   const row = await pool.query('SELECT status FROM prize_claims WHERE id = $1', [scene.claim.id]);
@@ -452,11 +431,11 @@ test('a non-admin cannot use the rescue routes at all', async () => {
   const outsider = await createUser('outsider', { hostStatus: HOST_STATUS.APPROVED });
 
   for (const [label, res] of [
-    ['queue', await rescueQueue(outsider.token)],
-    ['transition', await rescueStep(outsider.token, scene.claim.id, STATES.PREPARING_DELIVERY)],
-    ['details', await openDetails(outsider.token, scene.claim.id)],
-    ['queue as the suspended host', await rescueQueue(scene.host.token)],
-    ['details as the suspended host', await openDetails(scene.host.token, scene.claim.id)],
+    ['queue', await rescueQueue(outsider)],
+    ['transition', await rescueStep(outsider, scene.claim.id, STATES.PREPARING_DELIVERY)],
+    ['details', await openDetails(outsider, scene.claim.id)],
+    ['queue as the suspended host', await rescueQueue(scene.host)],
+    ['details as the suspended host', await openDetails(scene.host, scene.claim.id)],
   ]) {
     assert.equal(res.status, 403, `${label} must be refused`);
   }
@@ -465,13 +444,11 @@ test('a non-admin cannot use the rescue routes at all', async () => {
 test('the winner can still confirm delivery after an administrator-assisted shipment', async () => {
   const scene = await claimedAndSuspended('winner-confirms');
 
-  await rescueStep(scene.admin.token, scene.claim.id, STATES.PREPARING_DELIVERY);
-  await rescueStep(scene.admin.token, scene.claim.id, STATES.SHIPPED_OR_ARRANGED);
-  await rescueStep(scene.admin.token, scene.claim.id, STATES.DELIVERED_PENDING_CONFIRMATION);
+  await rescueStep(scene.admin, scene.claim.id, STATES.PREPARING_DELIVERY);
+  await rescueStep(scene.admin, scene.claim.id, STATES.SHIPPED_OR_ARRANGED);
+  await rescueStep(scene.admin, scene.claim.id, STATES.DELIVERED_PENDING_CONFIRMATION);
 
-  const confirmed = await api()
-    .post(`/api/claims/${scene.claim.id}/transition`)
-    .set('Authorization', `Bearer ${scene.winner.token}`)
+  const confirmed = await scene.winner.post(`/api/claims/${scene.claim.id}/transition`)
     .set('X-Forwarded-For', uniqueIp())
     .send({ to: STATES.DELIVERED });
   assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
@@ -488,7 +465,7 @@ test('the winner can still confirm delivery after an administrator-assisted ship
     scene.claim.id,
   ]);
   assert.equal(queueRow.rows[0].status, 'closed');
-  const queue = await rescueQueue(scene.admin.token);
+  const queue = await rescueQueue(scene.admin);
   assert.equal(queue.body.filter((r) => r.claim_id === scene.claim.id).length, 0);
 });
 
@@ -499,8 +476,8 @@ test('the winner can still confirm delivery after an administrator-assisted ship
 test('every rescue action writes a non-sensitive history entry naming the administrator', async () => {
   const scene = await claimedAndSuspended('audit');
 
-  await rescueStep(scene.admin.token, scene.claim.id, STATES.PREPARING_DELIVERY, 'Courier booked for Tuesday.');
-  await openDetails(scene.admin.token, scene.claim.id, 'Address needed for the courier booking.');
+  await rescueStep(scene.admin, scene.claim.id, STATES.PREPARING_DELIVERY, 'Courier booked for Tuesday.');
+  await openDetails(scene.admin, scene.claim.id, 'Address needed for the courier booking.');
 
   const events = await pool.query(
     'SELECT from_status, to_status, actor_user_id, actor_role, note, created_at FROM prize_claim_events WHERE claim_id = $1 ORDER BY created_at ASC',
@@ -532,7 +509,7 @@ test('every rescue action writes a non-sensitive history entry naming the admini
 test('the rescue queue carries no address, phone or ciphertext', async () => {
   const scene = await claimedAndSuspended('queue-privacy');
 
-  const queue = await rescueQueue(scene.admin.token);
+  const queue = await rescueQueue(scene.admin);
   assert.equal(queue.status, 200);
   assert.equal(queue.headers['cache-control'], 'no-store');
 
@@ -555,9 +532,7 @@ test('the rescue queue carries no address, phone or ciphertext', async () => {
 test('opening details is deliberate, audited, and marked no-store', async () => {
   const scene = await claimedAndSuspended('details-open');
 
-  const noReason = await api()
-    .post(`/api/claims/${scene.claim.id}/rescue/delivery-details`)
-    .set('Authorization', `Bearer ${scene.admin.token}`)
+  const noReason = await scene.admin.post(`/api/claims/${scene.claim.id}/rescue/delivery-details`)
     .set('X-Forwarded-For', uniqueIp())
     .send({});
   assert.equal(noReason.status, 400);
@@ -568,7 +543,7 @@ test('opening details is deliberate, audited, and marked no-store', async () => 
     [scene.claim.id]
   );
 
-  const opened = await openDetails(scene.admin.token, scene.claim.id);
+  const opened = await openDetails(scene.admin, scene.claim.id);
   assert.equal(opened.status, 200, JSON.stringify(opened.body));
   assert.equal(opened.headers['cache-control'], 'no-store');
   assert.equal(opened.body.delivery.available, true);
@@ -587,9 +562,9 @@ test('details that were never consented to, or have been erased, cannot be opene
   // Never consented: the winner has not opened the claim at all.
   const admin = await createUser('unconsented-admin', { admin: true });
   const unclaimed = await drawnGiveawayWithClaim('unconsented');
-  await suspend(admin.token, unclaimed.host.id);
+  await suspend(admin, unclaimed.host.id);
 
-  const notYet = await openDetails(admin.token, unclaimed.claim.id);
+  const notYet = await openDetails(admin, unclaimed.claim.id);
   // Refused before it even gets to the details: nothing is waiting on a host
   // while a winner has not claimed.
   assert.equal(notYet.status, 409);
@@ -605,7 +580,7 @@ test('details that were never consented to, or have been erased, cannot be opene
     [scene.claim.id]
   );
 
-  const erased = await openDetails(scene.admin.token, scene.claim.id);
+  const erased = await openDetails(scene.admin, scene.claim.id);
   assert.equal(erased.status, 409);
   assert.equal(erased.body.code, 'DELIVERY_ERASED');
   assert.equal(erased.headers['cache-control'], 'no-store');
@@ -613,7 +588,7 @@ test('details that were never consented to, or have been erased, cannot be opene
 
   // And the fulfilment steps still work without them — an erased address does
   // not freeze a claim, it just means the courier details came from elsewhere.
-  const step = await rescueStep(scene.admin.token, scene.claim.id, STATES.PREPARING_DELIVERY);
+  const step = await rescueStep(scene.admin, scene.claim.id, STATES.PREPARING_DELIVERY);
   assert.equal(step.status, 200);
 });
 
@@ -633,14 +608,12 @@ test('no address or phone reaches the console, an email, a URL or any other resp
 
   let responses;
   try {
-    const prep = await rescueStep(scene.admin.token, scene.claim.id, STATES.PREPARING_DELIVERY);
-    const details = await openDetails(scene.admin.token, scene.claim.id);
-    const shipped = await rescueStep(scene.admin.token, scene.claim.id, STATES.SHIPPED_OR_ARRANGED);
-    const queue = await rescueQueue(scene.admin.token);
+    const prep = await rescueStep(scene.admin, scene.claim.id, STATES.PREPARING_DELIVERY);
+    const details = await openDetails(scene.admin, scene.claim.id);
+    const shipped = await rescueStep(scene.admin, scene.claim.id, STATES.SHIPPED_OR_ARRANGED);
+    const queue = await rescueQueue(scene.admin);
     const publicView = await api().get(`/api/giveaways/${scene.giveawayId}`);
-    const adminReview = await api()
-      .get('/api/claims/admin/review')
-      .set('Authorization', `Bearer ${scene.admin.token}`);
+    const adminReview = await scene.admin.get('/api/claims/admin/review');
     responses = { prep, details, shipped, queue, publicView, adminReview };
   } finally {
     console.log = realLog;
@@ -693,18 +666,14 @@ test('a suspended host cannot regain access by forging request fields or reusing
   ];
 
   for (const extra of forgeries) {
-    const res = await api()
-      .post(`/api/claims/${scene.claim.id}/transition`)
-      .set('Authorization', `Bearer ${scene.host.token}`)
+    const res = await scene.host.post(`/api/claims/${scene.claim.id}/transition`)
       .set('X-Forwarded-For', uniqueIp())
       .send({ to: STATES.PREPARING_DELIVERY, ...extra });
     assert.equal(res.status, 403, `forging ${JSON.stringify(extra)} must change nothing`);
   }
 
   // Nor through the rescue route, which is admin-only regardless of body.
-  const viaRescue = await api()
-    .post(`/api/claims/${scene.claim.id}/rescue/transition`)
-    .set('Authorization', `Bearer ${scene.host.token}`)
+  const viaRescue = await scene.host.post(`/api/claims/${scene.claim.id}/rescue/transition`)
     .set('X-Forwarded-For', uniqueIp())
     .send({ to: STATES.PREPARING_DELIVERY, reason: 'me again', is_admin: true });
   assert.equal(viaRescue.status, 403);
@@ -725,7 +694,7 @@ test('the queue row is work to do, never a permission', async () => {
   );
   assert.equal(stillOpen.rows[0].c, 1, 'the row is deliberately left open for this test');
 
-  const attempt = await rescueStep(scene.admin.token, scene.claim.id, STATES.PREPARING_DELIVERY);
+  const attempt = await rescueStep(scene.admin, scene.claim.id, STATES.PREPARING_DELIVERY);
   assert.equal(attempt.status, 409);
   assert.equal(attempt.body.code, 'HOST_NOT_SUSPENDED');
 });
@@ -738,16 +707,12 @@ test('no host-application deletion route exists', async () => {
   const admin = await createUser('no-delete-admin', { admin: true });
   const applicant = await createUser('no-delete-applicant');
 
-  const applied = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${applicant.token}`)
+  const applied = await applicant.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send({ applicant_type: 'individual', full_name: 'Fabricated Applicant' });
   assert.equal(applied.status, 201);
 
-  const deleted = await api()
-    .delete(`/api/admin/host-applications/${applied.body.id}`)
-    .set('Authorization', `Bearer ${admin.token}`);
+  const deleted = await admin.delete(`/api/admin/host-applications/${applied.body.id}`);
   assert.equal(deleted.status, 404, 'there must be no route here at all');
 
   const still = await pool.query('SELECT COUNT(*)::int AS c FROM host_applications WHERE id = $1', [
@@ -773,9 +738,7 @@ test('closing an application preserves the row, its history and its status event
   const admin = await createUser('close-admin', { admin: true });
   const applicant = await createUser('close-applicant');
 
-  const applied = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${applicant.token}`)
+  const applied = await applicant.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send({ applicant_type: 'individual', full_name: 'Fabricated Applicant', message: 'Original text.' });
   assert.equal(applied.status, 201);
@@ -783,16 +746,12 @@ test('closing an application preserves the row, its history and its status event
     await pool.query('SELECT created_at FROM host_applications WHERE id = $1', [applied.body.id])
   ).rows[0].created_at;
 
-  const noReason = await api()
-    .post(`/api/admin/host-applications/${applied.body.id}/close`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const noReason = await admin.post(`/api/admin/host-applications/${applied.body.id}/close`)
     .send({});
   assert.equal(noReason.status, 400);
   assert.equal(noReason.body.code, 'REASON_REQUIRED');
 
-  const closed = await api()
-    .post(`/api/admin/host-applications/${applied.body.id}/close`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const closed = await admin.post(`/api/admin/host-applications/${applied.body.id}/close`)
     .send({ reason: 'Duplicate of an earlier enquiry.' });
   assert.equal(closed.status, 200);
   assert.equal(closed.body.status, 'withdrawn');
@@ -824,31 +783,23 @@ test('a decided application is never rewritten, and a later application is a new
   const admin = await createUser('rewrite-admin', { admin: true });
   const applicant = await createUser('rewrite-applicant');
 
-  const first = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${applicant.token}`)
+  const first = await applicant.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send({ applicant_type: 'individual', full_name: 'Fabricated Applicant' });
   assert.equal(first.status, 201);
 
-  const rejected = await api()
-    .post(`/api/admin/host-applications/${first.body.id}/decision`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const rejected = await admin.post(`/api/admin/host-applications/${first.body.id}/decision`)
     .send({ decision: 'rejected', reason: 'First outcome, and it stays.' });
   assert.equal(rejected.status, 200);
 
   // Closing it afterwards would overwrite the recorded outcome.
-  const overwrite = await api()
-    .post(`/api/admin/host-applications/${first.body.id}/close`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const overwrite = await admin.post(`/api/admin/host-applications/${first.body.id}/close`)
     .send({ reason: 'Trying to erase the refusal.' });
   assert.equal(overwrite.status, 409);
   assert.equal(overwrite.body.code, 'ALREADY_DECIDED');
 
   // Applying again creates a second row. The first outcome is still on file.
-  const second = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${applicant.token}`)
+  const second = await applicant.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send({ applicant_type: 'individual', full_name: 'Fabricated Applicant', message: 'Trying again.' });
   assert.equal(second.status, 201);
@@ -869,25 +820,17 @@ test('concurrent decisions on one application cannot produce conflicting outcome
   const adminB = await createUser('race-admin-b', { admin: true });
   const applicant = await createUser('race-applicant');
 
-  const applied = await api()
-    .post('/api/host-applications')
-    .set('Authorization', `Bearer ${applicant.token}`)
+  const applied = await applicant.post('/api/host-applications')
     .set('X-Forwarded-For', uniqueIp())
     .send({ applicant_type: 'individual', full_name: 'Fabricated Applicant' });
   assert.equal(applied.status, 201);
 
   const attempts = await Promise.all([
-    api()
-      .post(`/api/admin/host-applications/${applied.body.id}/decision`)
-      .set('Authorization', `Bearer ${adminA.token}`)
+    adminA.post(`/api/admin/host-applications/${applied.body.id}/decision`)
       .send({ decision: 'approved', reason: 'A says yes.' }),
-    api()
-      .post(`/api/admin/host-applications/${applied.body.id}/decision`)
-      .set('Authorization', `Bearer ${adminB.token}`)
+    adminB.post(`/api/admin/host-applications/${applied.body.id}/decision`)
       .send({ decision: 'rejected', reason: 'B says no.' }),
-    api()
-      .post(`/api/admin/host-applications/${applied.body.id}/close`)
-      .set('Authorization', `Bearer ${adminB.token}`)
+    adminB.post(`/api/admin/host-applications/${applied.body.id}/close`)
       .send({ reason: 'B closes it instead.' }),
   ]);
 

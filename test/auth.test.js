@@ -1,6 +1,6 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { api, pool, ensureInit, uniqueEmail } = require('../testHelpers');
+const { api, pool, ensureInit, uniqueEmail, signIn, anon } = require('../testHelpers');
 
 const createdUserIds = [];
 
@@ -15,14 +15,18 @@ after(async () => {
   await pool.end();
 });
 
-test('signup creates an account and returns a token', async () => {
+test('signup creates an account and establishes a cookie session, not a token', async () => {
   const email = uniqueEmail('signup');
   const res = await api()
     .post('/api/auth/signup')
     .send({ name: 'Test User', email, password: 'correcthorse123' });
 
   assert.equal(res.status, 201);
-  assert.ok(res.body.token);
+  // No token in the body. The session is an HttpOnly cookie; what comes back is
+  // who you are and the CSRF token to send with future writes.
+  assert.equal(res.body.token, undefined);
+  assert.ok(res.body.csrf_token, 'a CSRF token is issued with the session');
+  assert.match(String(res.headers['set-cookie']), /naseeb_session=/);
   assert.equal(res.body.user.email, email);
   assert.equal(res.body.user.email_verified, false);
   createdUserIds.push(res.body.user.id);
@@ -67,7 +71,8 @@ test('login succeeds with correct credentials', async () => {
   const res = await api().post('/api/auth/login').send({ email, password });
 
   assert.equal(res.status, 200);
-  assert.ok(res.body.token);
+  assert.equal(res.body.token, undefined, 'a session token must never be in a response body');
+  assert.ok(res.body.csrf_token);
   assert.equal(res.body.user.email, email);
 });
 
@@ -96,9 +101,19 @@ test('a protected route rejects a request with no token', async () => {
   assert.equal(res.status, 401);
 });
 
-test('a protected route rejects a garbage token', async () => {
+test('a protected route rejects a bearer token outright', async () => {
+  // There is no bearer path any more, and there must never be a fallback to
+  // one: it would sidestep revocation, expiry, rotation, account status and
+  // CSRF in a single header.
   const res = await api()
     .get('/api/giveaways/mine/hosted')
     .set('Authorization', 'Bearer not-a-real-token');
+  assert.equal(res.status, 401);
+});
+
+test('a garbage session cookie is refused', async () => {
+  const res = await api()
+    .get('/api/giveaways/mine/hosted')
+    .set('Cookie', 'naseeb_session=not-a-real-session-token');
   assert.equal(res.status, 401);
 });

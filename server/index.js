@@ -20,6 +20,7 @@ const { init, isSlotProtectionActive, SLOT_CONSTRAINT_NAME } = require('./db');
 const { isAdsCheckoutEnabled, areClaimsEnabled } = require('./lib/featureFlags');
 const { isConfigured: isClaimEncryptionConfigured } = require('./lib/claimCrypto');
 const claimScheduler = require('./lib/claimScheduler');
+const sessions = require('./lib/sessions');
 
 // A rejected promise nobody awaited terminates the process on modern Node.
 // Most of this codebase awaits everything, but a background send or a
@@ -78,8 +79,40 @@ function assertClaimConfiguration() {
   console.error(`WARNING: ${message}`);
 }
 
+// Sessions are cookies now, and a cookie that a network observer can read is a
+// cookie anyone on the path can replay. Production has no legitimate reason to
+// run without Secure, so this is a refusal to start rather than a warning that
+// scrolls past while the site looks fine.
+//
+// SESSION_SECRET signs the CSRF tokens. Without it csrf.js issues no token at
+// all, so every state-changing request would be refused — better to say so at
+// boot than to have the site half-work. Only variable names appear here.
+function assertSessionConfiguration() {
+  const problems = sessions.assertCookieSecurity();
+
+  const secret = process.env.SESSION_SECRET || '';
+  if (!secret) {
+    problems.push('SESSION_SECRET is not set — CSRF tokens cannot be signed.');
+  } else if (secret.length < 32) {
+    problems.push('SESSION_SECRET is shorter than 32 characters.');
+  }
+
+  if (problems.length === 0) return;
+
+  const message =
+    `Session configuration is not safe:\n  - ${problems.join('\n  - ')}\n` +
+    "Generate a secret with:  node -e \"console.log(require('crypto').randomBytes(48).toString('base64url'))\"";
+
+  if (process.env.NODE_ENV === 'production') {
+    console.error(`${message}\nRefusing to start.`);
+    process.exit(1);
+  }
+  console.error(`WARNING: ${message}`);
+}
+
 assertPaymentConfiguration();
 assertClaimConfiguration();
+assertSessionConfiguration();
 
 // Runs after init(), which is what creates the constraint when it can. If it
 // still isn't there afterwards, the migration declined to add it — almost

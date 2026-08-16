@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, nextTestIp } = require('../testHelpers');
 const claims = require('../server/lib/claims');
 const { STATES } = require('../server/lib/claimStateMachine');
 
@@ -43,8 +43,10 @@ async function createVerifiedUser(tag) {
     [id, `Delivery Test ${tag}`, email, bcrypt.hashSync(password, 4)]
   );
   createdUserIds.push(id);
-  const login = await api().post('/api/auth/login').send({ email, password });
-  return { id, token: login.body.token };
+  // A cookie jar, not a token: authentication is an HttpOnly cookie the page
+  // cannot read, so a test cannot hold one either.
+  const session = await signIn(email, password, { ip: nextTestIp() });
+  return { ...session, id, email };
 }
 
 async function createDrawnGiveaway(hostId, winnerId) {
@@ -109,9 +111,7 @@ async function completeDelivery(giveawayId, host, winner) {
     [STATES.DELIVERED_PENDING_CONFIRMATION, host],
     [STATES.DELIVERED, winner],
   ]) {
-    const res = await api()
-      .post(`/api/claims/${claim.id}/transition`)
-      .set('Authorization', `Bearer ${actor.token}`)
+    const res = await actor.post(`/api/claims/${claim.id}/transition`)
       .send({ to: state });
     assert.equal(res.status, 200, `moving to ${state} should succeed`);
   }
@@ -128,9 +128,7 @@ test('the host can no longer declare delivery on their own', async () => {
   const giveawayId = await createDrawnGiveaway(host.id, winner.id);
   await createClaimFor(giveawayId, winner.id);
 
-  const res = await api()
-    .post(`/api/giveaways/${giveawayId}/confirm-delivery`)
-    .set('Authorization', `Bearer ${host.token}`)
+  const res = await host.post(`/api/giveaways/${giveawayId}/confirm-delivery`)
     .send();
 
   assert.equal(res.status, 409);
@@ -146,9 +144,7 @@ test('an unrelated user cannot touch delivery at all', async () => {
   const stranger = await createVerifiedUser('stranger2');
   const giveawayId = await createDrawnGiveaway(host.id, winner.id);
 
-  const res = await api()
-    .post(`/api/giveaways/${giveawayId}/confirm-delivery`)
-    .set('Authorization', `Bearer ${stranger.token}`)
+  const res = await stranger.post(`/api/giveaways/${giveawayId}/confirm-delivery`)
     .send();
 
   assert.equal(res.status, 403);
@@ -166,9 +162,7 @@ test('delivery cannot be touched before a winner is drawn', async () => {
   );
   createdGiveawayIds.push(id);
 
-  const res = await api()
-    .post(`/api/giveaways/${id}/confirm-delivery`)
-    .set('Authorization', `Bearer ${host.token}`)
+  const res = await host.post(`/api/giveaways/${id}/confirm-delivery`)
     .send();
 
   // No claim exists because nobody has won, so there is nothing to fulfil.
@@ -191,17 +185,13 @@ test('prize_delivered is set only once the winner confirms receipt', async () =>
 
   // Right up to the last step, the host has not been able to set it.
   for (const state of [STATES.PREPARING_DELIVERY, STATES.SHIPPED_OR_ARRANGED, STATES.DELIVERED_PENDING_CONFIRMATION]) {
-    await api()
-      .post(`/api/claims/${claim.id}/transition`)
-      .set('Authorization', `Bearer ${host.token}`)
+    await host.post(`/api/claims/${claim.id}/transition`)
       .send({ to: state });
     const midway = await pool.query('SELECT prize_delivered FROM giveaways WHERE id = $1', [giveawayId]);
     assert.equal(midway.rows[0].prize_delivered, false, `still false at ${state}`);
   }
 
-  const confirmed = await api()
-    .post(`/api/claims/${claim.id}/transition`)
-    .set('Authorization', `Bearer ${winner.token}`)
+  const confirmed = await winner.post(`/api/claims/${claim.id}/transition`)
     .send({ to: STATES.DELIVERED });
   assert.equal(confirmed.status, 200);
 

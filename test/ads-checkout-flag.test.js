@@ -12,7 +12,7 @@
 // strips anything that isn't sk_test_.
 const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
 
 const realFetch = globalThis.fetch;
 let fetchCalls = [];

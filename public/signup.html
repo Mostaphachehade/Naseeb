@@ -56,7 +56,7 @@
     const errorEl = document.getElementById('error');
     errorEl.classList.remove('show');
     try {
-      const { token, user } = await api('/auth/signup', {
+      const result = await api('/auth/signup', {
         method: 'POST',
         body: JSON.stringify({
           name: document.getElementById('name').value,
@@ -64,7 +64,7 @@
           password: document.getElementById('password').value,
         }),
       });
-      setSession(token, user);
+      adoptSession(result);
       window.location.href = redirectTo;
     } catch (err) {
       errorEl.textContent = err.message;

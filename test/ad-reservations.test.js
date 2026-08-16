@@ -11,7 +11,7 @@ const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const Stripe = require('stripe');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
 const {
   AD_SLOT_LOCK_KEY,
   HOLD_MINUTES,

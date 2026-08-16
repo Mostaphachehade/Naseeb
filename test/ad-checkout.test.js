@@ -6,7 +6,7 @@
 // manually in-browser against Stripe's actual test mode.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
 
 before(async () => {
   await ensureInit();

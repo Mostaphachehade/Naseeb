@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
 
 const claims = require('../server/lib/claims');
 const { STATES, ROLES, assertTransition, ClaimTransitionError } = require('../server/lib/claimStateMachine');
@@ -102,12 +102,10 @@ async function createUser(tag, { admin = false } = {}) {
   );
   createdUserIds.push(id);
 
-  const login = await api()
-    .post('/api/auth/login')
-    .set('X-Forwarded-For', nextIp())
-    .send({ email, password });
-  assert.equal(login.status, 200, `login for ${tag} should succeed`);
-  return { id, email, token: login.body.token };
+  // A cookie jar, not a token: authentication is an HttpOnly cookie the page
+  // cannot read, so a test cannot hold one either.
+  const session = await signIn(email, password, { ip: nextIp() });
+  return { ...session, id, email };
 }
 
 // A giveaway that has already been drawn, with a live claim — the state the
@@ -163,18 +161,15 @@ function redeem(token, overrides = {}) {
     });
 }
 
-function transition(claimId, authToken, body) {
-  return api()
+function transition(claimId, actorSession, body) {
+  return actorSession
     .post(`/api/claims/${claimId}/transition`)
-    .set('Authorization', `Bearer ${authToken}`)
     .set('X-Forwarded-For', nextIp())
     .send(body);
 }
 
-function viewClaim(giveawayId, authToken) {
-  return api()
-    .get(`/api/claims/giveaway/${giveawayId}`)
-    .set('Authorization', `Bearer ${authToken}`);
+function viewClaim(giveawayId, actorSession) {
+  return actorSession.get(`/api/claims/giveaway/${giveawayId}`);
 }
 
 // Walks a claim to a given state using the real endpoints, so the tests that
@@ -188,7 +183,7 @@ async function advanceTo(ctx, target) {
   ];
   for (const state of order) {
     const actor = state === STATES.DELIVERED ? ctx.winner : ctx.host;
-    const res = await transition(ctx.claim.id, actor.token, { to: state });
+    const res = await transition(ctx.claim.id, actor, { to: state });
     assert.equal(res.status, 200, `advancing to ${state} should succeed`);
     if (state === target) return;
   }
@@ -298,9 +293,7 @@ test('reissuing a claim link invalidates the previous one', async () => {
     ctx.claim.id,
   ]);
 
-  const reissued = await api()
-    .post(`/api/claims/${ctx.claim.id}/admin/reissue`)
-    .set('Authorization', `Bearer ${admin.token}`)
+  const reissued = await admin.post(`/api/claims/${ctx.claim.id}/admin/reissue`)
     .set('X-Forwarded-For', nextIp())
     .send({});
   assert.equal(reissued.status, 200);
@@ -318,11 +311,18 @@ test('a claim token grants nothing beyond that one claim', async () => {
   const ctx = await createDrawnGiveaway();
   const other = await createDrawnGiveaway();
 
-  // It cannot be used as a session anywhere else.
-  const asAuth = await api()
+  // It cannot be used as a session anywhere else — not as a bearer header, and
+  // not as a session cookie. A claim token is a one-time credential for one
+  // claim, never a way to sign in.
+  const asBearer = await api()
     .get(`/api/claims/giveaway/${ctx.giveawayId}`)
     .set('Authorization', `Bearer ${ctx.claim.token}`);
-  assert.equal(asAuth.status, 401, 'a claim token is not a session token');
+  assert.equal(asBearer.status, 401, 'a claim token is not a session token');
+
+  const asCookie = await api()
+    .get(`/api/claims/giveaway/${ctx.giveawayId}`)
+    .set('Cookie', `naseeb_session=${ctx.claim.token}`);
+  assert.equal(asCookie.status, 401, 'a claim token is not a session cookie either');
 
   // And it cannot reach another giveaway's claim.
   const lookup = await api()
@@ -344,11 +344,11 @@ test('only the winner, host and an admin can see a claim', async () => {
   const stranger = await createUser('stranger');
   const admin = await createUser('viewer-admin', { admin: true });
 
-  assert.equal((await viewClaim(ctx.giveawayId, ctx.winner.token)).body.role, ROLES.WINNER);
-  assert.equal((await viewClaim(ctx.giveawayId, ctx.host.token)).body.role, ROLES.HOST);
-  assert.equal((await viewClaim(ctx.giveawayId, admin.token)).body.role, ROLES.ADMIN);
+  assert.equal((await viewClaim(ctx.giveawayId, ctx.winner)).body.role, ROLES.WINNER);
+  assert.equal((await viewClaim(ctx.giveawayId, ctx.host)).body.role, ROLES.HOST);
+  assert.equal((await viewClaim(ctx.giveawayId, admin)).body.role, ROLES.ADMIN);
 
-  const denied = await viewClaim(ctx.giveawayId, stranger.token);
+  const denied = await viewClaim(ctx.giveawayId, stranger);
   assert.equal(denied.status, 403, 'an unrelated user gets nothing');
 
   const anonymous = await api().get(`/api/claims/giveaway/${ctx.giveawayId}`);
@@ -360,7 +360,7 @@ test('a stranger cannot move a claim along, whatever they claim to be', async ()
   await redeem(ctx.claim.token);
   const stranger = await createUser('meddler');
 
-  const res = await transition(ctx.claim.id, stranger.token, { to: STATES.PREPARING_DELIVERY });
+  const res = await transition(ctx.claim.id, stranger, { to: STATES.PREPARING_DELIVERY });
   assert.equal(res.status, 403);
 
   const after = await pool.query('SELECT status FROM prize_claims WHERE id = $1', [ctx.claim.id]);
@@ -373,7 +373,7 @@ test('roles are read from the database, not taken from the request', async () =>
   const stranger = await createUser('role-forger');
 
   // Asserting a role in the body changes nothing.
-  const res = await transition(ctx.claim.id, stranger.token, {
+  const res = await transition(ctx.claim.id, stranger, {
     to: STATES.PREPARING_DELIVERY,
     role: 'host',
     actor_role: 'admin',
@@ -402,7 +402,7 @@ test('nothing is stored and no host sees anything without explicit consent', asy
   assert.equal(stored.rows[0].status, STATES.AWAITING_CLAIM);
 
   // And the host is told nothing.
-  const hostView = await viewClaim(ctx.giveawayId, ctx.host.token);
+  const hostView = await viewClaim(ctx.giveawayId, ctx.host);
   assert.equal(hostView.body.delivery.available, false);
   assert.equal(hostView.body.delivery.reason, 'awaiting_consent');
 });
@@ -431,7 +431,7 @@ test('the host sees only fulfilment fields, and only after consent', async () =>
   const ctx = await createDrawnGiveaway();
   await redeem(ctx.claim.token);
 
-  const hostView = await viewClaim(ctx.giveawayId, ctx.host.token);
+  const hostView = await viewClaim(ctx.giveawayId, ctx.host);
   assert.equal(hostView.body.delivery.available, true);
   assert.deepEqual(Object.keys(hostView.body.delivery.details).sort(), [
     'address_line1',
@@ -460,7 +460,7 @@ test('extra fields a client invents are dropped rather than stored', async () =>
     },
   });
 
-  const hostView = await viewClaim(ctx.giveawayId, ctx.host.token);
+  const hostView = await viewClaim(ctx.giveawayId, ctx.host);
   const serialized = JSON.stringify(hostView.body);
   assert.ok(!serialized.includes('FABRICATED-123'), 'identity documents must never be stored');
   assert.ok(!serialized.includes('4111111111111111'), 'payment details must never be stored');
@@ -568,7 +568,7 @@ test('the happy path runs winner → host → host → host → winner', async (
     [STATES.DELIVERED, ctx.winner],
   ];
   for (const [state, actor] of steps) {
-    const res = await transition(ctx.claim.id, actor.token, { to: state });
+    const res = await transition(ctx.claim.id, actor, { to: state });
     assert.equal(res.status, 200, `${state} should be allowed`);
     assert.equal(res.body.status, state);
   }
@@ -587,7 +587,7 @@ test('the host alone cannot mark a prize delivered', async () => {
   await redeem(ctx.claim.token);
   await advanceTo(ctx, STATES.DELIVERED_PENDING_CONFIRMATION);
 
-  const hostAttempt = await transition(ctx.claim.id, ctx.host.token, { to: STATES.DELIVERED });
+  const hostAttempt = await transition(ctx.claim.id, ctx.host, { to: STATES.DELIVERED });
   assert.equal(hostAttempt.status, 403, 'saying "you received it" is not the host’s to say');
 
   const stillPending = await pool.query(
@@ -600,7 +600,7 @@ test('the host alone cannot mark a prize delivered', async () => {
   assert.equal(stillPending.rows[0].prize_delivered, false);
 
   // The winner can.
-  const winnerConfirm = await transition(ctx.claim.id, ctx.winner.token, { to: STATES.DELIVERED });
+  const winnerConfirm = await transition(ctx.claim.id, ctx.winner, { to: STATES.DELIVERED });
   assert.equal(winnerConfirm.status, 200);
 });
 
@@ -610,15 +610,15 @@ test('out-of-order transitions are rejected', async () => {
 
   // Skipping straight to shipped, or to delivered, from claimed.
   for (const target of [STATES.SHIPPED_OR_ARRANGED, STATES.DELIVERED_PENDING_CONFIRMATION]) {
-    const res = await transition(ctx.claim.id, ctx.host.token, { to: target });
+    const res = await transition(ctx.claim.id, ctx.host, { to: target });
     assert.equal(res.status, 409, `claimed → ${target} must be refused`);
     assert.equal(res.body.code, 'INVALID_TRANSITION');
   }
 
-  const backwards = await transition(ctx.claim.id, ctx.host.token, { to: STATES.AWAITING_CLAIM });
+  const backwards = await transition(ctx.claim.id, ctx.host, { to: STATES.AWAITING_CLAIM });
   assert.equal(backwards.status, 409);
 
-  const nonsense = await transition(ctx.claim.id, ctx.host.token, { to: 'teleported' });
+  const nonsense = await transition(ctx.claim.id, ctx.host, { to: 'teleported' });
   assert.equal(nonsense.status, 400);
 });
 
@@ -631,7 +631,7 @@ test('a delivered claim is final', async () => {
     [ctx.host, STATES.PREPARING_DELIVERY],
     [ctx.winner, STATES.DISPUTED],
   ]) {
-    const res = await transition(ctx.claim.id, actor.token, { to: target, note: 'changed my mind' });
+    const res = await transition(ctx.claim.id, actor, { to: target, note: 'changed my mind' });
     assert.equal(res.status, 409, 'a terminal claim cannot be reopened');
   }
 });
@@ -687,11 +687,11 @@ test('either party can raise a dispute, and it needs a reason', async () => {
   await redeem(ctx.claim.token);
   await advanceTo(ctx, STATES.SHIPPED_OR_ARRANGED);
 
-  const noReason = await transition(ctx.claim.id, ctx.winner.token, { to: STATES.DISPUTED });
+  const noReason = await transition(ctx.claim.id, ctx.winner, { to: STATES.DISPUTED });
   assert.equal(noReason.status, 400);
   assert.equal(noReason.body.code, 'REASON_REQUIRED');
 
-  const raised = await transition(ctx.claim.id, ctx.winner.token, {
+  const raised = await transition(ctx.claim.id, ctx.winner, {
     to: STATES.DISPUTED,
     note: 'Nothing arrived after two weeks (fabricated).',
   });
@@ -710,21 +710,21 @@ test('only an admin resolves a dispute, and only with a recorded reason', async 
   const admin = await createUser('resolver', { admin: true });
   await redeem(ctx.claim.token);
   await advanceTo(ctx, STATES.SHIPPED_OR_ARRANGED);
-  await transition(ctx.claim.id, ctx.winner.token, { to: STATES.DISPUTED, note: 'Not received.' });
+  await transition(ctx.claim.id, ctx.winner, { to: STATES.DISPUTED, note: 'Not received.' });
 
   // Neither party can resolve their own dispute.
   for (const actor of [ctx.host, ctx.winner]) {
-    const res = await transition(ctx.claim.id, actor.token, {
+    const res = await transition(ctx.claim.id, actor, {
       to: STATES.DELIVERED,
       note: 'sorted it out ourselves',
     });
     assert.equal(res.status, 403);
   }
 
-  const noReason = await transition(ctx.claim.id, admin.token, { to: STATES.DELIVERED });
+  const noReason = await transition(ctx.claim.id, admin, { to: STATES.DELIVERED });
   assert.equal(noReason.status, 400, 'an unexplained resolution is unauditable');
 
-  const resolved = await transition(ctx.claim.id, admin.token, {
+  const resolved = await transition(ctx.claim.id, admin, {
     to: STATES.DELIVERED,
     note: 'Courier proof of delivery supplied by host; winner confirmed by phone (fabricated).',
   });
@@ -751,9 +751,9 @@ test('an admin can send a disputed claim back to fulfilment', async () => {
   const admin = await createUser('sendback-admin', { admin: true });
   await redeem(ctx.claim.token);
   await advanceTo(ctx, STATES.SHIPPED_OR_ARRANGED);
-  await transition(ctx.claim.id, ctx.winner.token, { to: STATES.DISPUTED, note: 'Wrong item.' });
+  await transition(ctx.claim.id, ctx.winner, { to: STATES.DISPUTED, note: 'Wrong item.' });
 
-  const res = await transition(ctx.claim.id, admin.token, {
+  const res = await transition(ctx.claim.id, admin, {
     to: STATES.PREPARING_DELIVERY,
     note: 'Host to resend the correct item (fabricated).',
   });
@@ -801,7 +801,7 @@ test('an expired claim goes to admin review, and never redraws or cancels', asyn
   assert.equal(winnerAfter.rows[0].status, winnerBefore.rows[0].status);
 
   // And it surfaces for a human.
-  const queue = await api().get('/api/claims/admin/review').set('Authorization', `Bearer ${admin.token}`);
+  const queue = await admin.get('/api/claims/admin/review');
   assert.equal(queue.status, 200);
   assert.ok(queue.body.some((row) => row.id === ctx.claim.id), 'it must appear in the review queue');
 });
@@ -839,17 +839,15 @@ test('the admin review queue carries no delivery details', async () => {
   const admin = await createUser('queue-admin', { admin: true });
   await redeem(ctx.claim.token);
   await advanceTo(ctx, STATES.SHIPPED_OR_ARRANGED);
-  await transition(ctx.claim.id, ctx.winner.token, { to: STATES.DISPUTED, note: 'Not received.' });
+  await transition(ctx.claim.id, ctx.winner, { to: STATES.DISPUTED, note: 'Not received.' });
 
-  const queue = await api().get('/api/claims/admin/review').set('Authorization', `Bearer ${admin.token}`);
+  const queue = await admin.get('/api/claims/admin/review');
   const serialized = JSON.stringify(queue.body);
   SECRET_STRINGS.forEach((secret) => {
     assert.ok(!serialized.includes(secret), `${secret} must not appear in an admin list`);
   });
 
-  const nonAdmin = await api()
-    .get('/api/claims/admin/review')
-    .set('Authorization', `Bearer ${ctx.host.token}`);
+  const nonAdmin = await ctx.host.get('/api/claims/admin/review');
   assert.equal(nonAdmin.status, 403);
 });
 
@@ -906,7 +904,7 @@ test('delivery details are erased after the retention period, keeping the audit 
   assert.equal(await runCleanup(), 0);
 
   // And the host can no longer see what was deleted.
-  const hostView = await viewClaim(ctx.giveawayId, ctx.host.token);
+  const hostView = await viewClaim(ctx.giveawayId, ctx.host);
   assert.equal(hostView.body.delivery.available, false);
   assert.equal(hostView.body.delivery.reason, 'erased');
   assert.equal(hostView.body.delivery_details_erased, true);
@@ -942,7 +940,7 @@ test('no delivery detail or token reaches the logs', async () => {
   captureConsole();
   try {
     await redeem(ctx.claim.token);
-    await transition(ctx.claim.id, ctx.host.token, { to: STATES.PREPARING_DELIVERY });
+    await transition(ctx.claim.id, ctx.host, { to: STATES.PREPARING_DELIVERY });
   } finally {
     releaseConsole();
   }
@@ -995,9 +993,7 @@ test('the retired host-only delivery endpoint can no longer mark anything delive
   await redeem(ctx.claim.token);
   await advanceTo(ctx, STATES.SHIPPED_OR_ARRANGED);
 
-  const res = await api()
-    .post(`/api/giveaways/${ctx.giveawayId}/confirm-delivery`)
-    .set('Authorization', `Bearer ${ctx.host.token}`)
+  const res = await ctx.host.post(`/api/giveaways/${ctx.giveawayId}/confirm-delivery`)
     .send({});
 
   assert.equal(res.status, 409);
@@ -1025,7 +1021,7 @@ test('a failing email provider does not roll back a completed state change', asy
   };
 
   try {
-    const res = await transition(ctx.claim.id, ctx.host.token, { to: STATES.PREPARING_DELIVERY });
+    const res = await transition(ctx.claim.id, ctx.host, { to: STATES.PREPARING_DELIVERY });
     assert.equal(res.status, 200, 'the state change still succeeds');
   } finally {
     globalThis.fetch = realFetch;
