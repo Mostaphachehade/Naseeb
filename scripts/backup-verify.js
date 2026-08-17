@@ -293,8 +293,24 @@ async function seedFabricatedData(url) {
      winnerId, `backup-winner-${Date.now()}@example.com`]
   );
   await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description, entry_deadline, status, funded_by)
-     VALUES ($1,$2,'Backup giveaway','Fabricated','Fabricated prize', NOW() + interval '7 days','active','Self-funded')`,
+    `INSERT INTO giveaways
+       (id, host_id, title, description, prize_description, entry_deadline, status, funded_by,
+        published_at, closes_at, entry_target,
+        approved_at, approved_by, review_notes,
+        prize_category, sponsor_name, prize_supplied_by, prize_retail_value_aed,
+        naseeb_custody, fulfilment_method,
+        prize_evidence_kind, prize_evidence_reference, prize_evidence_verified,
+        prize_evidence_verified_at, prize_evidence_verified_by,
+        prize_governance_version, submitted_at)
+     VALUES ($1,$2,'Backup giveaway','Fabricated','Fabricated prize',
+             NOW() + interval '7 days','active','Self-funded',
+             NOW(), NOW() + interval '7 days', 100,
+             NOW(), $2, 'Fabricated fixture approval.',
+             'premium_electronics','Fabricated Sponsor','Fabricated Sponsor', 4500,
+             'naseeb_holds','Fabricated fulfilment method',
+             'prize_physically_inspected','fixture-evidence-reference', TRUE,
+             NOW(), $2,
+             1, NOW())`,
     [giveawayId, hostId]
   );
   await pool.query(

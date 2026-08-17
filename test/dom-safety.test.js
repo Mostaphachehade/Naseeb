@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuid } = require('uuid');
 
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, closePool } = require('../testHelpers');
 const {
   validateMediaUrl,
   validateExternalLinkUrl,
@@ -42,7 +42,7 @@ after(async () => {
   if (createdAdIds.length) {
     await pool.query('DELETE FROM ads WHERE id = ANY($1)', [createdAdIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 function scriptFiles() {

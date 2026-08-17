@@ -146,10 +146,38 @@
           estimated_value_aed: document.getElementById('estimated_value_aed').value || null,
           image_url: document.getElementById('image_url').value || null,
           funded_by: document.getElementById('funded_by').value,
-          entry_deadline: new Date(document.getElementById('entry_deadline').value).toISOString(),
+          // The prize facts Naseeb reviews before publication.
+          prize_category: document.getElementById('prize_category').value,
+          sponsor_name: document.getElementById('sponsor_name').value,
+          prize_supplied_by: document.getElementById('prize_supplied_by').value,
+          prize_retail_value_aed: document.getElementById('prize_retail_value_aed').value,
+          naseeb_custody: document.getElementById('naseeb_custody').value,
+          fulfilment_method: document.getElementById('fulfilment_method').value,
+          prize_restrictions: document.getElementById('prize_restrictions').value || null,
+          prize_expiry_date: document.getElementById('prize_expiry_date').value || null,
+          // `entry_deadline` is deliberately NOT sent. It is a consequence of
+          // publication — exactly 30 days from the moment Naseeb approves the
+          // campaign — not something a host chooses.
         }),
       });
-      NaseebDom.navigate('/giveaway.html?id=' + encodeURIComponent(g.id));
+      // Submitted, not published. Saying "your giveaway is live" here would be
+      // a lie the host would act on, so the page says what actually happened.
+      const form = document.getElementById('create-form');
+      form.classList.add('is-hidden');
+      const done = NaseebDom.el('div', { class: 'card narrow u-34caecf2' }, [
+        NaseebDom.el('h3', { text: 'Submitted for review' }),
+        NaseebDom.el('p', {
+          text:
+            g.next_step ||
+            'Naseeb checks every prize before publication. You will see this campaign go live once it is approved.',
+        }),
+        NaseebDom.el('p', {
+          class: 'hint',
+          text:
+            'It is not visible to anyone yet, and nobody can enter it. Once approved it runs for 30 days, or until it reaches 100 eligible entries — whichever comes first.',
+        }),
+      ]);
+      form.insertAdjacentElement('afterend', done);
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.add('show');

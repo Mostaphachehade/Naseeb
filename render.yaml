@@ -202,6 +202,13 @@ services:
 #                                                              verification
 #                                                              email should not
 #                                                              wait an hour
+#   giveaway_lifecycle    7 * * * *      hourly     hourly     redundancy: a
+#   + giveaway_outbox                                          campaign whose
+#                                                              deadline passed
+#                                                              must close and
+#                                                              draw even if the
+#                                                              15-minute job is
+#                                                              failing
 #   claims                17 * * * *     hourly     hourly     retention erasure
 #                                                              and claim expiry
 #   sessions              23 3 * * *     03:23      07:23      housekeeping,
@@ -239,6 +246,15 @@ services:
 #     buildCommand: npm ci
 #     schedule: "*/15 * * * *"
 #     startCommand: node scripts/maintenance.js all
+#     envVars:
+#       - fromGroup: naseeb-shared
+#   - type: cron
+#     name: naseeb-giveaway-lifecycle
+#     runtime: node
+#     plan: starter
+#     buildCommand: npm ci
+#     schedule: "7 * * * *"
+#     startCommand: node scripts/maintenance.js giveaway_lifecycle giveaway_outbox
 #     envVars:
 #       - fromGroup: naseeb-shared
 #   - type: cron

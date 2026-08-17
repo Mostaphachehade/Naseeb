@@ -39,9 +39,9 @@ const POLICY_STATUS = {
 const POLICIES = {
   terms: {
     id: 'terms',
-    version: '2026-08-15.1-draft',
+    version: '2026-08-17.2-draft',
     status: POLICY_STATUS.DRAFT,
-    draftRevisedAt: '2026-08-15',
+    draftRevisedAt: '2026-08-17',
     // Null until the policy is made effective. Never a placeholder date.
     effectiveDate: null,
     approvedAt: null,

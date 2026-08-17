@@ -15,15 +15,7 @@ const path = require('path');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const Stripe = require('stripe');
-const {
-  api,
-  pool,
-  ensureInit,
-  signIn,
-  nextTestIp,
-  TEST_ORIGIN,
-  uniqueEmail,
-} = require('../testHelpers');
+const { api, pool, ensureInit, signIn, nextTestIp, TEST_ORIGIN, uniqueEmail, publishGiveaway, seedGiveaway, FABRICATED_PRIZE, closePool, markDrawn } = require('../testHelpers');
 
 const sessions = require('../server/lib/sessions');
 const { tokenForFamily, CSRF_HEADER } = require('../server/lib/csrf');
@@ -48,7 +40,13 @@ after(async () => {
     );
     await pool.query('DELETE FROM claim_rescue_queue WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
-    await pool.query('UPDATE giveaways SET winner_entry_id = NULL WHERE id = ANY($1)', [createdGiveawayIds]);
+    await pool.query(
+      `UPDATE giveaways
+          SET winner_entry_id = NULL, drawn_at = NULL,
+              status = CASE WHEN status = 'drawn' THEN 'closed_pending_draw' ELSE status END
+        WHERE id = ANY($1)`,
+      [createdGiveawayIds]
+    );
     await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [createdGiveawayIds]);
   }
@@ -60,7 +58,7 @@ after(async () => {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
   await pool.query("DELETE FROM stripe_events WHERE id LIKE 'evt_csrf_%'");
-  await pool.end();
+  await closePool();
 });
 
 async function createAccount(tag, { admin = false, hostStatus = 'approved' } = {}) {
@@ -81,7 +79,10 @@ function giveawayPayload(tag) {
     description: 'A fabricated listing for the CSRF tests.',
     prize_description: 'A fabricated prize',
     funded_by: 'Fabricated marketing budget',
-    entry_deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    // The prize facts Naseeb reviews. Without them the submission is refused for
+    // being incomplete, and every CSRF assertion below would pass for the wrong
+    // reason.
+    ...FABRICATED_PRIZE,
   };
 }
 
@@ -354,19 +355,21 @@ test('the claim fragment workflow still works, with no session and no token in a
     const host = await createAccount('claim-host');
     const winner = await createAccount('claim-winner', { hostStatus: 'not_requested' });
 
-    const giveawayId = uuid();
-    await pool.query(
-      `INSERT INTO giveaways
-         (id, host_id, title, description, prize_description, funded_by, entry_deadline, status)
-       VALUES ($1, $2, 'Fabricated CSRF claim giveaway', 'd', 'p', 'Fabricated budget', $3, 'drawn')`,
-      [giveawayId, host.id, new Date(Date.now() - 86400000).toISOString()]
-    );
+    const giveawayId = await seedGiveaway({
+      hostId: host.id,
+      status: 'closed_pending_draw',
+      title: 'Fabricated CSRF claim giveaway',
+      closesAt: new Date(Date.now() - 86400000),
+    });
     createdGiveawayIds.push(giveawayId);
     const entryId = uuid();
     await pool.query(
       'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)',
       [entryId, giveawayId, winner.id]
     );
+    // Drawn only once the winning entry exists — the schema refuses a drawn
+    // campaign with no winner.
+    await markDrawn(giveawayId, entryId);
     await pool.query('UPDATE giveaways SET winner_entry_id = $1 WHERE id = $2', [entryId, giveawayId]);
 
     const client = await pool.connect();

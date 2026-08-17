@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuid } = require('uuid');
 const Stripe = require('stripe');
-const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 const { aedToFils, formatFils, getAdPriceQuote, PRICE_SETTING_KEY } = require('../server/lib/adPricing');
 const { setSetting, DEFAULTS } = require('../server/lib/settings');
 
@@ -67,7 +67,7 @@ after(async () => {
   }
   // Leave the price as the suite found it.
   await setSetting(PRICE_SETTING_KEY, DEFAULTS[PRICE_SETTING_KEY]).catch(() => {});
-  await pool.end();
+  await closePool();
 });
 
 // ---------------------------------------------------------------------------

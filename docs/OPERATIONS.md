@@ -241,14 +241,34 @@ mid-transaction.
 | `email_change_outbox` | Sends/retries verification and old-address warnings | 811005 |
 | `email_changes` | Marks expired pending email changes | 811006 |
 | `ad_holds` | Releases unpaid ad-slot holds | 811007 |
+| `giveaway_lifecycle` | **Closes campaigns whose 30-day deadline has passed, and draws every campaign that is closed and unblocked** | 811008 |
+| `giveaway_outbox` | Sends/retries entry receipts, winner notices and cancellation notices | 811009 |
+
+`giveaway_lifecycle` is the job that makes the closing deadline real. Before it,
+a campaign closed when a host remembered to press "draw" — so a host who lost
+interest left entrants waiting indefinitely, and on a plan where the web service
+sleeps an in-process timer would not have fired anyway.
+
+Its idempotence comes from the state model rather than from bookkeeping: closure
+is a **latch** (`entries_closed_at` is written once), and the draw refuses any
+campaign already resolved. A retried run after a crash finds the work done and
+reports zeros. It also picks up campaigns postponed by an integrity review on an
+earlier run, which is how "resolving the review resumes the draw" works
+operationally — no separate trigger, just the next pass.
 
 ### Schedule (UTC, with Dubai UTC+4)
 
 | Command | Cron (UTC) | UTC | Dubai | Why |
 | --- | --- | --- | --- | --- |
-| `maintenance.js all` | `*/15 * * * *` | every 15m | every 15m | Outboxes: a verification email must not wait an hour |
+| `maintenance.js all` | `*/15 * * * *` | every 15m | every 15m | Outboxes: a verification email must not wait an hour. Also closes and draws campaigns within 15 minutes of their deadline |
+| `maintenance.js giveaway_lifecycle giveaway_outbox` | `7 * * * *` | hourly | hourly | Deliberate redundancy: if the frequent job is failing, a campaign whose deadline passed still closes and draws |
 | `maintenance.js claims` | `17 * * * *` | hourly | hourly | Retention erasure and claim expiry |
 | `maintenance.js sessions risk_signals` | `23 3 * * *` | 03:23 | 07:23 | Housekeeping and retention purge, off-peak |
+
+A campaign therefore closes within **15 minutes** of its deadline in the normal
+case, and within an hour if the frequent job is down. It closes *exactly* on the
+100th accepted entry, with no delay at all, because that closure happens inside
+the entry's own transaction rather than on a schedule.
 
 `all` already covers every job. The dedicated entries are deliberate redundancy:
 if the frequent job is failing and nobody has noticed, retention still runs on
@@ -339,6 +359,7 @@ ever added to `001`.**
 | --- | --- |
 | `server/migrations/001_baseline.sql` | The schema as it stood when the ledger was introduced. Idempotent. Frozen. |
 | `server/migrations/002_schema_ledger.sql` | Records that the ledger is live. Adds no table, column or constraint and touches no data. |
+| `server/migrations/003_giveaway_lifecycle.sql` | Premium prize governance and the automatic giveaway lifecycle. Additive: adds columns, two append-only tables, CHECK constraints and indexes. Removes nothing. |
 | `server/migrations/expected-schema.json` | A committed snapshot of the schema the baseline produces. Regenerated with `npm run schema:snapshot`. |
 
 ### The expected-schema snapshot
@@ -527,6 +548,108 @@ A database restore without the key produces rows whose delivery details are
 permanently unreadable. It must be backed up separately, by the owner, somewhere
 that is not the same system — and `CLAIM_ENCRYPTION_KEYS_PREVIOUS` must retain
 retired keys until no row still references their version.
+
+---
+
+## 8a. The giveaway lifecycle
+
+`server/lib/giveawayLifecycle.js`, `server/lib/prizeStandard.js`,
+`server/lib/giveawayOutbox.js`.
+
+### The states
+
+| Status | Meaning | Public? | Enterable? |
+| --- | --- | --- | --- |
+| `pending_approval` | Submitted by a host, awaiting deliberate Naseeb approval | No | No |
+| `rejected` | Reviewed and refused. Terminal; never publishes | No | No |
+| `active` | Published and accepting entries | Yes | Yes |
+| `closed_pending_draw` | Entries closed, draw not yet run | Yes | No |
+| `pending_integrity_review` | Entries closed, draw postponed by an open integrity question | Yes | No |
+| `drawn` | Exactly one winner. Terminal | Yes | No |
+| `closed_no_winner` | Closed with no eligible entry, and a recorded reason. Terminal | Yes | No |
+| `cancelled` | Exceptional cancellation. Terminal | Yes | No |
+
+`active` and `drawn` keep their historical names: they are read in eleven places
+and asserted by every existing test, and renaming them would be churn with a real
+chance of missing a reader.
+
+### The closing rules
+
+A published campaign runs for **exactly 30 calendar days** from approval and stops
+accepting entries at whichever comes first:
+
+1. the **100th accepted entry** — closed inside that entry's own transaction,
+   under the same row lock that serialises entries, so two concurrent entries
+   cannot both read 99 and no 101st can slip through;
+2. the **30-day deadline** — closed by the `giveaway_lifecycle` maintenance job,
+   and also by the next request that arrives after it passes.
+
+**Closure is a latch, not a computation.** `entries_closed_at` is written once.
+If "is it closed?" were a live count against the target, disqualifying an entry
+after closure would drop the count below 100 and reopen a closed campaign —
+accepting an entry after closure and effectively extending the deadline. Both are
+forbidden, so closure is a fact with a timestamp and a reason.
+
+### "Eligible" means two things
+
+The schema already carried three hand-written variants that did not agree. There
+are now two predicates, each with exactly one definition that every caller shares:
+
+| Constant | SQL | Used for |
+| --- | --- | --- |
+| `ACCEPTED_SQL` | `integrity_status <> 'disqualified'` | The 100 target, and every public and dashboard tally |
+| `DRAWABLE_SQL` | `integrity_status = 'eligible'` | The draw pool, and nothing else |
+
+An entry under review **counts** (somebody submitted it, and it may be
+reinstated) but **cannot win** (a winner drawn from a contested pool is a winner
+nobody can defend). The threshold uses ACCEPTED so that opening a review cannot
+reopen a closed campaign.
+
+### Integrity interaction
+
+If an integrity review or blocking case is open when a campaign closes, entries
+close on time — the review extends nothing — and the campaign moves to
+`pending_integrity_review`. The draw waits. When the review resolves, the next
+pass of the maintenance job draws it: there is no separate trigger and nothing to
+remember. An upheld post-draw case continues to block fulfilment under the
+existing claim rules; nothing here cancels a claim, replaces a winner or redraws.
+
+### One draw
+
+`drawIfReady` is the only place a winner is selected, and the route and the
+maintenance job both call it — a second implementation of "pick a winner" would
+drift, and the weaker one would be the one running unattended at 03:00. It uses
+`crypto.randomInt` over the locked eligible pool, unchanged from the original
+route. A partial unique index on `winner_entry_id` refuses a second winner at the
+storage layer even if a future code path forgets the lock.
+
+### Prize governance
+
+A submission never publishes itself. `POST /api/giveaways` creates a
+`pending_approval` row with no publication time and no deadline. Publication
+requires `POST /api/admin/giveaways/:id/approve` from a named administrator, with
+review notes and a verified evidence reference, and a CHECK constraint refuses a
+published campaign that lacks a category, sponsor, supplier, value, custody
+statement, fulfilment method or verified evidence.
+
+**Evidence is a reference and a verdict, never a document.** Storing a sponsor's
+invoice would put third-party commercial paperwork, and quite possibly personal
+data inside it, into this database for no operational gain.
+
+`prize_governance_version` is 0 for campaigns published before this migration and
+1 for everything after. The constraints apply from version 1: satisfying them for
+a pre-existing campaign would mean writing an approval that never happened.
+
+### Exceptional cancellation
+
+Grounds: `fulfilment_impossible`, `unlawful`, `fraudulent`, `unsafe`,
+`prohibited_by_authority`. **`sponsor_withdrawal` is not a ground**, is refused by
+name with its own error code, and is unrepresentable in the database. A
+cancellation needs a named administrator and a written reason of at least ten
+characters; every entrant gets a durable notice; the campaign, entries and history
+are preserved; and no draw is pretended. The entrant reads a fixed sentence chosen
+from the ground — never the administrator's written reason, which can name a
+sponsor, an allegation or a legal instruction.
 
 ---
 
@@ -758,6 +881,11 @@ remains `false` regardless — see §3.
 | 11 | Run `node scripts/migrate.js status`, `verify`, then `adopt` or `up` against the production database before the first deploy. Nothing here does it automatically | 👤🖥️ |
 | 12 | Verify the sender domain with the email provider. `EMAIL_FROM` on `resend.dev` or an example domain is refused | 👤🖥️ |
 | 13 | Resolve any overlapping banner bookings by hand (§9.13) before self-serve ad checkout can be enabled | 👤 |
+| 14 | **Put the sponsor agreement in place.** Code and website wording cannot make a sponsor perform; the no-withdrawal commitment in §8a rests on a contract that does not yet exist, and it is a prerequisite before Naseeb operates publicly | 👤⚖️ |
+| 15 | **Decide whether Naseeb financially guarantees an equivalent replacement** if a sponsor breaches. Deliberately not invented or implemented | 👤⚖️ |
+| 16 | Decide and register the operating entity. Naseeb is currently Mostapha Chehade personally, in Dubai, under development — with no company, trade licence, VAT registration or commercial operation | 👤⚖️ |
+| 17 | Stand up `support@`, `privacy@` and `legal@mynaseeb.ae` before any page points people at them. None is published today | 👤🖥️ |
+| 18 | Build the administrator review screen for the prize queue. The API exists (`GET /api/admin/giveaway-submissions`, approve/reject/cancel); the admin page has no controls for it yet | 👤 |
 
 ---
 

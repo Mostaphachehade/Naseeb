@@ -112,7 +112,11 @@ after(async () => {
 // of every database that existed before this ledger was written.
 async function preLedgerMatching(label) {
   const fixture = await createFixture(label);
-  await init(fixture.pool);
+  // The FULL migration set, not the baseline alone: "correctly matching" means
+  // matching what this code expects today, which is the baseline plus every
+  // migration after it. Building from `init()` alone would model a database
+  // that is behind, which is what `olderDatabase` is for.
+  await migrations.migrate(fixture.pool, { log: silent });
   await fixture.pool.query('DROP TABLE IF EXISTS schema_migrations');
   return fixture;
 }
@@ -172,12 +176,30 @@ async function seedFabricatedHistory(pool) {
     );
   }
 
+  // `prize_governance_version = 0` is the honest value for a fixture standing in
+  // for a campaign published before curated prize governance existed. It is what
+  // the migration writes for every pre-existing row, and it is what exempts such
+  // a row from the approval and prize-standard CHECK constraints — which it
+  // cannot satisfy, because no administrator ever approved it.
+  //
+  // Set only where the column exists: this same seed runs against a database
+  // built by the baseline alone, which predates it.
+  const governed = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='giveaways'
+        AND column_name='prize_governance_version'`
+  );
   await pool.query(
     `INSERT INTO giveaways (id, host_id, title, description, prize_description,
-                            estimated_value_aed, funded_by, entry_deadline, status)
+                            estimated_value_aed, funded_by, entry_deadline, status
+                            ${governed.rows[0].n ? ', prize_governance_version, published_at, closes_at' : ''})
      VALUES ($1, $2, 'Fabricated Prize Draw', 'Fixture data. Not a real giveaway.',
              'A prize that does not exist', 1000, 'Fabricated Host',
-             '2099-01-01T00:00:00.000Z', 'active')`,
+             '2099-01-01T00:00:00.000Z', 'active'${
+       governed.rows[0].n
+         ? ", 0, TIMESTAMPTZ '2026-01-01 09:00:00+04', TIMESTAMPTZ '2099-01-01 00:00:00+00'"
+         : ''
+     })`,
     [giveawayId, hostId]
   );
 
@@ -275,7 +297,7 @@ test('sm2. adding a migration does not alter the baseline checksum, and order is
   const baselineChecksum = before['001_baseline'];
 
   const added = {
-    id: '003_fabricated_for_this_test',
+    id: '900_fabricated_for_this_test',
     description: 'Fabricated. Never executed.',
     run: async () => {},
   };
@@ -284,7 +306,8 @@ test('sm2. adding a migration does not alter the baseline checksum, and order is
     const after = migrations.checksums();
     assert.equal(after['001_baseline'], baselineChecksum, 'the baseline is untouched by a later migration');
     assert.equal(after['002_schema_ledger'], before['002_schema_ledger']);
-    assert.ok(after['003_fabricated_for_this_test'], 'the new one is checksummed too');
+    assert.equal(after['003_giveaway_lifecycle'], before['003_giveaway_lifecycle']);
+    assert.ok(after['900_fabricated_for_this_test'], 'the new one is checksummed too');
     assert.equal(migrations.isOrdered(), true, 'ids stay in ascending order');
   } finally {
     migrations.MIGRATIONS.splice(migrations.MIGRATIONS.indexOf(added), 1);
@@ -305,13 +328,13 @@ test('sm2. adding a migration does not alter the baseline checksum, and order is
   assert.equal(migrations.isOrdered(), true, 'and the list is restored');
 });
 
-test('sm3. the committed schema snapshot matches a database the baseline just built', async () => {
+test('sm3. the committed schema snapshot matches a database the migrations just built', async () => {
   // This is what keeps `expected-schema.json` honest. If somebody changes the
   // baseline and forgets `npm run schema:snapshot`, adoption would be verifying
   // against yesterday's expectation — so the snapshot is compared against a
   // live, freshly-built database on every run.
   const fixture = await createFixture('snapshot');
-  await init(fixture.pool);
+  await migrations.migrate(fixture.pool, { log: silent });
 
   const client = await fixture.pool.connect();
   try {
@@ -382,7 +405,7 @@ test('sm4. proof 1 — an empty database executes the baseline and verifies', as
   assert.equal(ledgerAfterRefusal.rows[0].n, 0, 'a refusal writes no ledger row');
 
   const summary = await migrations.migrate(fixture.pool, { log: silent });
-  assert.deepEqual(summary.applied, ['001_baseline', '002_schema_ledger']);
+  assert.deepEqual(summary.applied, migrations.orderedIds());
   assert.equal(summary.verified, true, JSON.stringify(summary.comparison && summary.comparison.missing));
 
   // Including the data-dependent one: an empty table has nothing to conflict
@@ -545,7 +568,7 @@ test('sm8. proofs 4, 5, 6 — an older database upgrades, and every fabricated r
   assert.equal(before.entry_integrity_events.n, 2);
 
   const summary = await migrations.migrate(fixture.pool, { log: silent });
-  assert.deepEqual(summary.applied, ['001_baseline', '002_schema_ledger']);
+  assert.deepEqual(summary.applied, migrations.orderedIds());
   assert.equal(
     summary.verified,
     true,
@@ -574,10 +597,42 @@ test('sm8. proofs 4, 5, 6 — an older database upgrades, and every fabricated r
   // is expected to move — the upgrade adds a column to that table, which is the
   // whole point — so it is checked column by column instead.
   const after = await contentFingerprint(fixture.pool);
-  ['giveaways', 'entries', 'entry_integrity_events'].forEach((table) => {
+  ['entries', 'entry_integrity_events'].forEach((table) => {
     assert.equal(after[table].digest, before[table].digest, `${table} is byte-for-byte unchanged`);
     assert.equal(after[table].n, before[table].n);
   });
+
+  // `giveaways` and `users` both gain columns in this upgrade, so their whole-row
+  // digests are EXPECTED to move — that is what a migration does. They are
+  // checked semantically instead: every value the fixture wrote is still the
+  // value it wrote, and the new columns carry defaults rather than guesses.
+  assert.equal(after.giveaways.n, before.giveaways.n, 'no campaign was added or lost');
+  const campaign = await fixture.pool.query(
+    `SELECT title, description, prize_description, estimated_value_aed, funded_by,
+            entry_deadline, status, host_id, published_at, closes_at,
+            prize_governance_version, submitted_at
+       FROM giveaways WHERE id = $1`,
+    [history.giveawayId]
+  );
+  const row = campaign.rows[0];
+  assert.equal(row.title, 'Fabricated Prize Draw');
+  assert.equal(row.prize_description, 'A prize that does not exist');
+  assert.equal(row.funded_by, 'Fabricated Host');
+  assert.equal(row.status, 'active', 'the campaign was not moved to another state');
+  assert.equal(row.host_id, history.hostId);
+  assert.equal(Number(row.estimated_value_aed), 1000);
+  assert.equal(row.entry_deadline, '2099-01-01T00:00:00.000Z', 'its deadline was NOT recalculated');
+  assert.equal(
+    new Date(row.closes_at).toISOString(),
+    '2099-01-01T00:00:00.000Z',
+    'and was not silently extended or shortened'
+  );
+  assert.equal(
+    row.prize_governance_version,
+    0,
+    'a campaign published before the prize standard is recorded as such, not as approved'
+  );
+  assert.ok(row.submitted_at, 'the backfill filled the new column rather than leaving it null');
   assert.equal(after.users.n, before.users.n, 'no user was added or lost');
   const names = await fixture.pool.query(
     'SELECT id, name, email, password_hash, host_status FROM users ORDER BY email'
@@ -669,7 +724,7 @@ test('sm9. proofs 7, 8 — overlapping ads block the constraint, and nothing is 
 
   // ...but the rest of the schema is correct and recorded, so the platform is
   // not held hostage to a booking dispute.
-  assert.deepEqual(summary.applied, ['001_baseline', '002_schema_ledger']);
+  assert.deepEqual(summary.applied, migrations.orderedIds());
   assert.equal(summary.verified, true, JSON.stringify(summary.comparison.missing));
   // The constraint and the GiST index that backs it: reported, not hidden.
   assert.deepEqual(
@@ -739,7 +794,7 @@ test('sm10. proof 9 — a migration that fails part-way records nothing and leav
   // rolls DDL back, and the ledger row is written inside the same transaction,
   // so both must disappear together.
   const failing = {
-    id: '003_fabricated_partial_failure',
+    id: '900_fabricated_partial_failure',
     description: 'Fabricated. Creates a table, then fails deliberately.',
     run: async (client) => {
       await client.query('CREATE TABLE fabricated_half_built (id TEXT PRIMARY KEY)');
@@ -796,11 +851,11 @@ test('sm11. proof 10 — concurrent migration attempts apply exactly once', asyn
     `exactly one attempt did the work, got ${JSON.stringify(appliedCounts)}`
   );
   const winner = [a, b, c].find((s) => s.applied.length > 0);
-  assert.deepEqual(winner.applied, ['001_baseline', '002_schema_ledger']);
+  assert.deepEqual(winner.applied, migrations.orderedIds());
 
   const ledger = await fixture.pool.query('SELECT id FROM schema_migrations ORDER BY id');
-  assert.deepEqual(ledger.rows.map((r) => r.id), ['001_baseline', '002_schema_ledger']);
-  assert.equal(ledger.rowCount, 2, 'no migration is recorded twice');
+  assert.deepEqual(ledger.rows.map((r) => r.id), migrations.orderedIds());
+  assert.equal(ledger.rowCount, migrations.orderedIds().length, 'no migration is recorded twice');
 
   const verified = await migrations.verify(fixture.pool);
   assert.equal(verified.ok, true, JSON.stringify(verified.problems));
@@ -871,8 +926,12 @@ test('sm13. proof 12 — readiness fails until migration or adoption is explicit
   }
   const beforeAnything = await migrations.verify(fixture.pool);
   assert.equal(beforeAnything.ok, false, 'an empty ledger is not ready either');
-  assert.ok(beforeAnything.problems.some((p) => /001_baseline has not been applied/.test(p)));
-  assert.ok(beforeAnything.problems.some((p) => /002_schema_ledger has not been applied/.test(p)));
+  migrations.orderedIds().forEach((id) => {
+    assert.ok(
+      beforeAnything.problems.some((p) => p.includes(`${id} has not been applied`)),
+      `${id} is reported as unapplied`
+    );
+  });
 
   // Adoption alone covers the baseline; the later migration still has to run.
   const adopted = await migrations.adopt(fixture.pool, { log: silent });
@@ -882,7 +941,7 @@ test('sm13. proof 12 — readiness fails until migration or adoption is explicit
   assert.ok(afterAdopt.problems.every((p) => !/001_baseline/.test(p)));
 
   const summary = await migrations.migrate(fixture.pool, { log: silent });
-  assert.deepEqual(summary.applied, ['002_schema_ledger']);
+  assert.deepEqual(summary.applied, migrations.orderedIds().slice(1));
   assert.deepEqual(summary.alreadyApplied, ['001_baseline']);
 
   const ready = await migrations.verify(fixture.pool);

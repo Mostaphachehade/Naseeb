@@ -47,7 +47,7 @@ const schemaVerify = require('./schemaVerify');
 
 // Bumped when the expected schema changes. Readiness compares this to what the
 // ledger says has actually been applied.
-const SCHEMA_VERSION = '0002';
+const SCHEMA_VERSION = '0003';
 
 // Distinct from the claim-maintenance, ad-slot and per-job maintenance locks;
 // none of them may contend.
@@ -79,11 +79,22 @@ const MIGRATIONS = [
       'Records that the ledger is live. Adds no table, column or constraint and touches no data.',
     sqlFile: '002_schema_ledger.sql',
   },
+  {
+    id: '003_giveaway_lifecycle',
+    description:
+      'Premium prize governance and the automatic giveaway lifecycle: publication, the 100-entry target, the 30-day deadline, append-only lifecycle history and durable entrant notices. Additive; drops nothing.',
+    sqlFile: '003_giveaway_lifecycle.sql',
+  },
 ];
 
 // The critical objects readiness verifies by name. Named rather than counted: a
 // count tells you something changed, a name tells you what.
 const CRITICAL_CONSTRAINTS = [
+  { name: 'giveaways_status_valid', table: 'giveaways', kind: 'check' },
+  { name: 'giveaways_published_has_window', table: 'giveaways', kind: 'check' },
+  { name: 'giveaways_outcome_coherent', table: 'giveaways', kind: 'check' },
+  { name: 'giveaways_cancellation_valid', table: 'giveaways', kind: 'check' },
+  { name: 'giveaways_prize_governed', table: 'giveaways', kind: 'check' },
   { name: 'privacy_requests_no_phantom_deletion', table: 'privacy_requests', kind: 'check' },
   { name: 'privacy_requests_closure_explained', table: 'privacy_requests', kind: 'check' },
   { name: 'privacy_requests_status_valid', table: 'privacy_requests', kind: 'check' },
@@ -92,6 +103,8 @@ const CRITICAL_CONSTRAINTS = [
 ];
 
 const CRITICAL_TRIGGERS = [
+  { name: 'giveaway_lifecycle_events_immutable', table: 'giveaway_lifecycle_events' },
+  { name: 'giveaway_notification_events_immutable', table: 'giveaway_notification_events' },
   { name: 'privacy_requests_no_delete', table: 'privacy_requests' },
   { name: 'privacy_request_events_immutable', table: 'privacy_request_events' },
   { name: 'privacy_request_executions_immutable', table: 'privacy_request_executions' },

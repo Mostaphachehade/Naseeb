@@ -27,7 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const { api, pool, ensureInit, uniqueEmail, signIn } = require('../testHelpers');
+const { api, pool, ensureInit, uniqueEmail, signIn, closePool } = require('../testHelpers');
 
 const emailDelivery = require('../server/lib/emailDelivery');
 const appConfig = require('../server/lib/config');
@@ -49,7 +49,7 @@ after(async () => {
     await pool.query('DELETE FROM session_families WHERE user_id = ANY($1)', [created.users]);
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [created.users]);
   }
-  await pool.end();
+  await closePool();
 });
 
 // Restores every variable it touched, whatever the body does. A test that

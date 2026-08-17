@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 
 const policies = require('../server/lib/policies');
 const { POLICY_STATUS, PolicyNotAcceptableError } = policies;
@@ -32,7 +32,7 @@ after(async () => {
     await pool.query('DELETE FROM policy_acceptances WHERE user_id = ANY($1)', [createdUserIds]);
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 async function createUser() {

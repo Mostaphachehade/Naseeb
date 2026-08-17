@@ -14,7 +14,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const bcrypt = require('bcryptjs');
 
-const { api, pool, ensureInit, uniqueEmail } = require('../testHelpers');
+const { api, pool, ensureInit, uniqueEmail, seedGiveaway, closePool } = require('../testHelpers');
 
 const config = require('../server/lib/config');
 const migrations = require('../server/lib/migrations');
@@ -44,7 +44,7 @@ after(async () => {
     await pool.query('DELETE FROM session_families WHERE user_id = ANY($1)', [created.users]);
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [created.users]);
   }
-  await pool.end();
+  await closePool();
 });
 
 async function makeUser(tag) {
@@ -476,13 +476,12 @@ test('op9-11. sessions, risk signals and claim retention run safely through the 
   );
 
   // A risk signal past its retention window.
-  const giveawayId = crypto.randomUUID();
+  const giveawayId = await seedGiveaway({
+    hostId: user.id,
+    title: 'Ops giveaway',
+    closesAt: new Date(Date.now() + 7 * 86400000),
+  });
   created.giveaways.push(giveawayId);
-  await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description, entry_deadline, status, funded_by)
-     VALUES ($1,$2,'Ops giveaway','Fabricated','Fabricated prize', NOW() + interval '7 days','active','Self-funded')`,
-    [giveawayId, user.id]
-  );
   const entryId = crypto.randomUUID();
   await pool.query(
     'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1,$2,$3,1)',

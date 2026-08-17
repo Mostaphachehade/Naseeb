@@ -21,15 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const {
-  api,
-  pool,
-  ensureInit,
-  signIn,
-  uniqueEmail,
-  nextTestIp,
-  TEST_ORIGIN,
-} = require('../testHelpers');
+const { api, pool, ensureInit, signIn, uniqueEmail, nextTestIp, TEST_ORIGIN, publishGiveaway, seedGiveaway, FABRICATED_PRIZE, closePool } = require('../testHelpers');
 
 const rights = require('../server/lib/accountRights');
 const eligibility = require('../server/lib/eligibility');
@@ -94,7 +86,16 @@ after(async () => {
     );
     await pool.query('DELETE FROM claim_rescue_queue WHERE giveaway_id = ANY($1)', [created.giveaways]);
     await pool.query('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [created.giveaways]);
-    await pool.query('UPDATE giveaways SET winner_entry_id = NULL WHERE id = ANY($1)', [created.giveaways]);
+    // Detaching the winner means the campaign is no longer drawn, and the schema
+    // says so: `drawn` requires a winning entry. Teardown moves the state with
+    // the data rather than leaving an incoherent row behind.
+    await pool.query(
+      `UPDATE giveaways
+          SET winner_entry_id = NULL, drawn_at = NULL,
+              status = CASE WHEN status = 'drawn' THEN 'closed_pending_draw' ELSE status END
+        WHERE id = ANY($1)`,
+      [created.giveaways]
+    );
     await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [created.giveaways]);
     await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [created.giveaways]);
   }
@@ -105,7 +106,7 @@ after(async () => {
   if (removableUsers.length) {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [removableUsers]);
   }
-  await pool.end();
+  await closePool();
 });
 
 // ---------------------------------------------------------------------------
@@ -143,14 +144,15 @@ async function makeUser(tag, {
   return { id, email };
 }
 
-async function makeGiveaway(hostId, { deadlineDays = 7, status = 'active' } = {}) {
-  const id = crypto.randomUUID();
-  await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description,
-       entry_deadline, status, funded_by)
-     VALUES ($1, $2, 'Rights giveaway', 'Fabricated', 'Fabricated prize', $3, $4, 'Self-funded')`,
-    [id, hostId, new Date(Date.now() + deadlineDays * 86400000).toISOString(), status]
-  );
+async function makeGiveaway(hostId, { deadlineDays = 7, status } = {}) {
+  // A past deadline means a CLOSED campaign — a campaign closes itself now.
+  const resolved = status || (deadlineDays <= 0 ? 'closed_pending_draw' : 'active');
+  const id = await seedGiveaway({
+    hostId,
+    status: resolved,
+    title: 'Rights giveaway',
+    closesAt: new Date(Date.now() + deadlineDays * 86400000),
+  });
   created.giveaways.push(id);
   return id;
 }
@@ -532,6 +534,7 @@ test('8. an unknown account is prompted before a new entry or a new hosting acti
     title: 'Blocked',
     description: 'Fabricated',
     prize_description: 'Fabricated',
+    ...FABRICATED_PRIZE,
     entry_deadline: new Date(Date.now() + 86400000).toISOString(),
     funded_by: 'Self-funded',
   });

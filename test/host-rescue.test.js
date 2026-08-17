@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, seedGiveaway, closePool } = require('../testHelpers');
 
 const { HOST_STATUS } = require('../server/lib/hostAccess');
 const { STATES, ROLES, RESCUE_ELIGIBLE_STATES } = require('../server/lib/claimStateMachine');
@@ -55,7 +55,13 @@ after(async () => {
     );
     await pool.query('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
-    await pool.query('UPDATE giveaways SET winner_entry_id = NULL WHERE id = ANY($1)', [createdGiveawayIds]);
+    await pool.query(
+      `UPDATE giveaways
+          SET winner_entry_id = NULL, drawn_at = NULL,
+              status = CASE WHEN status = 'drawn' THEN 'closed_pending_draw' ELSE status END
+        WHERE id = ANY($1)`,
+      [createdGiveawayIds]
+    );
     await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [createdGiveawayIds]);
   }
   if (createdUserIds.length) {
@@ -63,7 +69,7 @@ after(async () => {
     await pool.query('DELETE FROM host_applications WHERE user_id = ANY($1)', [createdUserIds]);
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 const PASSWORD = 'correcthorse123';
@@ -106,13 +112,12 @@ async function drawnGiveawayWithClaim(tag) {
   const host = await createUser(`${tag}-host`, { hostStatus: HOST_STATUS.APPROVED });
   const winner = await createUser(`${tag}-winner`);
 
-  const giveawayId = uuid();
-  await pool.query(
-    `INSERT INTO giveaways
-       (id, host_id, title, description, prize_description, funded_by, entry_deadline, status)
-     VALUES ($1, $2, 'Fabricated rescue giveaway', 'd', 'A fabricated prize', 'Fabricated budget', $3, 'drawn')`,
-    [giveawayId, host.id, new Date(Date.now() - 86400000).toISOString()]
-  );
+  const giveawayId = await seedGiveaway({
+    hostId: host.id,
+    status: 'closed_pending_draw',
+    title: 'Fabricated rescue giveaway',
+    closesAt: new Date(Date.now() - 86400000),
+  });
   createdGiveawayIds.push(giveawayId);
 
   const entryId = uuid();

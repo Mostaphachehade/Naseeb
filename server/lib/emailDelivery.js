@@ -207,7 +207,7 @@ async function notificationHealth(pool) {
     return { ok: false, reason: unavailableReason(), failed_recently: null };
   }
 
-  const [claims, changes] = await Promise.all([
+  const [claims, changes, giveaways] = await Promise.all([
     pool.query(
       `SELECT COUNT(*)::int AS n FROM claim_notifications
         WHERE status = 'failed' AND updated_at > NOW() - ($1 || ' hours')::interval`,
@@ -218,9 +218,17 @@ async function notificationHealth(pool) {
         WHERE status = 'failed' AND failed_at > NOW() - ($1 || ' hours')::interval`,
       [String(FAILURE_WINDOW_HOURS)]
     ),
+    // The third outbox. Entry receipts, winner notices and cancellation
+    // notices: a cluster of terminal failures here means people who entered, or
+    // won, are not being told.
+    pool.query(
+      `SELECT COUNT(*)::int AS n FROM giveaway_notifications
+        WHERE status = 'failed' AND failed_at > NOW() - ($1 || ' hours')::interval`,
+      [String(FAILURE_WINDOW_HOURS)]
+    ),
   ]);
 
-  const failed = claims.rows[0].n + changes.rows[0].n;
+  const failed = claims.rows[0].n + changes.rows[0].n + giveaways.rows[0].n;
   if (failed >= TERMINAL_FAILURE_THRESHOLD) {
     return { ok: false, reason: 'delivery_failures', failed_recently: failed };
   }

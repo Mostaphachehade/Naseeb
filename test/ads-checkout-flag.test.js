@@ -12,7 +12,7 @@
 // strips anything that isn't sk_test_.
 const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 
 const realFetch = globalThis.fetch;
 let fetchCalls = [];
@@ -85,7 +85,7 @@ beforeEach(() => {
 after(async () => {
   globalThis.fetch = realFetch;
   await pool.query("DELETE FROM ads WHERE business_name = 'Acme LLC'");
-  await pool.end();
+  await closePool();
 });
 
 test('checkout is disabled when the environment variable is absent', async () => {

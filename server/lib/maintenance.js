@@ -47,6 +47,8 @@ const adSlots = require('./adSlots');
 const rights = require('./accountRights');
 const claimNotifications = require('./claimNotifications');
 const emailChangeOutbox = require('./emailChangeOutbox');
+const giveawayOutbox = require('./giveawayOutbox');
+const giveawayLifecycle = require('./giveawayLifecycle');
 
 // One key per job. Distinct from the migration lock (918273645), the claim
 // scheduler lock (738201947383) and the ad-slot allocation lock.
@@ -58,6 +60,8 @@ const LOCK_KEYS = {
   email_change_outbox: 811005,
   email_changes: 811006,
   ad_holds: 811007,
+  giveaway_lifecycle: 811008,
+  giveaway_outbox: 811009,
 };
 
 const DEFAULT_LIMIT = 500;
@@ -117,6 +121,23 @@ async function withJobLock(name, fn) {
     }
     client.release();
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// The shared draw
+// ---------------------------------------------------------------------------
+
+// Selecting a winner, creating the claim and queueing the notices — the same
+// operation the host-triggered route performs, called through the same code.
+//
+// Required lazily rather than at module load: `server/routes/giveaways.js`
+// pulls in the claim scheduler, which pulls in this file, and a top-level
+// require would close that loop.
+async function runDrawForMaintenance(client, giveaway) {
+  // eslint-disable-next-line global-require -- see above
+  const { runDraw } = require('../routes/giveaways');
+  return runDraw(client, giveaway, { actorUserId: null, actorRole: 'system' });
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +228,109 @@ const JOBS = {
       }
     }),
 
+
+  // The giveaway lifecycle: close campaigns whose 30-day deadline has passed,
+  // and draw every campaign that is closed and unblocked.
+  //
+  // This is the job that makes the deadline real. Before it, a campaign closed
+  // when a host remembered to press "draw" — which means a host who lost
+  // interest left entrants waiting indefinitely, and on a plan where the web
+  // service sleeps, an in-process timer would not have fired anyway.
+  //
+  // Bounded, idempotent and single-worker like every other job. Idempotence
+  // comes from the state model rather than from bookkeeping: closure is a latch,
+  // and `drawIfReady` refuses anything already resolved. A retried run after a
+  // crash finds the work done and reports zeros.
+  giveaway_lifecycle: (options = {}) =>
+    withJobLock('giveaway_lifecycle', async (client) => {
+      const limit = batchLimit(options.limit);
+      const counts = { closed: 0, drawn: 0, no_winner: 0, postponed: 0, skipped: 0 };
+
+      // Two passes rather than one query: a campaign that closes in this run
+      // must also be eligible to draw in it, and a campaign that was already
+      // closed on a previous run — or is waiting on an integrity review that
+      // has since resolved — must be picked up without waiting for its
+      // deadline to come round again.
+      const due = await client.query(
+        `SELECT id FROM giveaways
+          WHERE status = $1 AND closes_at IS NOT NULL AND closes_at <= NOW()
+          ORDER BY closes_at
+          LIMIT $2`,
+        [giveawayLifecycle.STATUS.ACTIVE, limit]
+      );
+
+      for (const row of due.rows) {
+        if (stopRequested()) break;
+        // eslint-disable-next-line no-await-in-loop -- one transaction per campaign
+        await client.query('BEGIN');
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const giveaway = await giveawayLifecycle.lockGiveaway(client, row.id);
+          // eslint-disable-next-line no-await-in-loop
+          const closure = await giveawayLifecycle.closeEntries(client, giveaway, {
+            reason: giveawayLifecycle.CLOSE_REASONS.DEADLINE_REACHED,
+          });
+          if (closure.closed) counts.closed += 1;
+          else counts.skipped += 1;
+          // eslint-disable-next-line no-await-in-loop
+          await client.query('COMMIT');
+        } catch (err) {
+          // eslint-disable-next-line no-await-in-loop
+          await client.query('ROLLBACK').catch(() => {});
+          throw err;
+        }
+      }
+
+      // Every campaign whose entries are closed and which has not yet reached an
+      // outcome. Includes ones postponed by an integrity review on an earlier
+      // run: once the review resolves, the next pass draws them, which is what
+      // "resolving the review resumes the draw" means operationally.
+      const awaiting = await client.query(
+        `SELECT id FROM giveaways
+          WHERE status = ANY($1)
+          ORDER BY entries_closed_at
+          LIMIT $2`,
+        [giveawayLifecycle.AWAITING_OUTCOME, limit]
+      );
+
+      for (const row of awaiting.rows) {
+        if (stopRequested()) break;
+        // eslint-disable-next-line no-await-in-loop
+        await client.query('BEGIN');
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const giveaway = await giveawayLifecycle.lockGiveaway(client, row.id);
+          // eslint-disable-next-line no-await-in-loop
+          const outcome = await runDrawForMaintenance(client, giveaway);
+          if (outcome.drawn) counts.drawn += 1;
+          else if (outcome.noWinner) counts.no_winner += 1;
+          else if (outcome.postponed) counts.postponed += 1;
+          else counts.skipped += 1;
+          // eslint-disable-next-line no-await-in-loop
+          await client.query('COMMIT');
+        } catch (err) {
+          // eslint-disable-next-line no-await-in-loop
+          await client.query('ROLLBACK').catch(() => {});
+          throw err;
+        }
+      }
+
+      return counts;
+    }),
+
+  // Entry receipts, winner notices and cancellation notices.
+  giveaway_outbox: (options = {}) =>
+    withJobLock('giveaway_outbox', async () => {
+      const summary = await giveawayOutbox.processDue({ limit: batchLimit(options.limit) });
+      return {
+        claimed: summary.claimed,
+        sent: summary.sent,
+        retry: summary.retry,
+        failed: summary.failed,
+        cancelled: summary.cancelled,
+      };
+    }),
+
   // Advertising slot holds that were never paid for. Previously released only
   // when a request happened to hit the ads route, which means a held slot could
   // block a real booking for as long as nobody visited the page.
@@ -233,6 +357,9 @@ const JOB_NAMES = Object.keys(JOBS);
 // not a correctness requirement. The advisory locks are the correctness
 // boundary; nothing here depends on two jobs not overlapping.
 const ALL_ORDER = [
+  // First, because it is the one job whose absence people notice: a campaign
+  // whose deadline passed and which nobody has drawn.
+  'giveaway_lifecycle',
   'email_changes',
   'ad_holds',
   'claims',
@@ -240,6 +367,10 @@ const ALL_ORDER = [
   'risk_signals',
   'claim_outbox',
   'email_change_outbox',
+  // After the lifecycle job, so a draw in this run has its winner notice
+  // attempted in the same run rather than waiting for the next one. The
+  // advisory locks are still the correctness boundary; this is a preference.
+  'giveaway_outbox',
 ];
 
 async function runJobs(names, options = {}) {

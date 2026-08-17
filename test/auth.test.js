@@ -1,6 +1,6 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { api, pool, ensureInit, uniqueEmail, signIn, anon } = require('../testHelpers');
+const { api, pool, ensureInit, uniqueEmail, signIn, anon, closePool } = require('../testHelpers');
 
 const createdUserIds = [];
 
@@ -12,7 +12,7 @@ after(async () => {
   if (createdUserIds.length) {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 test('signup creates an account and establishes a cookie session, not a token', async () => {

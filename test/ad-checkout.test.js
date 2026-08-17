@@ -6,7 +6,7 @@
 // manually in-browser against Stripe's actual test mode.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 
 before(async () => {
   await ensureInit();
@@ -18,7 +18,7 @@ before(async () => {
 });
 
 after(async () => {
-  await pool.end();
+  await closePool();
 });
 
 test('availability returns a next-available date and the current price', async () => {

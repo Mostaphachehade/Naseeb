@@ -352,6 +352,31 @@ function emailChangeConfirmHtml({ name, confirmUrl, expiresAt }) {
   `;
 }
 
+// A giveaway somebody entered has been cancelled.
+//
+// The explanation is the fixed sentence `giveawayLifecycle` chose from the
+// cancellation ground — never an administrator's written reason, which can name
+// a sponsor, an allegation or a legal instruction. Nothing here accuses the
+// recipient of anything, and nothing here pretends a draw happened.
+//
+// Deliberately no support address: the approved ones are not live yet, and
+// inventing a contact people would write to is worse than telling them the
+// campaign page is where the record is.
+function giveawayCancelledHtml({ entrantName, giveawayTitle, explanation, giveawayUrl }) {
+  return `
+    <p>Hello ${escapeHtmlForEmail(entrantName || 'there')},</p>
+    <p>A giveaway you entered on Naseeb — <strong>${escapeHtmlForEmail(giveawayTitle)}</strong> —
+       has been cancelled, and no draw took place.</p>
+    <p>${escapeHtmlForEmail(explanation || 'This giveaway has been cancelled.')}</p>
+    <p>Your entry has not been deleted. The campaign page keeps the full record of
+       what was offered and what happened to it:</p>
+    <p><a href="${escapeHtmlForEmail(giveawayUrl)}">${escapeHtmlForEmail(giveawayUrl)}</a></p>
+    <p>We are sorry to send this. Cancelling a campaign people have entered is
+       something Naseeb does only when the prize genuinely cannot be provided or
+       continuing would not be lawful.</p>
+  `;
+}
+
 module.exports = {
   emailChangeNoticeHtml,
   emailChangeConfirmHtml,
@@ -360,4 +385,5 @@ module.exports = {
   claimInvitationHtml,
   hostClaimNotificationHtml,
   claimStatusHtml,
+  giveawayCancelledHtml,
 };

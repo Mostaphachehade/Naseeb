@@ -1,13 +1,10 @@
 const express = require('express');
-const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { requireHostAccess } = require('../lib/hostAccess');
 const { validateMediaUrl, isRenderableMediaUrl } = require('../lib/mediaUrls');
 const { enterLimiter } = require('../middleware/rateLimit');
-const { sendEmail } = require('../lib/email');
-const { winnerEmailHtml, entryEmailHtml } = require('../lib/emailTemplates');
 const claims = require('../lib/claims');
 const notifications = require('../lib/claimNotifications');
 const { areClaimsEnabled } = require('../lib/featureFlags');
@@ -15,6 +12,9 @@ const emailDelivery = require('../lib/emailDelivery');
 const integrity = require('../lib/entryIntegrity');
 const riskSignals = require('../lib/riskSignals');
 const eligibility = require('../lib/eligibility');
+const lifecycle = require('../lib/giveawayLifecycle');
+const prizeStandard = require('../lib/prizeStandard');
+const giveawayOutbox = require('../lib/giveawayOutbox');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
@@ -38,8 +38,30 @@ async function withHostAndCount(row) {
     `SELECT COUNT(*)::int AS c FROM entries WHERE giveaway_id = $1 AND ${integrity.COUNTED_SQL}`,
     [row.id]
   );
+  // The internal record is REMOVED here, not merely omitted from a template.
+  //
+  // This function spreads the whole row, which was harmless when every column
+  // was public. Prize governance added columns that are not: an administrator's
+  // review notes, the evidence reference, who approved it, and the written
+  // reason a campaign was cancelled — the last of which can name a sponsor, an
+  // allegation or a legal instruction. A field added to `giveaways` in future is
+  // public by default from here, so anything internal must be listed below.
+  const {
+    review_notes: _reviewNotes,
+    prize_evidence_kind: _evidenceKind,
+    prize_evidence_reference: _evidenceReference,
+    prize_evidence_verified_by: _evidenceVerifiedBy,
+    prize_evidence_verified_at: _evidenceVerifiedAt,
+    approved_by: _approvedBy,
+    rejected_by: _rejectedBy,
+    rejection_ground: _rejectionGround,
+    cancelled_by: _cancelledBy,
+    cancellation_reason: _cancellationReason,
+    ...publicColumns
+  } = row;
+
   return {
-    ...row,
+    ...publicColumns,
     // Rows written before media validation existed may hold anything. The
     // stored value is left alone — it is the record of what a host actually
     // submitted — but only a URL that would be accepted today is handed to a
@@ -49,6 +71,15 @@ async function withHostAndCount(row) {
     host_name: hostRes.rows[0] ? hostRes.rows[0].name : 'Unknown',
     host_verified: hostRes.rows[0] ? hostRes.rows[0].is_verified_business : false,
     entry_count: countRes.rows[0].c,
+    // The lifecycle, as a visitor may see it: coarse state, the closing rules,
+    // and the campaign-specific prize conditions. Never the review notes, the
+    // evidence reference, the approving administrator or an internal
+    // cancellation reason — see giveawayLifecycle.publicView.
+    lifecycle: lifecycle.publicView(row),
+    entries_remaining:
+      row.status === lifecycle.STATUS.ACTIVE
+        ? Math.max(0, (row.entry_target || lifecycle.ENTRY_TARGET) - countRes.rows[0].c)
+        : 0,
   };
 }
 
@@ -59,12 +90,22 @@ router.get('/', async (req, res) => {
     const pageSize = Math.min(48, Math.max(1, parseInt(req.query.pageSize, 10) || 12));
     const offset = (page - 1) * pageSize;
 
-    const countRes = await pool.query('SELECT COUNT(*)::int AS c FROM giveaways');
+    // A submission awaiting review, or one that was rejected, is not a
+    // giveaway. It has never been public and it never becomes public — so it is
+    // excluded here rather than filtered in the page, which is the difference
+    // between "not shown" and "not served".
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM giveaways WHERE status <> ALL($1)`,
+      [[lifecycle.STATUS.PENDING_APPROVAL, lifecycle.STATUS.REJECTED]]
+    );
     const total = countRes.rows[0].c;
 
     const result = await pool.query(
-      `SELECT * FROM giveaways ORDER BY (status = 'active') DESC, entry_deadline ASC LIMIT $1 OFFSET $2`,
-      [pageSize, offset]
+      `SELECT * FROM giveaways
+        WHERE status <> ALL($3)
+        ORDER BY (status = 'active') DESC, closes_at ASC NULLS LAST, entry_deadline ASC
+        LIMIT $1 OFFSET $2`,
+      [pageSize, offset, [lifecycle.STATUS.PENDING_APPROVAL, lifecycle.STATUS.REJECTED]]
     );
     const items = await Promise.all(result.rows.map(withHostAndCount));
     res.json({ items, total, page, pageSize });
@@ -77,12 +118,17 @@ router.get('/', async (req, res) => {
 // Homepage trust-bar numbers. Real counts only — no padding, no estimates.
 router.get('/stats/summary', async (req, res) => {
   try {
-    const giveawaysRes = await pool.query('SELECT COUNT(*)::int AS c FROM giveaways');
+    const giveawaysRes = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM giveaways WHERE status <> ALL($1)`,
+      [[lifecycle.STATUS.PENDING_APPROVAL, lifecycle.STATUS.REJECTED]]
+    );
     const entriesRes = await pool.query(
       `SELECT COUNT(*)::int AS c FROM entries WHERE ${integrity.COUNTED_SQL}`
     );
     const valueRes = await pool.query(
-      'SELECT COALESCE(SUM(estimated_value_aed), 0)::numeric AS v FROM giveaways WHERE estimated_value_aed IS NOT NULL'
+      `SELECT COALESCE(SUM(estimated_value_aed), 0)::numeric AS v FROM giveaways
+        WHERE estimated_value_aed IS NOT NULL AND status <> ALL($1)`,
+      [[lifecycle.STATUS.PENDING_APPROVAL, lifecycle.STATUS.REJECTED]]
     );
     res.json({
       giveaways_hosted: giveawaysRes.rows[0].c,
@@ -117,7 +163,7 @@ router.get('/winners/all', async (req, res) => {
          hostuser.name AS host_name, hostuser.is_verified_business AS host_verified,
          winneruser.name AS winner_name, entries.ticket_number AS winner_ticket_number,
          (SELECT COUNT(*)::int FROM entries e2
-           WHERE e2.giveaway_id = giveaways.id AND e2.integrity_status <> 'disqualified') AS entry_count
+           WHERE e2.giveaway_id = giveaways.id AND ${lifecycle.ACCEPTED_SQL.replace(/integrity_status/g, 'e2.integrity_status')}) AS entry_count
        FROM giveaways
        JOIN users hostuser ON hostuser.id = giveaways.host_id
        JOIN entries ON entries.id = giveaways.winner_entry_id
@@ -235,15 +281,78 @@ router.post('/', requireAuth, requireHostAccess, async (req, res) => {
       estimated_value_aed,
       image_url,
       funded_by,
-      entry_deadline,
       max_entries_per_person,
+      // Curated prize governance. Every one of these is reviewed by Naseeb
+      // before the campaign can be published.
+      prize_category,
+      sponsor_name,
+      prize_supplied_by,
+      prize_retail_value_aed,
+      naseeb_custody,
+      fulfilment_method,
+      prize_restrictions,
+      prize_expiry_date,
     } = req.body;
 
-    if (!title || !description || !prize_description || !funded_by || !entry_deadline) {
+    // `entry_deadline` is deliberately NOT read from the request any more.
+    //
+    // A host used to choose it. It is now a consequence of publication: exactly
+    // 30 calendar days from the moment Naseeb approves the campaign, set by
+    // `giveawayLifecycle.approveAndPublish`. A host-chosen deadline and a
+    // mandatory one cannot both be true, and the mandatory one is the rule.
+    const submission = {
+      title,
+      description,
+      prize_description,
+      funded_by,
+      prize_category,
+      sponsor_name,
+      prize_supplied_by,
+      prize_retail_value_aed,
+      naseeb_custody,
+      fulfilment_method,
+    };
+    const missing = prizeStandard.missingForSubmission(submission);
+    if (missing.length) {
       return res.status(400).json({
         error:
-          'Title, description, prize description, funding disclosure, and an entry deadline are all required.',
+          'Naseeb reviews every prize before it is published, and this submission is missing some of what that review needs.',
+        code: 'SUBMISSION_INCOMPLETE',
+        missing,
       });
+    }
+
+    if (!prizeStandard.isCategory(prize_category)) {
+      return res.status(400).json({
+        error: 'Choose the prize category that fits best.',
+        code: 'PRIZE_CATEGORY_INVALID',
+        categories: prizeStandard.CATEGORIES,
+      });
+    }
+    if (!prizeStandard.isCustody(naseeb_custody)) {
+      return res.status(400).json({
+        error:
+          'Say who will be holding this prize: Naseeb, the sponsor under a commitment to Naseeb, or the provider who fulfils it.',
+        code: 'CUSTODY_INVALID',
+        allowed: prizeStandard.CUSTODY_IDS,
+      });
+    }
+
+    const retailValue = Number(prize_retail_value_aed);
+    if (!Number.isFinite(retailValue) || retailValue <= 0) {
+      return res.status(400).json({
+        error: 'Give the genuine retail or market value of the prize in AED.',
+        code: 'PRIZE_VALUE_INVALID',
+      });
+    }
+
+    let expiry = null;
+    if (prize_expiry_date !== undefined && prize_expiry_date !== null && String(prize_expiry_date).trim() !== '') {
+      const parsed = new Date(prize_expiry_date);
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({ error: 'That prize expiry date is not a date.', code: 'PRIZE_EXPIRY_INVALID' });
+      }
+      expiry = parsed.toISOString().slice(0, 10);
     }
 
     for (const [field, max] of Object.entries(MAX_LENGTHS)) {
@@ -251,11 +360,6 @@ router.post('/', requireAuth, requireHostAccess, async (req, res) => {
       if (value.trim().length > max) {
         return res.status(400).json({ error: `${field.replace(/_/g, ' ')} must be ${max} characters or fewer.` });
       }
-    }
-
-    const deadline = new Date(entry_deadline);
-    if (isNaN(deadline.getTime()) || deadline <= new Date()) {
-      return res.status(400).json({ error: 'Entry deadline must be a valid date in the future.' });
     }
 
     let value = null;
@@ -288,28 +392,79 @@ router.post('/', requireAuth, requireHostAccess, async (req, res) => {
       normalizedImageUrl = checked.url;
     }
 
+    // A submission, not a publication.
+    //
+    // This route used to make a campaign live the instant it returned 201.
+    // Nothing reviewed the prize, nobody approved it, and the front page showed
+    // whatever an approved host chose to type. It now creates a submission
+    // awaiting deliberate Naseeb approval: not listed, not enterable, with no
+    // publication date and no closing deadline, because it has not been
+    // published and has nothing to close.
     const id = uuid();
-    await pool.query(
-      `INSERT INTO giveaways
-       (id, host_id, title, description, prize_description, estimated_value_aed, image_url, funded_by, entry_deadline, max_entries_per_person)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [
-        id,
-        req.userId,
-        title.trim(),
-        description.trim(),
-        prize_description.trim(),
-        value,
-        normalizedImageUrl,
-        funded_by.trim(),
-        deadline.toISOString(),
-        entryCap,
-      ]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO giveaways
+           (id, host_id, title, description, prize_description, estimated_value_aed,
+            image_url, funded_by, entry_deadline, max_entries_per_person,
+            status, submitted_at,
+            prize_category, sponsor_name, prize_supplied_by, prize_retail_value_aed,
+            naseeb_custody, fulfilment_method, prize_restrictions, prize_expiry_date,
+            entry_target)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(),
+                 $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+        [
+          id,
+          req.userId,
+          title.trim(),
+          description.trim(),
+          prize_description.trim(),
+          value,
+          normalizedImageUrl,
+          funded_by.trim(),
+          // Kept in step with `closes_at` from approval onwards. Empty until
+          // then, because an unpublished submission has no deadline.
+          '',
+          entryCap,
+          lifecycle.STATUS.PENDING_APPROVAL,
+          prize_category,
+          String(sponsor_name).trim(),
+          String(prize_supplied_by).trim(),
+          retailValue,
+          naseeb_custody,
+          String(fulfilment_method).trim(),
+          prize_restrictions ? String(prize_restrictions).trim() : null,
+          expiry,
+          lifecycle.ENTRY_TARGET,
+        ]
+      );
+      await lifecycle.recordEvent(client, {
+        giveawayId: id,
+        eventType: 'submitted',
+        toStatus: lifecycle.STATUS.PENDING_APPROVAL,
+        actorUserId: req.userId,
+        actorRole: 'host',
+        metadata: { prize_category, naseeb_custody },
+      });
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
 
     const result = await pool.query('SELECT * FROM giveaways WHERE id = $1', [id]);
     const enriched = await withHostAndCount(result.rows[0]);
-    res.status(201).json(enriched);
+    res.status(201).json({
+      ...enriched,
+      submitted_for_review: true,
+      // Truthful about what just happened. It is not live, and saying "your
+      // giveaway is published" here would be a lie the host acts on.
+      next_step:
+        'Submitted for review. Naseeb checks every prize before publication — you will see this campaign go live once it is approved, and it will then close at whichever comes first: 100 eligible entries, or 30 days.',
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -356,13 +511,38 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'This giveaway does not exist.' });
     }
-    if (giveaway.status !== 'active') {
+    // Closure is a LATCH, not a recomputed count. Once a campaign leaves
+    // `active` it never returns, so an entry after closure is refused by state
+    // rather than by arithmetic that a later disqualification could undo.
+    if (giveaway.status !== lifecycle.STATUS.ACTIVE) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'This giveaway is no longer accepting entries.' });
+      return res.status(409).json({
+        error:
+          giveaway.status === lifecycle.STATUS.CANCELLED
+            ? 'This giveaway has been cancelled.'
+            : 'This giveaway has closed and is no longer accepting entries.',
+        code: 'ENTRIES_CLOSED',
+        status: giveaway.status,
+      });
     }
-    if (new Date(giveaway.entry_deadline) <= new Date()) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'The entry deadline for this giveaway has passed.' });
+
+    // The deadline, read from the database rather than from the process clock,
+    // so a request cannot slip in against a skewed local time. The maintenance
+    // job closes campaigns on schedule; this is the guard for the interval
+    // between the deadline passing and the job running.
+    const due = await client.query('SELECT $1::timestamptz <= NOW() AS passed', [giveaway.closes_at]);
+    if (due.rows[0].passed) {
+      // Close it here, under the lock we already hold, rather than letting the
+      // entry through and leaving the campaign open until a worker notices.
+      await lifecycle.closeEntries(client, giveaway, {
+        reason: lifecycle.CLOSE_REASONS.DEADLINE_REACHED,
+      });
+      await client.query('COMMIT');
+      return res.status(409).json({
+        error: 'The closing deadline for this giveaway has passed.',
+        code: 'ENTRIES_CLOSED',
+        status: lifecycle.STATUS.CLOSED_PENDING_DRAW,
+      });
     }
 
     const existingRes = await client.query(
@@ -403,24 +583,39 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
       console.error('Entry risk signals could not be recorded:', signalErr.message);
     }
 
+    // The receipt is DURABLE. It used to be a `sendEmail(...)` fired after the
+    // response and never awaited: a mail outage lost it silently and nothing
+    // recorded that anybody was owed one. The intent is written in the same
+    // transaction as the entry, so the two commit or roll back together.
+    await giveawayOutbox.enqueue(client, {
+      giveawayId: req.params.id,
+      userId: req.userId,
+      kind: giveawayOutbox.KINDS.ENTRY_RECEIPT,
+    });
+
+    // The 100th accepted entry closes the campaign, in this transaction, under
+    // the same row lock that serialises entries. That is what makes "closes
+    // exactly on the 100th" true rather than approximately true: two concurrent
+    // entries cannot both read 99, and no 101st entry can slip past a campaign
+    // that is already latched closed.
+    const closure = await lifecycle.closeIfTargetReached(client, giveaway);
+
     await client.query('COMMIT');
 
-    res.status(201).json({ id, ticket_number: ticketNumber });
-
-    const giveawayUrl = `${APP_URL}/giveaway.html?id=${req.params.id}`;
-    sendEmail({
-      to: enteringUser.email,
-      subject: `You're entered: ${giveaway.title}`,
-      html: entryEmailHtml({
-        entrantName: enteringUser.name,
-        giveawayTitle: giveaway.title,
-        prizeDescription: giveaway.prize_description,
-        imageUrl: giveaway.image_url,
-        ticketNumber,
-        entryDeadline: giveaway.entry_deadline,
-        giveawayUrl,
-      }),
+    res.status(201).json({
+      id,
+      ticket_number: ticketNumber,
+      entries_closed: Boolean(closure.closed),
+      // Truthful, and the reason people will want: their entry was the one that
+      // filled the campaign.
+      closed_reason: closure.closed ? lifecycle.CLOSE_REASONS.TARGET_REACHED : null,
     });
+
+    // Delivery is attempted outside the transaction and is not awaited by the
+    // response, but the promise is tracked so shutdown can drain it and the
+    // tests can settle it. A failure here leaves a pending row to retry, not a
+    // lost message.
+    giveawayOutbox.drainInBackground({ appUrl: APP_URL });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error(err);
@@ -445,128 +640,133 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
 // ownership decides whose giveaway it may operate. An approved host still
 // cannot draw somebody else's giveaway, and a suspended host cannot draw their
 // own — the ownership comparison below is unchanged and still runs.
+// Everything that happens when a campaign resolves, in one place.
+//
+// The route and the deadline maintenance job both call this. A second
+// implementation of "pick a winner, create the claim, queue the notices" is the
+// last thing this codebase should have: the two would drift, and the weaker one
+// would be the one running unattended at 03:00.
+//
+// The caller owns the transaction and must already hold the giveaway row lock.
+async function runDraw(client, giveaway, { actorUserId = null, actorRole = 'system' } = {}) {
+  const outcome = await lifecycle.drawIfReady(client, giveaway, { actorUserId, actorRole });
+  if (!outcome.drawn) return outcome;
+
+  const winnerUserRes = await client.query('SELECT name, email FROM users WHERE id = $1', [
+    outcome.winner.user_id,
+  ]);
+  const winnerUser = winnerUserRes.rows[0];
+
+  // The winner notice is durable now. It used to be a `sendEmail(...)` fired
+  // after the response: a mail outage meant somebody won and was never told,
+  // with nothing recording that they were owed the message.
+  await giveawayOutbox.enqueue(client, {
+    giveawayId: giveaway.id,
+    userId: outcome.winner.user_id,
+    kind: giveawayOutbox.KINDS.WINNER_NOTICE,
+  });
+
+  // The claim, and the intent to tell the winner about it, in the same
+  // transaction as the draw. A winner without a claim has no way to receive
+  // anything.
+  let claim = null;
+  if (areClaimsEnabled()) {
+    claim = await claims.createClaimForDraw(client, {
+      giveawayId: giveaway.id,
+      winnerUserId: outcome.winner.user_id,
+      entryId: outcome.winner.id,
+    });
+    await notifications.queueInvitation(client, claim.id);
+  }
+
+  return { ...outcome, claim, winnerName: winnerUser ? winnerUser.name : null };
+}
+
 router.post('/:id/draw', requireAuth, requireHostAccess, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const result = await client.query('SELECT * FROM giveaways WHERE id = $1 FOR UPDATE', [req.params.id]);
-    const giveaway = result.rows[0];
-    if (!giveaway) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'This giveaway does not exist.' });
-    }
+    const giveaway = await lifecycle.lockGiveaway(client, req.params.id);
     if (giveaway.host_id !== req.userId) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Only the host of this giveaway can draw a winner.' });
     }
-    if (giveaway.status !== 'active') {
+
+    // A host may ask for the draw to run NOW. They may not choose when a
+    // campaign closes, they may not draw one that is still open, and they may
+    // not draw twice — and none of that is enforced here any more, because all
+    // of it lives in the one lifecycle service the deadline job also uses.
+    if (giveaway.status === lifecycle.STATUS.ACTIVE) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'This giveaway has already been drawn or cancelled.' });
-    }
-    if (new Date(giveaway.entry_deadline) > new Date()) {
-      await client.query('ROLLBACK');
-      return res
-        .status(400)
-        .json({ error: 'You can draw a winner once the entry deadline has passed.' });
-    }
-
-    // Fails closed on an open question. If any entry is under review, or an
-    // integrity case is open on this giveaway, the draw stops here with a
-    // conflict — a winner drawn out of a pool somebody is currently arguing
-    // about is a winner nobody can defend, and a draw that happens an hour later
-    // is a far smaller problem.
-    try {
-      await integrity.assertDrawable(client, req.params.id);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      if (err instanceof integrity.IntegrityError) {
-        return res.status(err.status).json({ error: err.message, code: err.code });
-      }
-      throw err;
-    }
-
-    // Eligible entries only, locked for the duration of the transaction. A
-    // disqualification that commits between this read and the winner write
-    // would otherwise be able to disagree with the pool the winner came from.
-    const entries = await integrity.lockEligibleEntries(client, req.params.id);
-    if (entries.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'No one has entered yet, so there is no one to draw.' });
-    }
-
-    const winner = entries[crypto.randomInt(entries.length)];
-    await client.query("UPDATE giveaways SET status = 'drawn', winner_entry_id = $1 WHERE id = $2", [
-      winner.id,
-      req.params.id,
-    ]);
-
-    const winnerUserRes = await client.query('SELECT name, email FROM users WHERE id = $1', [
-      winner.user_id,
-    ]);
-    const winnerUser = winnerUserRes.rows[0];
-
-    // The claim, and the intent to tell the winner about it, are both created
-    // in the same transaction as the draw. A winner without a claim has no way
-    // to receive anything; a claim whose invitation was fired off as an
-    // unawaited promise can vanish into a mail outage with nothing recording
-    // that it did. The outbox row is the durable promise that they will be
-    // told, and it holds no token — the sender issues a fresh one.
-    let claim = null;
-    if (areClaimsEnabled()) {
-      // A draw commits a winner. If the invitation that tells them cannot be
-      // delivered, the winner never learns they won and the claim expires into
-      // an admin queue — so the draw is refused before it happens rather than
-      // producing a winner nobody can reach.
-      if (emailDelivery.refuseIfUndeliverable(res, { action: 'draw_winner' })) {
-        await client.query('ROLLBACK');
-        return undefined;
-      }
-      claim = await claims.createClaimForDraw(client, {
-        giveawayId: req.params.id,
-        winnerUserId: winner.user_id,
-        entryId: winner.id,
+      return res.status(409).json({
+        error:
+          'This giveaway is still accepting entries. It closes on its own at whichever comes first — 100 eligible entries, or the closing deadline — and the draw runs from there without anybody pressing anything.',
+        code: 'ENTRIES_STILL_OPEN',
+        closes_at: giveaway.closes_at,
       });
-      await notifications.queueInvitation(client, claim.id);
     }
 
+    // Refused before the draw commits a winner, not after: a winner who cannot
+    // be told they won is a claim that expires into an administrator queue.
+    if (areClaimsEnabled() && emailDelivery.refuseIfUndeliverable(res, { action: 'draw_winner' })) {
+      await client.query('ROLLBACK');
+      return undefined;
+    }
+
+    const outcome = await runDraw(client, giveaway, {
+      actorUserId: req.userId,
+      actorRole: 'host',
+    });
     await client.query('COMMIT');
 
-    res.json({
-      winner_name: winnerUser.name,
-      winner_ticket_number: winner.ticket_number,
-    });
-
-    const giveawayUrl = `${APP_URL}/giveaway.html?id=${req.params.id}`;
-    sendEmail({
-      to: winnerUser.email,
-      subject: `You won: ${giveaway.title}`,
-      html: winnerEmailHtml({
-        winnerName: winnerUser.name,
-        giveawayTitle: giveaway.title,
-        prizeDescription: giveaway.prize_description,
-        imageUrl: giveaway.image_url,
-        ticketNumber: winner.ticket_number,
-        fundedBy: giveaway.funded_by,
-        giveawayUrl,
-      }),
-    });
-
-    // The claim invitation goes through the outbox rather than being fired off
-    // here. Awaited and its failure caught, so a mail outage leaves a pending
-    // row to retry instead of an unhandled rejection and a silent loss.
-    if (claim) {
-      try {
-        await notifications.processDueNotifications({ appUrl: APP_URL });
-      } catch (notifyErr) {
-        // The draw itself has already committed and been reported. A failure
-        // here means the invitation is still pending, which the scheduler and
-        // the admin review screen both pick up.
-        console.error('Claim invitation delivery attempt failed:', notifyErr.message);
+    if (outcome.drawn) {
+      giveawayOutbox.drainInBackground({ appUrl: APP_URL });
+      if (outcome.claim) {
+        try {
+          await notifications.processDueNotifications({ appUrl: APP_URL });
+        } catch (notifyErr) {
+          // The draw has already committed. A failure here means the invitation
+          // is still pending, which the scheduler and the admin review screen
+          // both pick up.
+          console.error('Claim invitation delivery attempt failed:', notifyErr.message);
+        }
       }
+      return res.json({
+        winner_name: outcome.winnerName,
+        winner_ticket_number: outcome.winner.ticket_number,
+      });
     }
+
+    if (outcome.postponed) {
+      return res.status(409).json({
+        error:
+          'An integrity check is open on this giveaway. Entries are closed and the draw runs automatically once the check is resolved — nothing is lost by waiting.',
+        code: 'ENTRY_REVIEW_PENDING',
+        status: outcome.status,
+      });
+    }
+    if (outcome.noWinner) {
+      return res.status(200).json({
+        drawn: false,
+        status: outcome.status,
+        reason: outcome.reason,
+        message: 'This giveaway closed with no eligible entry, so no winner was drawn.',
+      });
+    }
+    return res.status(409).json({
+      error: 'This giveaway has already been drawn or closed.',
+      code: 'ALREADY_RESOLVED',
+      status: outcome.status,
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
+    if (err instanceof lifecycle.LifecycleError) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
+    if (err instanceof integrity.IntegrityError) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
+    }
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   } finally {
@@ -733,4 +933,8 @@ router.post('/:id/entries/:entryId/flag', requireAuth, requireHostAccess, async 
   }
 });
 
+// `runDraw` is exported alongside the router because the maintenance job needs
+// exactly the same operation. One implementation, two callers — see the comment
+// above the function.
 module.exports = router;
+module.exports.runDraw = runDraw;

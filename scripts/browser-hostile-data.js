@@ -379,21 +379,56 @@ async function seed() {
   const drawnId = crypto.randomUUID();
   cleanup.giveaways.push(liveId, drawnId);
 
-  for (const [id, status] of [[liveId, 'active'], [drawnId, 'drawn']]) {
+  // Both campaigns are governed and approved, because that is what a published
+  // campaign is now. The `drawn` one is seeded as closed and moved to drawn
+  // below, once its winning entry exists — the schema refuses a drawn campaign
+  // with no winner. Every field is a hostile payload except the ones the
+  // governance CHECK constrains to an allowlist.
+  for (const [id, status] of [[liveId, 'active'], [drawnId, 'closed_pending_draw']]) {
+    const deadline = new Date(
+      Date.now() + (status === 'active' ? 7 : -1) * 86400000
+    ).toISOString();
     await pool.query(
       `INSERT INTO giveaways
          (id, host_id, title, description, prize_description, image_url,
-          estimated_value_aed, entry_deadline, status, funded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, 1000, $7, $8, $9)`,
+          estimated_value_aed, entry_deadline, status, funded_by,
+          published_at, closes_at, entry_target,
+          approved_at, approved_by, review_notes,
+          prize_category, sponsor_name, prize_supplied_by, prize_retail_value_aed,
+          naseeb_custody, fulfilment_method, prize_restrictions,
+          prize_evidence_kind, prize_evidence_reference, prize_evidence_verified,
+          prize_evidence_verified_at, prize_evidence_verified_by,
+          prize_governance_version, submitted_at,
+          entries_closed_at, entries_closed_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, 1000, $7, $8, $9,
+               NOW() - INTERVAL '1 hour', $10, 100,
+               NOW() - INTERVAL '1 hour', $11, $12,
+               'premium_electronics', $13, $14, 4500,
+               'naseeb_holds', $15, $16,
+               'prize_physically_inspected', $17, TRUE,
+               NOW() - INTERVAL '1 hour', $11,
+               1, NOW() - INTERVAL '2 hours',
+               $18, $19)`,
       [
         id, hostId,
         plant(`giveaway_title_${status}`),
         plant(`giveaway_description_${status}`),
         plant(`giveaway_prize_${status}`),
         plantUrl(`giveaway_image_url_${status}`),
-        new Date(Date.now() + (status === 'active' ? 7 : -1) * 86400000).toISOString(),
+        deadline,
         status,
         plant(`funding_disclosure_${status}`),
+        deadline,
+        hostId,
+        // Internal review text, planted so the page test proves it never renders.
+        plant(`giveaway_review_notes_${status}`),
+        plant(`giveaway_sponsor_${status}`),
+        plant(`giveaway_supplier_${status}`),
+        plant(`giveaway_fulfilment_${status}`),
+        plant(`giveaway_restrictions_${status}`),
+        plant(`giveaway_evidence_reference_${status}`),
+        status === 'active' ? null : new Date().toISOString(),
+        status === 'active' ? null : 'closing_deadline_reached',
       ]
     );
   }
@@ -404,7 +439,10 @@ async function seed() {
     `INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)`,
     [entryId, drawnId, winnerId]
   );
-  await pool.query('UPDATE giveaways SET winner_entry_id = $1 WHERE id = $2', [entryId, drawnId]);
+  await pool.query(
+    `UPDATE giveaways SET status = 'drawn', winner_entry_id = $1, drawn_at = NOW() WHERE id = $2`,
+    [entryId, drawnId]
+  );
 
   const claimId = crypto.randomUUID();
   cleanup.claims.push(claimId);
@@ -525,7 +563,16 @@ async function unseed() {
   await pool.query('DELETE FROM prize_claim_events WHERE claim_id = ANY($1)', [cleanup.claims]);
   await pool.query('DELETE FROM claim_rescue_queue WHERE claim_id = ANY($1)', [cleanup.claims]);
   await pool.query('DELETE FROM prize_claims WHERE id = ANY($1)', [cleanup.claims]);
-  await pool.query('UPDATE giveaways SET winner_entry_id = NULL WHERE id = ANY($1)', [cleanup.giveaways]);
+  // Detaching the winner means the campaign is no longer drawn, and the schema
+  // says so. Teardown moves the state with the data rather than leaving an
+  // incoherent row behind.
+  await pool.query(
+    `UPDATE giveaways
+        SET winner_entry_id = NULL, drawn_at = NULL,
+            status = CASE WHEN status = 'drawn' THEN 'closed_pending_draw' ELSE status END
+      WHERE id = ANY($1)`,
+    [cleanup.giveaways]
+  );
   await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [cleanup.giveaways]);
   await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [cleanup.giveaways]);
   await pool.query('DELETE FROM ads WHERE id = ANY($1)', [cleanup.ads]);

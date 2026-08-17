@@ -2,7 +2,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit, signIn, anon, nextTestIp } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, nextTestIp, closePool } = require('../testHelpers');
 const { DEFAULTS } = require('../server/lib/settings');
 
 const createdUserIds = [];
@@ -20,7 +20,7 @@ after(async () => {
   if (createdUserIds.length) {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 async function createVerifiedUser(tag, { admin = false } = {}) {

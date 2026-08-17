@@ -9,7 +9,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const Stripe = require('stripe');
-const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 
 // Fabricated. Its only job is to be the same string on both sides of a
 // signature check, and it never leaves this process.
@@ -35,7 +35,7 @@ after(async () => {
   if (usedEventIds.length) {
     await pool.query('DELETE FROM stripe_events WHERE id = ANY($1)', [usedEventIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 // ---------------------------------------------------------------------------

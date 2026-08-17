@@ -11,7 +11,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, publishGiveaway, seedGiveaway, FABRICATED_PRIZE, closePool, approveGiveaway } = require('../testHelpers');
 
 const { HOST_STATUS } = require('../server/lib/hostAccess');
 
@@ -36,7 +36,13 @@ after(async () => {
     );
     await pool.query('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
-    await pool.query('UPDATE giveaways SET winner_entry_id = NULL WHERE id = ANY($1)', [createdGiveawayIds]);
+    await pool.query(
+      `UPDATE giveaways
+          SET winner_entry_id = NULL, drawn_at = NULL,
+              status = CASE WHEN status = 'drawn' THEN 'closed_pending_draw' ELSE status END
+        WHERE id = ANY($1)`,
+      [createdGiveawayIds]
+    );
     await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [createdGiveawayIds]);
   }
   if (createdUserIds.length) {
@@ -44,7 +50,7 @@ after(async () => {
     await pool.query('DELETE FROM host_applications WHERE user_id = ANY($1)', [createdUserIds]);
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 const PASSWORD = 'correcthorse123';
@@ -80,7 +86,10 @@ function giveawayPayload(n) {
     description: 'A fabricated listing for the host access tests.',
     prize_description: 'A fabricated prize',
     funded_by: 'Fabricated marketing budget',
-    entry_deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    // The prize facts Naseeb reviews before publication. Without them the
+    // submission is refused as incomplete, and every host-access assertion
+    // below would pass for the wrong reason.
+    ...FABRICATED_PRIZE,
   };
 }
 
@@ -256,6 +265,8 @@ test('a suspended host cannot draw their own giveaway', async () => {
   const created = await createGiveaway(host, 'draw-suspended');
   assert.equal(created.status, 201);
   createdGiveawayIds.push(created.body.id);
+  // Submitted is not published. Approving is what makes it a live campaign.
+  await approveGiveaway(created.body.id);
 
   await setStatus(host.id, HOST_STATUS.SUSPENDED, 'suspended before the draw');
 
@@ -307,6 +318,7 @@ test('entering giveaways is untouched by host status', async () => {
   const host = await createUser('entry-host', { hostStatus: HOST_STATUS.APPROVED });
   const created = await createGiveaway(host, 'entry-target');
   createdGiveawayIds.push(created.body.id);
+  await approveGiveaway(created.body.id);
 
   // Someone who may not host at all can still enter, which is the whole point
   // of the platform.
@@ -692,13 +704,11 @@ test('a suspended host loses claim access, and every record survives it', async 
   const host = await createUser('claim-host', { hostStatus: HOST_STATUS.APPROVED });
   const winner = await createUser('claim-winner');
 
-  const giveawayId = uuid();
-  await pool.query(
-    `INSERT INTO giveaways
-       (id, host_id, title, description, prize_description, funded_by, entry_deadline, status)
-     VALUES ($1, $2, 'Fabricated claim giveaway', 'd', 'p', 'Fabricated budget', $3, 'drawn')`,
-    [giveawayId, host.id, new Date(Date.now() - 86400000).toISOString()]
-  );
+  const giveawayId = await seedGiveaway({
+    hostId: host.id,
+    status: 'closed_pending_draw',
+    closesAt: new Date(Date.now() - 86400000),
+  });
   createdGiveawayIds.push(giveawayId);
 
   const entryId = uuid();
@@ -754,13 +764,11 @@ test('suspending a host reports how many open claims it hands to administrators'
   const host = await createUser('claim-counted-host', { hostStatus: HOST_STATUS.APPROVED });
   const winner = await createUser('claim-counted-winner');
 
-  const giveawayId = uuid();
-  await pool.query(
-    `INSERT INTO giveaways
-       (id, host_id, title, description, prize_description, funded_by, entry_deadline, status)
-     VALUES ($1, $2, 'Counted claim giveaway', 'd', 'p', 'Fabricated budget', $3, 'drawn')`,
-    [giveawayId, host.id, new Date(Date.now() - 86400000).toISOString()]
-  );
+  const giveawayId = await seedGiveaway({
+    hostId: host.id,
+    status: 'closed_pending_draw',
+    closesAt: new Date(Date.now() - 86400000),
+  });
   createdGiveawayIds.push(giveawayId);
   const entryId = uuid();
   await pool.query('INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)', [
@@ -795,9 +803,8 @@ test('the backfill approves accounts that were already hosting, and only those',
   // Someone who was hosting before approval existed.
   const legacyHost = await createUser('legacy-host');
   const created = await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description, funded_by, entry_deadline)
-     VALUES ($1, $2, 'Legacy listing', 'd', 'p', 'f', $3) RETURNING id`,
-    [uuid(), legacyHost.id, new Date(Date.now() + 86400000).toISOString()]
+    'SELECT $1::text AS id',
+    [await seedGiveaway({ hostId: legacyHost.id, title: 'Legacy listing' })]
   );
   createdGiveawayIds.push(created.rows[0].id);
   // Put them back where the migration would find them.
@@ -823,9 +830,8 @@ test('the backfill approves accounts that were already hosting, and only those',
   // never reverse a human decision on the next boot.
   const alreadyDecided = await createUser('already-decided');
   await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description, funded_by, entry_deadline)
-     VALUES ($1, $2, 'Decided listing', 'd', 'p', 'f', $3)`,
-    [uuid(), alreadyDecided.id, new Date(Date.now() + 86400000).toISOString()]
+    'SELECT $1::text',
+    [await seedGiveaway({ hostId: alreadyDecided.id, title: 'Decided listing' })]
   );
   const decidedGiveaway = await pool.query('SELECT id FROM giveaways WHERE host_id = $1', [alreadyDecided.id]);
   decidedGiveaway.rows.forEach((r) => createdGiveawayIds.push(r.id));

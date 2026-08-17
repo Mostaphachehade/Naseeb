@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, seedGiveaway, closePool } = require('../testHelpers');
 
 const claims = require('../server/lib/claims');
 const { STATES, ROLES, assertTransition, ClaimTransitionError } = require('../server/lib/claimStateMachine');
@@ -76,7 +76,7 @@ after(async () => {
   if (createdUserIds.length) {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 // ---------------------------------------------------------------------------
@@ -114,14 +114,13 @@ async function createDrawnGiveaway() {
   const host = await createUser('host');
   const winner = await createUser('winner');
 
-  const giveawayId = uuid();
-  await pool.query(
-    `INSERT INTO giveaways
-       (id, host_id, title, description, prize_description, funded_by, entry_deadline, status)
-     VALUES ($1, $2, 'Fabricated Giveaway', 'A test giveaway', 'A fabricated prize',
-             'Marketing budget (fabricated)', $3, 'drawn')`,
-    [giveawayId, host.id, new Date(Date.now() - 86400000).toISOString()]
-  );
+  // Closed first, drawn after the entry exists: the schema refuses a `drawn`
+  // campaign with no winning entry, so the entry has to come first.
+  const giveawayId = await seedGiveaway({
+    hostId: host.id,
+    status: 'closed_pending_draw',
+    closesAt: new Date(Date.now() - 86400000),
+  });
   createdGiveawayIds.push(giveawayId);
 
   const entryId = uuid();

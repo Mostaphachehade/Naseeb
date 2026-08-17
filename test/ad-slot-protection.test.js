@@ -22,7 +22,7 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const { spawn } = require('child_process');
 const { v4: uuid } = require('uuid');
-const { api, pool, ensureInit, signIn, anon } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 const {
   ensureSlotExclusionConstraint,
   isSlotProtectionActive,
@@ -74,7 +74,7 @@ after(async () => {
     await pool.query('DELETE FROM ads WHERE id = ANY($1)', [legacyIds]).catch(() => {});
   }
   await ensureSlotExclusionConstraint(pool).catch(() => {});
-  await pool.end();
+  await closePool();
 });
 
 // ---------------------------------------------------------------------------

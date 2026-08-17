@@ -8,7 +8,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit, signIn, anon, nextTestIp } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, nextTestIp, seedGiveaway, closePool } = require('../testHelpers');
 
 const createdUserIds = [];
 const createdGiveawayIds = [];
@@ -36,7 +36,7 @@ after(async () => {
   if (createdUserIds.length) {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 // Inserted directly rather than via POST /api/auth/signup so tests don't
@@ -61,13 +61,13 @@ async function createVerifiedUser(tag) {
 
 // Inserted directly (rather than via POST /api/giveaways) so the deadline
 // can be set in the past, which the create route deliberately rejects.
-async function createGiveaway(hostId, deadlineIso) {
-  const id = uuid();
-  await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description, funded_by, entry_deadline)
-     VALUES ($1, $2, 'Race condition test giveaway', 'desc', 'prize', 'test budget', $3)`,
-    [id, hostId, deadlineIso]
-  );
+async function createGiveaway(hostId, deadlineIso, options = {}) {
+  const id = await seedGiveaway({
+    hostId,
+    title: 'Race condition test giveaway',
+    closesAt: new Date(deadlineIso),
+    ...options,
+  });
   createdGiveawayIds.push(id);
   return id;
 }
@@ -114,7 +114,11 @@ test('the same person entering twice at once only gets counted once', async () =
 
 test('two simultaneous draws only let one succeed', async () => {
   const host = await createVerifiedUser('host-draw');
-  const giveawayId = await createGiveaway(host.id, new Date(Date.now() - 60 * 1000).toISOString());
+  // Closed, because its deadline has passed. A campaign closes itself now, and
+  // the draw route no longer draws an open one.
+  const giveawayId = await createGiveaway(host.id, new Date(Date.now() - 60 * 1000).toISOString(), {
+    status: 'closed_pending_draw',
+  });
 
   const entrant = await createVerifiedUser('draw-entrant');
   await pool.query(
@@ -127,8 +131,13 @@ test('two simultaneous draws only let one succeed', async () => {
     host.post(`/api/giveaways/${giveawayId}/draw`).send(),
   ]);
 
+  // One draw wins; the other finds the campaign already resolved. 409 rather
+  // than 400: it is a conflict with a state that has already been reached, and
+  // it carries a code the caller can act on.
   const statuses = [resA.status, resB.status].sort();
-  assert.deepEqual(statuses, [200, 400]);
+  assert.deepEqual(statuses, [200, 409]);
+  const loser = [resA, resB].find((r) => r.status === 409);
+  assert.equal(loser.body.code, 'ALREADY_RESOLVED');
 
   const check = await pool.query('SELECT status, winner_entry_id FROM giveaways WHERE id = $1', [giveawayId]);
   assert.equal(check.rows[0].status, 'drawn');

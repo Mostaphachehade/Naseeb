@@ -117,14 +117,30 @@ CSRF tokens are HMACs computed per request from the session secret. They are
 
 | | |
 | --- | --- |
-| Fields | `giveaways`: `id`, `host_id`, `title`, `description`, `prize_description`, `estimated_value_aed`, `image_url`, `funded_by`, `entry_deadline`, `max_entries_per_person`, `status`, `winner_entry_id`, `created_at`, `prize_delivered`, `prize_delivered_at`. `entries`: `id`, `giveaway_id`, `user_id`, `ticket_number`, `created_at`, `integrity_status`, `integrity_status_changed_at`, `integrity_status_changed_by`, `integrity_reason_code`, `integrity_admin_notes`, `integrity_version`. |
+| Fields | `giveaways`: `id`, `host_id`, `title`, `description`, `prize_description`, `estimated_value_aed`, `image_url`, `funded_by`, `entry_deadline`, `max_entries_per_person`, `status`, `winner_entry_id`, `created_at`, `prize_delivered`, `prize_delivered_at`, plus the lifecycle and prize-governance columns: `published_at`, `closes_at`, `entry_target`, `entries_closed_at`, `entries_closed_reason`, `entries_at_close`, `drawn_at`, `no_winner_reason`, `cancelled_at`, `cancelled_by`, `cancellation_ground`, `cancellation_reason`, `cancellation_public_explanation`, `prize_category`, `sponsor_name`, `prize_supplied_by`, `prize_retail_value_aed`, `prize_evidence_kind`, `prize_evidence_reference`, `prize_evidence_verified`, `prize_evidence_verified_at`, `prize_evidence_verified_by`, `naseeb_custody`, `fulfilment_method`, `prize_restrictions`, `prize_expiry_date`, `submitted_at`, `approved_at`, `approved_by`, `rejected_at`, `rejected_by`, `rejection_ground`, `review_notes`, `lifecycle_version`, `prize_governance_version`. `entries`: `id`, `giveaway_id`, `user_id`, `ticket_number`, `created_at`, `integrity_status`, `integrity_status_changed_at`, `integrity_status_changed_by`, `integrity_reason_code`, `integrity_admin_notes`, `integrity_version`. |
 | Purpose | Run the giveaway and draw a winner from eligible entries. |
 | Access | Giveaway rows are **public**. An entry is visible to the entrant and to administrators; a host sees entry counts, not an entrant list. |
-| Classification | Giveaway content **public**. `entries.user_id` **confidential**. `integrity_admin_notes` **sensitive** — free text that may name another account or describe an allegation, and which is never sent to the entrant. |
+| Classification | Giveaway content **public**. `entries.user_id` **confidential**. `integrity_admin_notes` **sensitive**. Of the governance columns, **`review_notes`, `prize_evidence_reference`, `prize_evidence_kind`, `cancellation_reason`, `approved_by`, `rejected_by`, `rejection_ground` and `cancelled_by` are internal** — free text and identifiers that may name a sponsor, an allegation or a legal instruction, and which are stripped from every public response in `withHostAndCount`. What a visitor sees instead is the coarse lifecycle view: the state, the closing rules, the category, the sponsor name, the restrictions and a fixed explanation sentence chosen by code. **No sponsor document is stored** — evidence is a reference and a verdict only, so third-party commercial paperwork never enters this database. |
 | Retention implemented | Indefinite. An entry is **never deleted to disqualify it** — the status changes and an event is appended. |
 | Awaiting decision | Whether entries are ever purged after a giveaway closes, and how that interacts with the draw audit trail. |
 | Correction / deletion | An entrant cannot edit or withdraw an entry. Deleting one would break the draw record. |
 | External recipient | `image_url` points at Cloudinary; the image itself is stored there. |
+
+---
+
+## 5a. Giveaway lifecycle history
+
+**Table:** `giveaway_lifecycle_events`
+
+| | |
+| --- | --- |
+| Fields | `id`, `giveaway_id`, `event_type`, `from_status`, `to_status`, `reason_code`, `admin_notes`, `actor_user_id`, `actor_role`, `metadata`, `created_at` |
+| Purpose | The append-only record of every submission, approval, rejection, publication, closure, postponement, draw and exceptional cancellation. |
+| Access | Administrators only (`GET /api/admin/giveaways/:id/lifecycle`). |
+| Classification | `admin_notes` **sensitive** — the reviewer's own words, which may name a sponsor, an allegation or a legal instruction, and which are never rendered to a host, an entrant or any public page. `metadata` holds **counts and identifiers only**: pool sizes, entry counts, a winning ticket number. No account id of an entrant, no recipient, no token. |
+| Retention implemented | Indefinite, and **append-only at the database level** — a `BEFORE UPDATE OR DELETE` trigger refuses both, using the same function as the entry-integrity trail. |
+| Correction / deletion | Neither is possible. A correction is a new event. |
+| External recipient | None. |
 
 ---
 
@@ -191,6 +207,16 @@ exports.
 ---
 
 ## 9. Notification outboxes
+
+**Tables:** `claim_notifications`, `email_change_notifications`, `giveaway_notifications`, and their append-only event trails.
+
+`giveaway_notifications` carries entry receipts, winner notices and cancellation
+notices. Same shape and same guarantees as the others: **no address, no rendered
+body, no link, no token, no subject and no provider message** — only a giveaway
+reference, an account reference, a kind, a delivery outcome and an error
+*category*. The recipient is derived from the referenced account at send time.
+Bounce text routinely quotes an address back at you, which is why only the
+category is kept.
 
 **Table:** `claim_notifications`
 

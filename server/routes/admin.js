@@ -10,6 +10,9 @@ const integrity = require('../lib/entryIntegrity');
 const riskSignals = require('../lib/riskSignals');
 const rights = require('../lib/accountRights');
 const emailChangeOutbox = require('../lib/emailChangeOutbox');
+const lifecycle = require('../lib/giveawayLifecycle');
+const prizeStandard = require('../lib/prizeStandard');
+const giveawayOutbox = require('../lib/giveawayOutbox');
 
 // Account status is authentication; host status is authorization. Two columns,
 // two routes, and deliberately no path that changes one as a side effect of the
@@ -1408,6 +1411,196 @@ router.post('/email-change-notifications/:id/retry', requireAdmin, async (req, r
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   } finally {
     client.release();
+  }
+});
+
+// One error shape for the lifecycle routes. A LifecycleError and an
+// IntegrityError both carry a status and a code that are safe to return; an
+// unexpected error does not, and gets the generic message.
+function giveawayLifecycleError(res, err) {
+  if (err instanceof lifecycle.LifecycleError || err instanceof integrity.IntegrityError) {
+    return res.status(err.status).json({
+      error: err.message,
+      code: err.code,
+      ...(err.details ? { details: err.details } : {}),
+    });
+  }
+  console.error(err);
+  return res.status(500).json({ error: 'Something went wrong. Please try again.' });
+}
+
+// ---------------------------------------------------------------------------
+// Curated prize review
+// ---------------------------------------------------------------------------
+//
+// A sponsor submission never publishes automatically. These three routes are
+// the only way a campaign reaches the public, and each records a named
+// administrator, a timestamp and an append-only history entry.
+
+// The review queue, and the vocabulary a reviewer needs.
+router.get('/giveaway-submissions', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT g.*, u.name AS host_name, u.host_status
+         FROM giveaways g
+         JOIN users u ON u.id = g.host_id
+        WHERE g.status = $1
+        ORDER BY g.submitted_at`,
+      [lifecycle.STATUS.PENDING_APPROVAL]
+    );
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      items: result.rows,
+      categories: prizeStandard.CATEGORIES,
+      evidence_kinds: prizeStandard.EVIDENCE_KINDS,
+      rejection_grounds: prizeStandard.REJECTION_GROUND_IDS,
+      custody_options: prizeStandard.CUSTODY_IDS,
+      // The standard itself, so the review screen states it rather than
+      // relying on the reviewer remembering it.
+      positioning: prizeStandard.POSITIONING,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// Approve and publish. The 30-day window starts here.
+router.post('/giveaways/:id/approve', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await lifecycle.approveAndPublish(client, {
+      giveawayId: req.params.id,
+      actorUserId: req.userId,
+      reviewNotes: req.body && req.body.review_notes,
+      evidenceKind: req.body && req.body.evidence_kind,
+      evidenceReference: req.body && req.body.evidence_reference,
+      expectedVersion: req.body && req.body.expected_version,
+    });
+    await client.query('COMMIT');
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      id: result.giveaway.id,
+      status: result.giveaway.status,
+      published_at: result.giveaway.published_at,
+      closes_at: result.giveaway.closes_at,
+      entry_target: result.giveaway.entry_target,
+      lifecycle_version: result.giveaway.lifecycle_version,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    return giveawayLifecycleError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+// Refuse a submission. The host is told a fixed sentence chosen from the
+// ground; the reviewer's own notes stay internal.
+router.post('/giveaways/:id/reject', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await lifecycle.reject(client, {
+      giveawayId: req.params.id,
+      ground: req.body && req.body.ground,
+      reviewNotes: req.body && req.body.review_notes,
+      actorUserId: req.userId,
+      expectedVersion: req.body && req.body.expected_version,
+    });
+    await client.query('COMMIT');
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      id: result.giveaway.id,
+      status: result.giveaway.status,
+      ground: result.giveaway.rejection_ground,
+      // What the host reads. Never `review_notes`.
+      host_explanation: result.hostCopy,
+      lifecycle_version: result.giveaway.lifecycle_version,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    return giveawayLifecycleError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+// Exceptional cancellation.
+//
+// Not an ordinary option. A sponsor changing their mind is refused by name, and
+// every entrant is durably notified in the same transaction that cancels the
+// campaign — so a mail outage cannot leave people who entered never finding out.
+router.post('/giveaways/:id/cancel', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await lifecycle.cancelExceptionally(client, {
+      giveawayId: req.params.id,
+      ground: req.body && req.body.ground,
+      reason: req.body && req.body.reason,
+      actorUserId: req.userId,
+      expectedVersion: req.body && req.body.expected_version,
+    });
+
+    let queued = { queued: 0, created: 0 };
+    if (result.cancelled) {
+      queued = await giveawayOutbox.enqueueForAllEntrants(client, {
+        giveawayId: req.params.id,
+        kind: giveawayOutbox.KINDS.CANCELLATION_NOTICE,
+      });
+    }
+    await client.query('COMMIT');
+
+    if (result.cancelled) giveawayOutbox.drainInBackground({});
+
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      id: req.params.id,
+      status: result.giveaway.status,
+      already_cancelled: Boolean(result.alreadyCancelled),
+      ground: result.giveaway.cancellation_ground,
+      // The fixed sentence entrants see. Never `cancellation_reason`, which is
+      // the internal record and can name a sponsor or a legal instruction.
+      public_explanation: result.giveaway.cancellation_public_explanation,
+      entrants_notified: queued.queued,
+      lifecycle_version: result.giveaway.lifecycle_version,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    return giveawayLifecycleError(res, err);
+  } finally {
+    client.release();
+  }
+});
+
+// The append-only lifecycle history for one campaign. Administrator-only,
+// because it carries the internal notes.
+router.get('/giveaways/:id/lifecycle', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM giveaway_lifecycle_events WHERE giveaway_id = $1 ORDER BY created_at, id`,
+      [req.params.id]
+    );
+    res.set('Cache-Control', 'no-store');
+    res.json({ items: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// Undelivered and terminally failed giveaway notices. Counts and categories, so
+// a stuck outbox is visible without anybody's address being on the screen.
+router.get('/giveaway-notifications', requireAdmin, async (req, res) => {
+  try {
+    const items = await giveawayOutbox.adminView(pool);
+    res.set('Cache-Control', 'no-store');
+    res.json({ items });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 

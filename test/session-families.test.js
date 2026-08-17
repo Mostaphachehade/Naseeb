@@ -22,15 +22,7 @@ const assert = require('node:assert/strict');
 const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const {
-  api,
-  pool,
-  ensureInit,
-  signIn,
-  nextTestIp,
-  TEST_ORIGIN,
-  uniqueEmail,
-} = require('../testHelpers');
+const { api, pool, ensureInit, signIn, nextTestIp, TEST_ORIGIN, uniqueEmail, publishGiveaway, FABRICATED_PRIZE, closePool } = require('../testHelpers');
 
 const sessions = require('../server/lib/sessions');
 const { tokenForFamily, CSRF_HEADER } = require('../server/lib/csrf');
@@ -46,7 +38,7 @@ after(async () => {
   if (createdUserIds.length) {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 async function createAccount(tag, { admin = false } = {}) {

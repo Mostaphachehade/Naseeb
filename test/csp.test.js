@@ -15,15 +15,7 @@ const path = require('path');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const Stripe = require('stripe');
-const {
-  api,
-  pool,
-  ensureInit,
-  signIn,
-  nextTestIp,
-  TEST_ORIGIN,
-  uniqueEmail,
-} = require('../testHelpers');
+const { api, pool, ensureInit, signIn, nextTestIp, TEST_ORIGIN, uniqueEmail, publishGiveaway, seedGiveaway, approveGiveaway, closePool, FABRICATED_PRIZE } = require('../testHelpers');
 
 const { policyFor, buildDirectives } = require('../server/lib/securityHeaders');
 const { validateMediaUrl, mediaOrigins } = require('../server/lib/mediaUrls');
@@ -51,7 +43,7 @@ after(async () => {
     await pool.query('DELETE FROM host_applications WHERE user_id = ANY($1)', [createdUserIds]);
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 async function createAccount(tag, { admin = false, hostStatus = 'approved' } = {}) {
@@ -119,10 +111,13 @@ test('every kind of response carries a Content-Security-Policy', async () => {
     description: 'A fabricated listing.',
     prize_description: 'A fabricated prize',
     funded_by: 'Fabricated budget',
-    entry_deadline: new Date(Date.now() + 864e5).toISOString(),
+    ...FABRICATED_PRIZE,
   });
   assert.equal(created.status, 201);
   createdGiveawayIds.push(created.body.id);
+  // A submission is not a campaign. Approving it is what publishes it, and the
+  // pages below are the pages of a published one.
+  await approveGiveaway(created.body.id);
 
   const responses = [
     ['public page', await api().get('/index.html')],
@@ -362,10 +357,11 @@ test('a giveaway carrying every payload is stored and returned as text, never as
     description: `Description ${PAYLOADS.join(' ')}`,
     prize_description: `Prize ${PAYLOADS[2]} ${PAYLOADS[3]}`,
     funded_by: `Funded ${PAYLOADS[4]}`,
-    entry_deadline: new Date(Date.now() + 864e5).toISOString(),
+    ...FABRICATED_PRIZE,
   });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   createdGiveawayIds.push(created.body.id);
+  await approveGiveaway(created.body.id);
 
   // The API returns exactly what was stored — it is data, and escaping is the
   // renderer's job, done in one place.
@@ -488,7 +484,7 @@ test('malicious media URLs are rejected by the server', async () => {
       prize_description: 'p',
       funded_by: 'f',
       image_url: url,
-      entry_deadline: new Date(Date.now() + 864e5).toISOString(),
+      ...FABRICATED_PRIZE,
     });
     assert.equal(res.status, 400, `${JSON.stringify(url).slice(0, 40)} must be refused`);
     assert.equal(res.body.code, 'MEDIA_URL_REJECTED');
@@ -528,10 +524,11 @@ test('an approved https media URL is accepted, stored and rendered', async () =>
     prize_description: 'p',
     funded_by: 'f',
     image_url: url,
-    entry_deadline: new Date(Date.now() + 864e5).toISOString(),
+    ...FABRICATED_PRIZE,
   });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   createdGiveawayIds.push(created.body.id);
+  await approveGiveaway(created.body.id);
   assert.equal(created.body.image_url, url);
 
   const read = await api().get(`/api/giveaways/${created.body.id}`);
@@ -547,12 +544,11 @@ test('an approved https media URL is accepted, stored and rendered', async () =>
 
 test('a hostile URL already in the database is never rendered and never linked', async () => {
   const host = await createAccount('media-legacy');
-  const id = uuid();
-  await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description, funded_by, entry_deadline)
-     VALUES ($1, $2, 'Legacy media', 'd', 'p', 'f', $3)`,
-    [id, host.id, new Date(Date.now() + 864e5).toISOString()]
-  );
+  const id = await seedGiveaway({
+    hostId: host.id,
+    title: 'Legacy media',
+    closesAt: new Date(Date.now() + 864e5),
+  });
   createdGiveawayIds.push(id);
   // Written directly, as a row from before validation existed would have been.
   await pool.query('UPDATE giveaways SET image_url = $1 WHERE id = $2', [
@@ -609,7 +605,7 @@ test('cookie authentication and CSRF-protected writes still work under the polic
     description: 'd',
     prize_description: 'p',
     funded_by: 'f',
-    entry_deadline: new Date(Date.now() + 864e5).toISOString(),
+    ...FABRICATED_PRIZE,
   });
   assert.equal(created.status, 201);
   createdGiveawayIds.push(created.body.id);

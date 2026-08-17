@@ -15,15 +15,7 @@ const path = require('path');
 const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 
-const {
-  api,
-  pool,
-  ensureInit,
-  signIn,
-  uniqueEmail,
-  nextTestIp,
-  TEST_ORIGIN,
-} = require('../testHelpers');
+const { api, pool, ensureInit, signIn, uniqueEmail, nextTestIp, TEST_ORIGIN, seedGiveaway, closePool } = require('../testHelpers');
 
 const integrity = require('../server/lib/entryIntegrity');
 const riskSignals = require('../server/lib/riskSignals');
@@ -54,7 +46,16 @@ after(async () => {
     );
     await pool.query('DELETE FROM claim_rescue_queue WHERE giveaway_id = ANY($1)', [created.giveaways]);
     await pool.query('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [created.giveaways]);
-    await pool.query('UPDATE giveaways SET winner_entry_id = NULL WHERE id = ANY($1)', [created.giveaways]);
+    // Detaching the winner means the campaign is no longer drawn, and the schema
+    // says so: `drawn` requires a winning entry. Teardown moves the state with
+    // the data rather than leaving an incoherent row behind.
+    await pool.query(
+      `UPDATE giveaways
+          SET winner_entry_id = NULL, drawn_at = NULL,
+              status = CASE WHEN status = 'drawn' THEN 'closed_pending_draw' ELSE status END
+        WHERE id = ANY($1)`,
+      [created.giveaways]
+    );
     await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [created.giveaways]);
     await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [created.giveaways]);
   }
@@ -62,7 +63,7 @@ after(async () => {
     await pool.query('DELETE FROM sessions WHERE user_id = ANY($1)', [created.users]);
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [created.users]);
   }
-  await pool.end();
+  await closePool();
 });
 
 async function makeUser(tag, { admin = false, hostStatus = 'not_requested' } = {}) {
@@ -77,14 +78,23 @@ async function makeUser(tag, { admin = false, hostStatus = 'not_requested' } = {
   return { id, email };
 }
 
-async function makeGiveaway(hostId, { deadlineDays = 7, status = 'active' } = {}) {
-  const id = crypto.randomUUID();
-  await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description,
-       entry_deadline, status, funded_by)
-     VALUES ($1, $2, 'Integrity giveaway', 'Fabricated', 'Fabricated prize', $3, $4, 'Self-funded')`,
-    [id, hostId, new Date(Date.now() + deadlineDays * 86400000).toISOString(), status]
-  );
+async function makeGiveaway(hostId, { deadlineDays = 7, status } = {}) {
+  // Seeded through the shared helper: a campaign is a governed, approved,
+  // published thing now, and a fixture that writes one by hand would be
+  // fabricating an approval that never happened.
+  //
+  // A past deadline means a CLOSED campaign, not an open one with a stale date.
+  // The route no longer draws an open campaign — a campaign closes itself, at
+  // whichever comes first: the 100th accepted entry, or the deadline. So a
+  // fixture whose deadline has passed is seeded in the state that campaign
+  // would actually be in.
+  const resolved = status || (deadlineDays <= 0 ? 'closed_pending_draw' : 'active');
+  const id = await seedGiveaway({
+    hostId,
+    status: resolved,
+    title: 'Integrity giveaway',
+    closesAt: new Date(Date.now() + deadlineDays * 86400000),
+  });
   created.giveaways.push(id);
   return id;
 }
@@ -472,8 +482,11 @@ test('11. an unresolved review blocks the draw', async () => {
   assert.equal(blocked.status, 409);
   assert.equal(blocked.body.code, 'ENTRY_REVIEW_PENDING');
 
+  // The campaign moves to a recorded pending-review state rather than sitting in
+  // `active` with a passed deadline. Entries are closed either way — the review
+  // does not extend the deadline for anybody — and only the DRAW waits.
   const still = await pool.query('SELECT status, winner_entry_id FROM giveaways WHERE id = $1', [giveawayId]);
-  assert.equal(still.rows[0].status, 'active');
+  assert.equal(still.rows[0].status, 'pending_integrity_review');
   assert.equal(still.rows[0].winner_entry_id, null);
 
   // Resolving it unblocks the draw.

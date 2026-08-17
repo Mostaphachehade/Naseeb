@@ -37,6 +37,15 @@
       "table_name": "entry_risk_signals"
     },
     {
+      "table_name": "giveaway_lifecycle_events"
+    },
+    {
+      "table_name": "giveaway_notification_events"
+    },
+    {
+      "table_name": "giveaway_notifications"
+    },
+    {
       "table_name": "giveaways"
     },
     {
@@ -1458,6 +1467,393 @@
       "numeric_precision": ""
     },
     {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "actor_role",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "actor_user_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "admin_notes",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "event_type",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "from_status",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "giveaway_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "metadata",
+      "data_type": "jsonb",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "reason_code",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "column_name": "to_status",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "column_name": "actor_role",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "column_name": "error_category",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "column_name": "from_status",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "column_name": "notification_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "column_name": "to_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "attempts",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "cancelled_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "failed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "giveaway_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "idempotency_key",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "kind",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "last_attempt_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "last_error_category",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "lease_expires_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "lease_owner",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "next_attempt_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "sent_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'pending'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "approved_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "approved_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "cancellation_ground",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "cancellation_public_explanation",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "cancellation_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "cancelled_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "cancelled_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "closes_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
       "table_name": "giveaways",
       "column_name": "created_at",
       "data_type": "timestamp with time zone",
@@ -1477,6 +1873,42 @@
     },
     {
       "table_name": "giveaways",
+      "column_name": "drawn_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "entries_at_close",
+      "data_type": "integer",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "entries_closed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "entries_closed_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
       "column_name": "entry_deadline",
       "data_type": "text",
       "is_nullable": "NO",
@@ -1486,12 +1918,30 @@
     },
     {
       "table_name": "giveaways",
+      "column_name": "entry_target",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "100",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "giveaways",
       "column_name": "estimated_value_aed",
       "data_type": "real",
       "is_nullable": "YES",
       "column_default": "",
       "max_length": "",
       "numeric_precision": "24"
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "fulfilment_method",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
     },
     {
       "table_name": "giveaways",
@@ -1531,12 +1981,48 @@
     },
     {
       "table_name": "giveaways",
+      "column_name": "lifecycle_version",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "giveaways",
       "column_name": "max_entries_per_person",
       "data_type": "integer",
       "is_nullable": "NO",
       "column_default": "1",
       "max_length": "",
       "numeric_precision": "32"
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "naseeb_custody",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "no_winner_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_category",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
     },
     {
       "table_name": "giveaways",
@@ -1567,10 +2053,163 @@
     },
     {
       "table_name": "giveaways",
+      "column_name": "prize_evidence_kind",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_evidence_reference",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_evidence_verified",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_evidence_verified_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_evidence_verified_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_expiry_date",
+      "data_type": "date",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_governance_version",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "1",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_restrictions",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_retail_value_aed",
+      "data_type": "numeric",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_supplied_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "published_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "rejected_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "rejected_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "rejection_ground",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "review_notes",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "sponsor_name",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
       "column_name": "status",
       "data_type": "text",
       "is_nullable": "NO",
       "column_default": "'active'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "submitted_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
       "max_length": "",
       "numeric_precision": ""
     },
@@ -3041,6 +3680,21 @@
       "definition": "PRIMARY KEY (id)"
     },
     {
+      "table_name": "giveaway_lifecycle_events",
+      "conname": "giveaway_lifecycle_events_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "conname": "giveaway_notification_events_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "conname": "giveaway_notifications_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
       "table_name": "giveaways",
       "conname": "giveaways_pkey",
       "definition": "PRIMARY KEY (id)"
@@ -3190,6 +3844,76 @@
       "definition": "CHECK ((severity = ANY (ARRAY['info'::text, 'review'::text])))"
     },
     {
+      "table_name": "giveaway_lifecycle_events",
+      "conname": "giveaway_lifecycle_actor_valid",
+      "definition": "CHECK ((actor_role = ANY (ARRAY['admin'::text, 'host'::text, 'system'::text])))"
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "conname": "giveaway_lifecycle_event_type_valid",
+      "definition": "CHECK ((event_type = ANY (ARRAY['submitted'::text, 'approved'::text, 'rejected'::text, 'published'::text, 'entries_closed'::text, 'draw_postponed_pending_review'::text, 'drawn'::text, 'closed_no_winner'::text, 'cancelled'::text, 'backfilled_pre_lifecycle'::text])))"
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "conname": "giveaway_notification_kind_valid",
+      "definition": "CHECK ((kind = ANY (ARRAY['entry_receipt'::text, 'winner_notice'::text, 'cancellation_notice'::text])))"
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "conname": "giveaway_notification_status_valid",
+      "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'sent'::text, 'failed'::text, 'cancelled'::text])))"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_cancellation_valid",
+      "definition": "CHECK (((status <> 'cancelled'::text) OR ((cancelled_at IS NOT NULL) AND (cancelled_by IS NOT NULL) AND (cancellation_reason IS NOT NULL) AND (length(btrim(cancellation_reason)) >= 10) AND (cancellation_public_explanation IS NOT NULL) AND (cancellation_ground = ANY (ARRAY['fulfilment_impossible'::text, 'unlawful'::text, 'fraudulent'::text, 'unsafe'::text, 'prohibited_by_authority'::text])))))"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_closure_explained",
+      "definition": "CHECK (((status = ANY (ARRAY['pending_approval'::text, 'rejected'::text, 'active'::text, 'cancelled'::text])) OR ((entries_closed_at IS NOT NULL) AND (entries_closed_reason IS NOT NULL))))"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_entry_target_valid",
+      "definition": "CHECK (((entry_target > 0) AND (entry_target <= 100000)))"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_governance_version_valid",
+      "definition": "CHECK ((prize_governance_version = ANY (ARRAY[0, 1])))"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_outcome_coherent",
+      "definition": "CHECK ((((status <> 'drawn'::text) OR ((winner_entry_id IS NOT NULL) AND (drawn_at IS NOT NULL))) AND ((status <> 'closed_no_winner'::text) OR ((winner_entry_id IS NULL) AND (no_winner_reason IS NOT NULL)))))"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_prize_governed",
+      "definition": "CHECK (((status = ANY (ARRAY['pending_approval'::text, 'rejected'::text])) OR (prize_governance_version = 0) OR ((prize_category = ANY (ARRAY['premium_electronics'::text, 'luxury_stay_or_holiday'::text, 'designer_fashion_or_accessories'::text, 'fine_dining_experience'::text, 'beauty_and_wellness'::text, 'events_and_experiences'::text, 'home_technology_and_appliances'::text, 'vehicle_or_major_prize'::text, 'brand_voucher'::text, 'other_approved_premium'::text])) AND (sponsor_name IS NOT NULL) AND (prize_supplied_by IS NOT NULL) AND (prize_retail_value_aed IS NOT NULL) AND (prize_retail_value_aed > (0)::numeric) AND (prize_evidence_verified = true) AND (naseeb_custody = ANY (ARRAY['naseeb_holds'::text, 'sponsor_holds_committed'::text, 'provider_fulfils'::text])) AND (fulfilment_method IS NOT NULL))))"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_publication_approved",
+      "definition": "CHECK (((status = ANY (ARRAY['pending_approval'::text, 'rejected'::text])) OR (prize_governance_version = 0) OR ((approved_at IS NOT NULL) AND (approved_by IS NOT NULL))))"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_published_has_window",
+      "definition": "CHECK (((status = ANY (ARRAY['pending_approval'::text, 'rejected'::text])) OR ((published_at IS NOT NULL) AND (closes_at IS NOT NULL))))"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_rejection_explained",
+      "definition": "CHECK (((status <> 'rejected'::text) OR ((rejected_at IS NOT NULL) AND (rejected_by IS NOT NULL) AND (rejection_ground IS NOT NULL))))"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_status_valid",
+      "definition": "CHECK ((status = ANY (ARRAY['pending_approval'::text, 'rejected'::text, 'active'::text, 'closed_pending_draw'::text, 'pending_integrity_review'::text, 'drawn'::text, 'closed_no_winner'::text, 'cancelled'::text])))"
+    },
+    {
       "table_name": "host_applications",
       "conname": "host_applications_status_valid",
       "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'withdrawn'::text])))"
@@ -3323,8 +4047,28 @@
     },
     {
       "table_name": "giveaways",
+      "conname": "giveaways_approved_by_fkey",
+      "definition": "FOREIGN KEY (approved_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_cancelled_by_fkey",
+      "definition": "FOREIGN KEY (cancelled_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "giveaways",
       "conname": "giveaways_host_id_fkey",
       "definition": "FOREIGN KEY (host_id) REFERENCES users(id)"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_prize_evidence_verified_by_fkey",
+      "definition": "FOREIGN KEY (prize_evidence_verified_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_rejected_by_fkey",
+      "definition": "FOREIGN KEY (rejected_by) REFERENCES users(id)"
     },
     {
       "table_name": "host_applications",
@@ -3626,9 +4370,59 @@
       "indexdef": "CREATE INDEX idx_entry_risk_signals_network ON entry_risk_signals USING btree (network_hmac, created_at) WHERE (network_hmac IS NOT NULL)"
     },
     {
+      "table_name": "giveaway_lifecycle_events",
+      "indexname": "giveaway_lifecycle_events_pkey",
+      "indexdef": "CREATE UNIQUE INDEX giveaway_lifecycle_events_pkey ON giveaway_lifecycle_events USING btree (id)"
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "indexname": "idx_giveaway_lifecycle_events_giveaway",
+      "indexdef": "CREATE INDEX idx_giveaway_lifecycle_events_giveaway ON giveaway_lifecycle_events USING btree (giveaway_id, created_at)"
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "indexname": "giveaway_notification_events_pkey",
+      "indexdef": "CREATE UNIQUE INDEX giveaway_notification_events_pkey ON giveaway_notification_events USING btree (id)"
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "indexname": "idx_giveaway_notification_events_notification",
+      "indexdef": "CREATE INDEX idx_giveaway_notification_events_notification ON giveaway_notification_events USING btree (notification_id, created_at)"
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "indexname": "giveaway_notifications_pkey",
+      "indexdef": "CREATE UNIQUE INDEX giveaway_notifications_pkey ON giveaway_notifications USING btree (id)"
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "indexname": "idx_giveaway_notifications_due",
+      "indexdef": "CREATE INDEX idx_giveaway_notifications_due ON giveaway_notifications USING btree (status, next_attempt_at) WHERE (status = 'pending'::text)"
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "indexname": "idx_giveaway_notifications_giveaway",
+      "indexdef": "CREATE INDEX idx_giveaway_notifications_giveaway ON giveaway_notifications USING btree (giveaway_id, kind)"
+    },
+    {
+      "table_name": "giveaway_notifications",
+      "indexname": "uniq_giveaway_notification_idempotency",
+      "indexdef": "CREATE UNIQUE INDEX uniq_giveaway_notification_idempotency ON giveaway_notifications USING btree (idempotency_key)"
+    },
+    {
       "table_name": "giveaways",
       "indexname": "giveaways_pkey",
       "indexdef": "CREATE UNIQUE INDEX giveaways_pkey ON giveaways USING btree (id)"
+    },
+    {
+      "table_name": "giveaways",
+      "indexname": "idx_giveaways_awaiting_draw",
+      "indexdef": "CREATE INDEX idx_giveaways_awaiting_draw ON giveaways USING btree (status, entries_closed_at) WHERE (status = ANY (ARRAY['closed_pending_draw'::text, 'pending_integrity_review'::text]))"
+    },
+    {
+      "table_name": "giveaways",
+      "indexname": "idx_giveaways_due_to_close",
+      "indexdef": "CREATE INDEX idx_giveaways_due_to_close ON giveaways USING btree (closes_at) WHERE (status = 'active'::text)"
     },
     {
       "table_name": "giveaways",
@@ -3639,6 +4433,11 @@
       "table_name": "giveaways",
       "indexname": "idx_giveaways_status_deadline",
       "indexdef": "CREATE INDEX idx_giveaways_status_deadline ON giveaways USING btree (status, entry_deadline)"
+    },
+    {
+      "table_name": "giveaways",
+      "indexname": "uniq_giveaway_winner_entry",
+      "indexdef": "CREATE UNIQUE INDEX uniq_giveaway_winner_entry ON giveaways USING btree (winner_entry_id) WHERE (winner_entry_id IS NOT NULL)"
     },
     {
       "table_name": "host_applications",
@@ -3846,6 +4645,16 @@
       "table_name": "entry_integrity_events",
       "tgname": "entry_integrity_events_immutable",
       "definition": "CREATE TRIGGER entry_integrity_events_immutable BEFORE DELETE OR UPDATE ON entry_integrity_events FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only()"
+    },
+    {
+      "table_name": "giveaway_lifecycle_events",
+      "tgname": "giveaway_lifecycle_events_immutable",
+      "definition": "CREATE TRIGGER giveaway_lifecycle_events_immutable BEFORE DELETE OR UPDATE ON giveaway_lifecycle_events FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only()"
+    },
+    {
+      "table_name": "giveaway_notification_events",
+      "tgname": "giveaway_notification_events_immutable",
+      "definition": "CREATE TRIGGER giveaway_notification_events_immutable BEFORE DELETE OR UPDATE ON giveaway_notification_events FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only()"
     },
     {
       "table_name": "privacy_request_events",

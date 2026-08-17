@@ -21,7 +21,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const request = require('supertest');
-const { api, pool, ensureInit, signIn, anon, TEST_ORIGIN } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, TEST_ORIGIN, seedGiveaway, closePool, markDrawn } = require('../testHelpers');
 
 const app = require('../server/app');
 const claims = require('../server/lib/claims');
@@ -77,7 +77,7 @@ after(async () => {
   if (createdUserIds.length) {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 // ---------------------------------------------------------------------------
@@ -112,21 +112,21 @@ async function createUser(tag, { admin = false } = {}) {
 async function createDrawnGiveawayWithoutClaim() {
   const host = await createUser('host');
   const winner = await createUser('winner');
-  const giveawayId = uuid();
-  await pool.query(
-    `INSERT INTO giveaways
-       (id, host_id, title, description, prize_description, funded_by, entry_deadline, status)
-     VALUES ($1, $2, 'Historical Giveaway', 'Drawn before claims existed', 'A fabricated prize',
-             'Marketing budget (fabricated)', $3, 'drawn')`,
-    [giveawayId, host.id, new Date(Date.now() - 86400000).toISOString()]
-  );
+  const giveawayId = await seedGiveaway({
+    hostId: host.id,
+    status: 'closed_pending_draw',
+    title: 'Historical Giveaway',
+    closesAt: new Date(Date.now() - 86400000),
+  });
   createdGiveawayIds.push(giveawayId);
   const entryId = uuid();
   await pool.query(
     'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)',
     [entryId, giveawayId, winner.id]
   );
-  await pool.query('UPDATE giveaways SET winner_entry_id = $1 WHERE id = $2', [entryId, giveawayId]);
+  // Drawn once the winning entry exists — the schema refuses a `drawn` campaign
+  // with no winner, which is the two-step this fixture now has to follow.
+  await markDrawn(giveawayId, entryId);
   return { host, winner, giveawayId, entryId };
 }
 
@@ -453,13 +453,14 @@ test('drawing a winner never leaves an unhandled rejection when email fails', as
   try {
     const host = await createUser('draw-host');
     const winner = await createUser('draw-winner');
-    const giveawayId = uuid();
-    await pool.query(
-      `INSERT INTO giveaways
-         (id, host_id, title, description, prize_description, funded_by, entry_deadline, status)
-       VALUES ($1, $2, 'Draw With Failing Email', 'desc', 'prize', 'budget', $3, 'active')`,
-      [giveawayId, host.id, new Date(Date.now() - 60000).toISOString()]
-    );
+    // Closed rather than active: the draw route no longer draws an open
+    // campaign, because a campaign closes on its own now.
+    const giveawayId = await seedGiveaway({
+      hostId: host.id,
+      status: 'closed_pending_draw',
+      title: 'Draw With Failing Email',
+      closesAt: new Date(Date.now() - 60000),
+    });
     createdGiveawayIds.push(giveawayId);
     await pool.query(
       'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)',
@@ -614,12 +615,11 @@ test('an admin can issue a claim for a giveaway drawn before this workflow exist
 test('backfill refuses a giveaway with no drawn winner', async () => {
   const host = await createUser('undrawn-host');
   const admin = await createUser('undrawn-admin', { admin: true });
-  const giveawayId = uuid();
-  await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description, funded_by, entry_deadline)
-     VALUES ($1, $2, 'Not drawn yet', 'desc', 'prize', 'budget', $3)`,
-    [giveawayId, host.id, new Date(Date.now() + 86400000).toISOString()]
-  );
+  const giveawayId = await seedGiveaway({
+    hostId: host.id,
+    title: 'Not drawn yet',
+    closesAt: new Date(Date.now() + 86400000),
+  });
   createdGiveawayIds.push(giveawayId);
 
   const res = await admin.post(`/api/claims/admin/backfill/${giveawayId}`)

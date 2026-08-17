@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { api, pool, ensureInit, signIn, anon, nextTestIp } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, nextTestIp, seedGiveaway, markDrawn, closePool } = require('../testHelpers');
 const claims = require('../server/lib/claims');
 const { STATES } = require('../server/lib/claimStateMachine');
 
@@ -29,7 +29,7 @@ after(async () => {
   if (createdUserIds.length) {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 async function createVerifiedUser(tag) {
@@ -50,19 +50,19 @@ async function createVerifiedUser(tag) {
 }
 
 async function createDrawnGiveaway(hostId, winnerId) {
-  const id = uuid();
-  await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description, funded_by, entry_deadline, status)
-     VALUES ($1, $2, 'Delivery test giveaway', 'desc', 'prize', 'test budget', $3, 'active')`,
-    [id, hostId, new Date(Date.now() - 60 * 1000).toISOString()]
-  );
+  const id = await seedGiveaway({
+    hostId,
+    status: 'closed_pending_draw',
+    title: 'Delivery test giveaway',
+    closesAt: new Date(Date.now() - 60 * 1000),
+  });
   createdGiveawayIds.push(id);
   const entryId = uuid();
   await pool.query(
     `INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)`,
     [entryId, id, winnerId]
   );
-  await pool.query(`UPDATE giveaways SET status = 'drawn', winner_entry_id = $1 WHERE id = $2`, [entryId, id]);
+  await markDrawn(id, entryId);
   return id;
 }
 
@@ -154,12 +154,11 @@ test('an unrelated user cannot touch delivery at all', async () => {
 
 test('delivery cannot be touched before a winner is drawn', async () => {
   const host = await createVerifiedUser('host3');
-  const id = uuid();
-  await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description, funded_by, entry_deadline)
-     VALUES ($1, $2, 'Undrawn delivery test', 'desc', 'prize', 'test budget', $3)`,
-    [id, host.id, new Date(Date.now() + 5 * 60 * 1000).toISOString()]
-  );
+  const id = await seedGiveaway({
+    hostId: host.id,
+    title: 'Undrawn delivery test',
+    closesAt: new Date(Date.now() + 5 * 60 * 1000),
+  });
   createdGiveawayIds.push(id);
 
   const res = await host.post(`/api/giveaways/${id}/confirm-delivery`)

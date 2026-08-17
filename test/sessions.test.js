@@ -16,15 +16,7 @@ const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const request = require('supertest');
-const {
-  api,
-  pool,
-  ensureInit,
-  signIn,
-  nextTestIp,
-  TEST_ORIGIN,
-  uniqueEmail,
-} = require('../testHelpers');
+const { api, pool, ensureInit, signIn, nextTestIp, TEST_ORIGIN, uniqueEmail, closePool } = require('../testHelpers');
 
 const app = require('../server/app');
 const sessions = require('../server/lib/sessions');
@@ -44,7 +36,7 @@ after(async () => {
     await pool.query('DELETE FROM host_applications WHERE user_id = ANY($1)', [createdUserIds]);
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 async function createAccount(tag, { admin = false, accountStatus = 'active' } = {}) {
