@@ -1602,6 +1602,7 @@
             row.classList.add('is-hidden');
             clear(cell);
             loadPrivacyRequests();
+    loadEmailNotifications();
           } catch (err) {
             error.textContent = err.message;
             error.classList.add('show');
@@ -1708,6 +1709,142 @@
     }
   }
 
+  // ------------------------------------------------------------------
+  // Email-change delivery outbox
+  // ------------------------------------------------------------------
+
+  const NOTIFICATION_KIND_LABELS = {
+    verification: 'Verification (to new address)',
+    old_address_warning: 'Warning (to old address)',
+  };
+
+  const NOTIFICATION_STATUS_LABELS = {
+    pending: 'Queued',
+    sent: 'Delivered',
+    failed: 'Gave up',
+    cancelled: 'Cancelled',
+  };
+
+  function notificationRow(n) {
+    const detailCell = el('td', { colSpan: 6 });
+    const detailRow = el('tr', { class: 'u-c8be1ccb is-hidden' }, detailCell);
+
+    const openBtn = el('button', {
+      class: 'btn ghost u-51820e15',
+      text: 'History',
+      on: { click: () => openNotification(n, detailRow, detailCell) },
+    });
+
+    // Only a failed notification is retryable, and only deliberately. A queued
+    // one is already being retried; a delivered one must not be resent.
+    const retryBtn = n.status === 'failed'
+      ? el('button', {
+          class: 'btn ghost u-51820e15',
+          text: 'Retry',
+          on: {
+            click: async (e) => {
+              const btn = e.currentTarget;
+              const reason = prompt('Why is this being retried? Recorded against the notification.');
+              if (reason === null) return;
+              if (!reason.trim()) { alert('A short reason is required.'); return; }
+              btn.disabled = true;
+              try {
+                await api(`/admin/email-change-notifications/${encodeURIComponent(n.id)}/retry`, {
+                  method: 'POST',
+                  body: JSON.stringify({ reason }),
+                });
+                loadEmailNotifications();
+              } catch (err) {
+                alert(err.message);
+                btn.disabled = false;
+              }
+            },
+          },
+        })
+      : null;
+
+    return [
+      el('tr', {}, [
+        td(NOTIFICATION_KIND_LABELS[n.kind] || n.kind),
+        tdNode([
+          pill(NOTIFICATION_STATUS_LABELS[n.status] || n.status),
+          n.in_flight ? ' ' : null,
+          n.in_flight ? pill('in flight') : null,
+        ]),
+        td(String(n.attempts)),
+        tdNode(
+          n.last_error_category
+            ? pill(n.last_error_category)
+            : el('span', { class: 'u-a2aae0fb', text: '—' })
+        ),
+        td(shortDate(n.created_at)),
+        tdNode(spaced([openBtn, retryBtn]), 'u-a9efa544'),
+      ]),
+      detailRow,
+    ];
+  }
+
+  async function openNotification(n, row, cell) {
+    if (!row.classList.contains('is-hidden')) {
+      row.classList.add('is-hidden');
+      clear(cell);
+      return;
+    }
+    row.classList.remove('is-hidden');
+    setText(cell, 'Loading…');
+
+    let events;
+    try {
+      events = await api(`/admin/email-change-notifications/${encodeURIComponent(n.id)}/events`);
+    } catch (err) {
+      mount(cell, el('span', { class: 'form-error show', text: err.message }));
+      return;
+    }
+
+    mount(cell, el('div', { class: 'u-1b074808' }, [
+      el('p', { class: 'u-a76e0798' }, [
+        `Change is ${n.change_status || 'gone'}`,
+        n.change_expires_at ? ` · link window ends ${new Date(n.change_expires_at).toLocaleString()}` : '',
+        n.next_attempt_at && n.status === 'pending'
+          ? ` · next attempt ${new Date(n.next_attempt_at).toLocaleString()}`
+          : '',
+        n.cancelled_reason ? ` · cancelled: ${n.cancelled_reason}` : '',
+      ]),
+      el('p', {
+        class: 'hint',
+        text: 'This record holds no address, message or link. Every retry issues a fresh link and stops the previous one working.',
+      }),
+      events.map((ev) =>
+        el('p', { class: 'u-a76e0798' }, [
+          `${new Date(ev.created_at).toLocaleString()} · ${ev.event.replace(/_/g, ' ')}`,
+          ev.attempt ? ` · attempt ${ev.attempt}` : '',
+          ev.error_category ? ` · ${ev.error_category}` : '',
+          ev.actor_name ? ` · ${ev.actor_name}` : ` · ${ev.actor_role}`,
+          ev.note ? el('br') : null,
+          ev.note ? ev.note : null,
+        ])
+      ),
+    ]));
+  }
+
+  async function loadEmailNotifications() {
+    const content = document.getElementById('email-notifications-content');
+    try {
+      const rows = await api('/admin/email-change-notifications');
+      if (!rows.length) {
+        mount(content, emptyNode('No email-change notifications.'));
+        return;
+      }
+      mount(content, dataTable(
+        ['Message', 'Status', 'Attempts', 'Last error', 'Created', 'Actions'],
+        rows.flatMap(notificationRow),
+        'No email-change notifications.'
+      ));
+    } catch (err) {
+      mount(content, emptyNode(err.message));
+    }
+  }
+
   async function loadIntegrity() {
     const content = document.getElementById('integrity-content');
     try {
@@ -1732,6 +1869,7 @@
     loadClaims();
     loadRescueQueue();
     loadPrivacyRequests();
+    loadEmailNotifications();
     loadMissingClaims();
     load();
     loadAdInquiries();

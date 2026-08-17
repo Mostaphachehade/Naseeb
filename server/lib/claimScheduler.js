@@ -19,6 +19,7 @@
 const { pool } = require('../db');
 const { expireLapsedClaims, eraseExpiredDeliveryDetails } = require('./claims');
 const { processDueNotifications } = require('./claimNotifications');
+const emailChangeOutbox = require('./emailChangeOutbox');
 
 // Distinct from the ad-slot lock; the two must never contend.
 const CLAIM_MAINTENANCE_LOCK_KEY = 738201947383;
@@ -42,7 +43,7 @@ function intervalMinutes() {
 async function runMaintenanceOnce({ skipNotifications = false } = {}) {
   const client = await pool.connect();
   let acquired = false;
-  const summary = { skipped: false, expired: 0, erased: 0, notifications: null };
+  const summary = { skipped: false, expired: 0, erased: 0, notifications: null, emailChanges: null };
 
   try {
     // Non-blocking: if another instance is already doing this tick, that is a
@@ -76,6 +77,10 @@ async function runMaintenanceOnce({ skipNotifications = false } = {}) {
   // run concurrently with itself.
   if (!skipNotifications) {
     summary.notifications = await processDueNotifications({});
+    // The email-change outbox, on the same terms and for the same reason. Its
+    // rows are claimed with SKIP LOCKED and a lease, so this is safe to run
+    // alongside another instance's tick or an administrator's manual drain.
+    summary.emailChanges = await emailChangeOutbox.processDue({});
   }
 
   return summary;

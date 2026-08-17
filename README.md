@@ -384,6 +384,23 @@ inside the completion transaction, the token in a URL fragment and in exactly on
 the **new** address, a warning with no completing link to the old one, and every session
 revoked on completion.
 
+**Both of its messages go through a durable outbox** (`server/lib/emailChangeOutbox.js`).
+The intent to notify is committed in the same transaction as the change that caused it, so
+a mail outage is a queued row rather than a silent failure. A pending change starts with
+**no token at all**: one is minted in worker memory immediately before a send, its hash
+overwrites whatever came before, and every earlier link stops working. `expires_at` is
+never touched, so retries cannot extend a change's life. Rows are claimed with
+`SKIP LOCKED` plus a 120-second lease that expires on its own, so concurrent workers send
+once and a crashed worker's row recovers itself. Capped exponential backoff, six attempts,
+then a sanitised alert and a visible entry in the admin queue where an administrator can
+retry it with a recorded reason. The outbox holds no address, token, link or body — the
+recipient is derived from the change record at send time.
+
+**A privacy request can change state but cannot be erased.** A `BEFORE DELETE` trigger
+refuses a targeted delete, an unqualified `DELETE FROM`, and the cascade from a deleted
+account — so an account carrying a request cannot be removed through application SQL
+either. Controlled updates are unaffected.
+
 `docs/DATA_INVENTORY.md` is the full table-by-table inventory — fields, purpose, access,
 classification, retention implemented vs. awaiting decision, and external processors.
 `docs/PRIVACY_AND_RIGHTS.md` has the request state machine, the email-change design and

@@ -243,6 +243,20 @@ An email change now keeps the previous address on the `email_change_requests` ro
 history of address changes is auditable. That former address is personal data about the
 same person. **We need advice on** how long it may be kept.
 
+The delivery outbox added alongside it holds no address at all — the recipient is derived
+from the change record when a message is sent — so this question is confined to the change
+record itself.
+
+### B15. A person may receive two verification emails, one of which no longer works
+Email-change delivery retries on failure, and each retry issues a fresh link that
+invalidates the previous one. If a provider accepted a message but the response was lost,
+the retry sends a second email and the first link is already dead.
+
+This is a deliberate choice of failure direction: the alternative leaves an unknown number
+of live tokens for an operation that moves an account's recovery address. **We need
+confirmation** that the resulting user-facing wording is adequate, and whether anything
+must be disclosed about it. See `docs/PRIVACY_AND_RIGHTS.md` section 6a.
+
 ---
 
 ## C. What we changed, and what we deliberately did not

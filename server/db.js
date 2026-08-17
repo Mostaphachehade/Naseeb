@@ -1033,7 +1033,12 @@ async function init() {
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       -- Never the token itself. A SHA-256 of it, the same shape as sessions.
-      token_hash TEXT NOT NULL,
+      --
+      -- Nullable since the outbox landed: a pending change is created with no
+      -- token at all, and the hash appears only when a delivery worker mints
+      -- one immediately before sending it. Every retry overwrites this column,
+      -- which is what makes the previous link stop working.
+      token_hash TEXT,
       new_email TEXT NOT NULL,
       previous_email TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
@@ -1043,11 +1048,100 @@ async function init() {
       cancelled_at TIMESTAMPTZ,
       cancelled_reason TEXT
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS uniq_email_change_token ON email_change_requests(token_hash);
+    ALTER TABLE email_change_requests ALTER COLUMN token_hash DROP NOT NULL;
+    DROP INDEX IF EXISTS uniq_email_change_token;
+    -- Partial, because a pending change now spends its first moments with no
+    -- token at all and many rows can hold NULL at once.
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_email_change_token
+      ON email_change_requests(token_hash) WHERE token_hash IS NOT NULL;
     -- One pending change per account. A second request supersedes the first
     -- deliberately rather than racing it.
     CREATE UNIQUE INDEX IF NOT EXISTS uniq_email_change_pending
       ON email_change_requests(user_id) WHERE status = 'pending';
+
+    -- The email-change outbox.
+    --
+    -- Both messages in an email change are security-critical. The verification
+    -- is the only way the change can complete; the warning to the old address is
+    -- the only signal an account holder gets that somebody is moving their
+    -- recovery address. Sending either as an unawaited promise made a mail
+    -- outage completely silent — which is exactly the outage an attacker would
+    -- want.
+    --
+    -- So the intent is written in the same transaction as the thing that caused
+    -- it, and delivery is a separate retryable step against that record.
+    --
+    -- What this table deliberately does NOT hold: a plaintext token, a copy of
+    -- the token hash, a rendered link, an email body, a recipient address, a
+    -- session value, or anything a provider said. The recipient is derived by
+    -- joining the change record at send time — duplicating an address here would
+    -- put a second copy of personal data in a table that exists to hold none.
+    CREATE TABLE IF NOT EXISTS email_change_notifications (
+      id TEXT PRIMARY KEY,
+      -- No foreign key, on purpose: a cascade from a deleted account must not
+      -- silently remove the record that a security notice was owed. A row whose
+      -- change has gone is cancelled by the worker with a reason.
+      change_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      -- 'verification' (to the new address) | 'old_address_warning' (to the old)
+      kind TEXT NOT NULL,
+      -- 'pending' | 'sent' | 'failed' | 'cancelled'
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      -- The processing lease. A worker writes its own id and a deadline; a
+      -- crashed worker's row becomes claimable again when the deadline passes,
+      -- rather than being stuck forever behind a lock nobody holds.
+      lease_owner TEXT,
+      lease_expires_at TIMESTAMPTZ,
+      -- A category, never a provider message: bounce text routinely quotes the
+      -- recipient address back at you.
+      last_error_category TEXT,
+      last_attempt_at TIMESTAMPTZ,
+      sent_at TIMESTAMPTZ,
+      failed_at TIMESTAMPTZ,
+      cancelled_reason TEXT,
+      -- One logical notification per change per kind. The unique index below is
+      -- what makes "enqueue" idempotent under a retry or a double submit.
+      idempotency_key TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_email_change_notification_key
+      ON email_change_notifications(idempotency_key);
+    CREATE INDEX IF NOT EXISTS idx_email_change_notifications_due
+      ON email_change_notifications(next_attempt_at) WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS idx_email_change_notifications_change
+      ON email_change_notifications(change_id);
+
+    -- What happened to each notification, for an administrator and for an audit.
+    -- Append-only on the same terms as every other history in this codebase, and
+    -- holding no address, body or token either.
+    CREATE TABLE IF NOT EXISTS email_change_notification_events (
+      id TEXT PRIMARY KEY,
+      notification_id TEXT NOT NULL,
+      change_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      -- enqueued | token_superseded | sent | attempt_failed | failed_terminal |
+      -- cancelled | manual_retry | lease_recovered
+      event TEXT NOT NULL,
+      attempt INTEGER,
+      error_category TEXT,
+      -- Free text only where a human wrote it — a manual retry reason. Never a
+      -- provider message.
+      note TEXT,
+      actor_user_id TEXT,
+      actor_role TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_change_notification_events_notification
+      ON email_change_notification_events(notification_id, created_at);
+
+    DROP TRIGGER IF EXISTS email_change_notification_events_immutable
+      ON email_change_notification_events;
+    CREATE TRIGGER email_change_notification_events_immutable
+      BEFORE UPDATE OR DELETE ON email_change_notification_events
+      FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only();
 
     -- Privacy requests: access, correction, deletion, objection.
     --
@@ -1215,6 +1309,59 @@ async function init() {
     CREATE TRIGGER privacy_request_events_immutable
       BEFORE UPDATE OR DELETE ON privacy_request_events
       FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only();
+
+    -- A privacy request may change state. It may not be erased.
+    --
+    -- The events and the execution evidence were already append-only, but the
+    -- request row itself was not: a DELETE would have taken the reference, the
+    -- type, the status and the requester's own words with it, leaving history
+    -- that pointed at nothing. "We deleted the record of you asking us to delete
+    -- things" is the one outcome this workflow must never produce.
+    --
+    -- DELETE only, so the controlled UPDATE path — status, outcome, notes,
+    -- version — keeps working exactly as before.
+    --
+    -- This also closes the cascade: privacy_requests.user_id is
+    -- ON DELETE CASCADE, so removing an account used to take its requests with
+    -- it. The trigger fires during the cascade and aborts the whole statement,
+    -- which means an account with a privacy request cannot be deleted at all.
+    -- That is the intended behaviour, not a side effect — see
+    -- docs/PRIVACY_AND_RIGHTS.md section 8.
+    --
+    -- The isolated test database is reset with DROP SCHEMA ... CASCADE, which
+    -- removes the table and its trigger together rather than deleting rows
+    -- through it. Nothing in the application deletes a request by any route.
+    CREATE OR REPLACE FUNCTION privacy_requests_no_delete()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      RAISE EXCEPTION
+        'privacy_requests rows cannot be deleted; a request may change state but is never erased'
+        USING ERRCODE = 'raise_exception';
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS privacy_requests_no_delete ON privacy_requests;
+    CREATE TRIGGER privacy_requests_no_delete
+      BEFORE DELETE ON privacy_requests
+      FOR EACH ROW EXECUTE FUNCTION privacy_requests_no_delete();
+
+    -- Row-level, and deliberately not also statement-level.
+    --
+    -- A row-level BEFORE DELETE fires once per row and aborts the whole
+    -- statement on the first one, so an unqualified DELETE against this table
+    -- fails exactly as a targeted delete does — the bulk case is
+    -- covered. The only thing it lets through is a delete that matches nothing,
+    -- which erases nothing.
+    --
+    -- A statement-level trigger would have covered that last case too, and was
+    -- tried. It is wrong here: PostgreSQL implements an ON DELETE CASCADE as an
+    -- internal DELETE against this table for every parent row removed, and a
+    -- statement-level trigger fires on those even when they match zero rows. The
+    -- result was that no account could be deleted anywhere in the system,
+    -- including accounts that had never made a privacy request. Refusing to
+    -- delete a request is the goal; refusing to delete every user is a bug that
+    -- happens to look like security.
+    DROP TRIGGER IF EXISTS privacy_requests_no_bulk_delete ON privacy_requests;
   `);
 
   // Separate from the batch above because it has to inspect existing data and

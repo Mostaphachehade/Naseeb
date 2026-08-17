@@ -17,6 +17,7 @@
 // every session ended when it completes.
 const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
+const outbox = require('./emailChangeOutbox');
 
 const REQUEST_TYPES = ['access', 'correction', 'deletion', 'objection'];
 
@@ -258,6 +259,10 @@ async function assertRecentPassword(client, { userId, password }) {
 const EMAIL_TOKEN_BYTES = 32;
 const EMAIL_TOKEN_TTL_HOURS = 2;
 
+// Kept for the shape it documents and for tests. The live minting happens in
+// the delivery worker — see server/lib/emailChangeOutbox.js `supersedeToken` —
+// because a token that exists before it is about to be sent is a token sitting
+// in a database for no reason.
 function issueEmailToken() {
   const token = crypto.randomBytes(EMAIL_TOKEN_BYTES).toString('base64url');
   return { token, hash: hashEmailToken(token) };
@@ -319,20 +324,32 @@ async function startEmailChange(client, { userId, newEmail, now = new Date() }) 
     [userId]
   );
 
-  const { token, hash } = issueEmailToken();
   const expiresAt = new Date(now.getTime() + EMAIL_TOKEN_TTL_HOURS * 3600000);
   const id = uuid();
 
+  // Created with NO token. `token_hash` is NULL until a delivery worker mints
+  // one immediately before sending it, so between this line and the first send
+  // there is nothing in the database that could become a working link — and a
+  // change that is never delivered never has a token at all.
   await client.query(
     `INSERT INTO email_change_requests
        (id, user_id, token_hash, new_email, previous_email, status, expires_at)
-     VALUES ($1, $2, $3, $4, $5, 'pending', $6)`,
-    [id, userId, hash, email, previousEmail, expiresAt]
+     VALUES ($1, $2, NULL, $3, $4, 'pending', $5)`,
+    [id, userId, email, previousEmail, expiresAt]
   );
 
-  // The token is returned to the caller ONCE, to be put in an email. It is never
-  // stored, never logged, and never returned by any read endpoint.
-  return { id, token, newEmail: email, previousEmail, expiresAt };
+  // Same transaction as the change itself. A crash between the two is not
+  // possible, and a provider failure later cannot lose either — see
+  // server/lib/emailChangeOutbox.js.
+  const queued = await outbox.enqueue(client, {
+    changeId: id,
+    userId,
+    kind: outbox.KINDS.VERIFICATION,
+  });
+
+  // No token is returned, because none exists yet. Nothing downstream — the
+  // route, the response, a log line — can leak what has not been created.
+  return { id, newEmail: email, previousEmail, expiresAt, notificationId: queued.id };
 }
 
 // Completes a change. Single-use and race-safe: the UPDATE matches only a row
@@ -372,6 +389,16 @@ async function completeEmailChange(client, { token, now = new Date() }) {
     `UPDATE users SET email = $2, email_verified = TRUE WHERE id = $1`,
     [request.user_id, request.new_email]
   );
+
+  // The warning to the old address is enqueued in the same transaction as the
+  // change itself. Either both happen or neither does — and because it is only
+  // an intent to send, a mail outage afterwards cannot undo a change the person
+  // has already verified. The warning simply stays queued until it goes out.
+  await outbox.enqueue(client, {
+    changeId: request.id,
+    userId: request.user_id,
+    kind: outbox.KINDS.OLD_ADDRESS_WARNING,
+  });
 
   return request;
 }

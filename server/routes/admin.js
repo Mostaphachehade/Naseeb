@@ -9,6 +9,7 @@ const { validateMediaUrl, validateExternalLinkUrl } = require('../lib/mediaUrls'
 const integrity = require('../lib/entryIntegrity');
 const riskSignals = require('../lib/riskSignals');
 const rights = require('../lib/accountRights');
+const emailChangeOutbox = require('../lib/emailChangeOutbox');
 
 // Account status is authentication; host status is authorization. Two columns,
 // two routes, and deliberately no path that changes one as a side effect of the
@@ -1164,11 +1165,16 @@ router.get('/privacy-requests', requireAdmin, async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
     const result = await pool.query(
+      // Open first — sourced from rights.OPEN_STATUSES rather than a list
+      // repeated here. The hard-coded copy went stale the moment
+      // awaiting_policy was added: it sorted an open request in among the
+      // closed ones and pushed it out of the window entirely.
       `SELECT id, reference, request_type, status, blockers, created_at, updated_at, version,
               user_id
          FROM privacy_requests
-        ORDER BY (status IN ('submitted', 'in_review', 'awaiting_information')) DESC, created_at DESC
-        LIMIT 200`
+        ORDER BY (status = ANY($1)) DESC, created_at DESC
+        LIMIT 200`,
+      [rights.OPEN_STATUSES]
     );
 
     res.json(
@@ -1327,6 +1333,76 @@ router.post('/privacy-requests/:id/decision', requireAdmin, async (req, res) => 
       return res
         .status(err.status)
         .json({ error: err.message, code: err.code, current: err.details || null });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  } finally {
+    client.release();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Email-change notification outbox
+// ---------------------------------------------------------------------------
+
+// Both messages in an email change are security-critical, so a delivery that
+// gave up has to be visible to somebody rather than sitting in a table nobody
+// reads. This list carries no address, no subject, no body, no token and no
+// provider text — there is nothing of that kind in the outbox to show.
+router.get('/email-change-notifications', requireAdmin, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await emailChangeOutbox.adminView(pool, { limit: 100 }));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// The audit trail for one notification. Statuses, attempts, error categories and
+// any reason a human typed — never an address or a message.
+router.get('/email-change-notifications/:id/events', requireAdmin, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const result = await pool.query(
+      `SELECT ev.event, ev.attempt, ev.error_category, ev.note, ev.actor_role,
+              ev.created_at, actor.name AS actor_name
+         FROM email_change_notification_events ev
+         LEFT JOIN users actor ON actor.id = ev.actor_user_id
+        WHERE ev.notification_id = $1 ORDER BY ev.created_at`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// A deliberate, audited retry. It requeues rather than sending: a retry that
+// fails again is then just another attempt through the same path, not a second
+// implementation that can drift from the first.
+router.post('/email-change-notifications/:id/retry', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    res.set('Cache-Control', 'no-store');
+    await client.query('BEGIN');
+    const result = await emailChangeOutbox.manualRetry(client, {
+      notificationId: req.params.id,
+      actorUserId: req.userId,
+      reason: req.body && req.body.reason,
+    });
+    await client.query('COMMIT');
+
+    // Drained outside the transaction, and not awaited for its outcome: the
+    // requeue is already committed and the retry loop owns it from here.
+    emailChangeOutbox.drainInBackground({ limit: 5 });
+
+    res.json({ ...result, note: 'Requeued. Delivery is attempted in the background.' });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err && err.status) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
     }
     console.error(err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });

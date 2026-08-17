@@ -28,6 +28,7 @@
       <a href="#integrity">Entry integrity</a>
       <a href="#rescue">Suspended-host claims</a>
       <a href="#privacy">Privacy requests</a>
+      <a href="#email-notifications">Email delivery</a>
       <a href="#ad-inquiries">Ad inquiries</a>
       <a href="#ads-section">Ads</a>
       <a href="#giveaways">Giveaways</a>
@@ -139,6 +140,19 @@
       </div>
     </div>
     <div id="privacy-content" class="u-1e0e3812"><p>Loading…</p></div>
+
+    <!-- The email-change outbox. Both messages in an email change are
+         security-critical, so a delivery that gave up has to be visible rather
+         than sitting in a table nobody reads. This list carries no address, no
+         subject, no body, no token and no provider text — there is nothing of
+         that kind in the outbox to show. -->
+    <div class="section-head" id="email-notifications">
+      <div>
+        <h2>Email change delivery</h2>
+        <p>Verification links to a new address, and the warning to the old one after a change completes. Failed deliveries are listed first. Retrying is deliberate and needs a reason — it is recorded against the notification.</p>
+      </div>
+    </div>
+    <div id="email-notifications-content" class="u-1e0e3812"><p>Loading…</p></div>
 
     <div class="section-head" id="claims">
       <div>

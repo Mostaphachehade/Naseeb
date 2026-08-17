@@ -25,6 +25,14 @@ function emailFrom() {
 // stays best-effort, because a failed "you're entered" notice should not undo
 // an entry — but the claim outbox has to know whether a send worked in order to
 // retry it, and a helper that always resolves cannot tell it.
+// The recipient, masked. A development log is terminal scrollback, CI output and
+// anything scraping either — an address printed there is an address disclosed,
+// and it is disclosed for every message this system sends. The first character
+// and the domain are enough to tell which mailbox a developer is looking at.
+function maskRecipient(value) {
+  return String(value || '').replace(/^(.).*(@.*)$/, '$1***$2');
+}
+
 async function sendEmail({ to, subject, html, sensitive = false, strict = false }) {
   const apiKey = resendApiKey();
   if (!apiKey) {
@@ -32,11 +40,11 @@ async function sendEmail({ to, subject, html, sensitive = false, strict = false 
       process.env.NODE_ENV !== 'production' && process.env.CLAIM_DEV_LOG_LINKS === 'true';
     if (sensitive && !allowSensitiveLog) {
       console.log(
-        `[email:dev] Would send "${subject}" to ${to} (body suppressed — contains a single-use link)`
+        `[email:dev] Would send "${subject}" to ${maskRecipient(to)} (body suppressed — contains a single-use link)`
       );
       return;
     }
-    console.log(`[email:dev] Would send "${subject}" to ${to}\n${html}\n`);
+    console.log(`[email:dev] Would send "${subject}" to ${maskRecipient(to)}\n${html}\n`);
     return;
   }
   try {
@@ -72,4 +80,4 @@ function escapeHtmlForEmail(str) {
     .replace(/>/g, '&gt;');
 }
 
-module.exports = { sendEmail, escapeHtmlForEmail };
+module.exports = { sendEmail, maskRecipient, escapeHtmlForEmail };

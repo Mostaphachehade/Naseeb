@@ -138,7 +138,7 @@
           el('strong', { text: pending.new_email }),
           ' is waiting to be confirmed. Your account email has not changed. Check that inbox — the link expires ',
           new Date(pending.expires_at).toLocaleString(),
-          '.',
+          '. If it does not arrive we will keep trying, and each new attempt sends a fresh link — an older one will stop working.',
         ]),
         el('button', {
           class: 'btn ghost u-e21d2b9e u-8a359a76',
@@ -170,7 +170,7 @@
       password,
       el('p', {
         class: 'hint',
-        text: 'Your address does not change until you confirm it from the new inbox. We will also tell your current address that this was requested, and you will be signed out everywhere once it completes.',
+        text: 'Your address does not change until you confirm it from the new inbox. We will tell your current address once it does, and you will be signed out everywhere at that point. If the confirmation email does not arrive, we keep retrying — each attempt sends a new link and stops the previous one working, so use the most recent email.',
       }),
       el('button', {
         class: 'btn primary u-8a359a76',

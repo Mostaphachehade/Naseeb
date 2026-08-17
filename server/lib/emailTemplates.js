@@ -295,18 +295,46 @@ function claimStatusHtml({ recipientName, giveawayTitle, status, message, giveaw
 // Deliberately carries no token and no link that completes anything: if this
 // message is the first the account holder hears of it, the correct action is to
 // secure the account, not to click something in an email they did not expect.
-function emailChangeNoticeHtml({ name, newEmailMasked, appUrl }) {
+// Goes to the OLD address, after the change has completed.
+//
+// Carries no token, no completing link and no signed-in link of any kind: the
+// person reading it may be the account holder whose account was just taken, and
+// handing them a live session URL in an email is the opposite of help. The new
+// address is masked, so the message is useful without telling a thief who may
+// also read this inbox exactly where the account went.
+//
+// The recovery instruction is a password reset, which is a route that exists,
+// and a plain "contact us" — with no support address, phone number or hours
+// invented, because none has been approved. See docs/UAE_COUNSEL_REVIEW.md A5/A6.
+function emailChangeNoticeHtml({ name, newEmailMasked, appUrl, completed = false }) {
+  if (!completed) {
+    return `
+      <p>Hello ${escapeHtmlForEmail(name || 'there')},</p>
+      <p>Someone asked to change the email address on your Naseeb account to
+         <strong>${escapeHtmlForEmail(newEmailMasked)}</strong>.</p>
+      <p>The change is not done yet. It only takes effect once the new address is
+         confirmed. This message contains no link to confirm it — that link went to
+         the new address only.</p>
+      <p><strong>If this was not you</strong>, change your password now at
+         ${escapeHtmlForEmail(appUrl)}/forgot-password.html and the pending change
+         will not complete.</p>
+      <p>If it was you, nothing more to do here.</p>
+    `;
+  }
   return `
     <p>Hello ${escapeHtmlForEmail(name || 'there')},</p>
-    <p>Someone asked to change the email address on your Naseeb account to
-       <strong>${escapeHtmlForEmail(newEmailMasked)}</strong>.</p>
-    <p>The change is not done yet. It only takes effect once the new address is
-       confirmed. This message contains no link to confirm it — that link went to
-       the new address only.</p>
-    <p><strong>If this was not you</strong>, change your password now at
-       ${escapeHtmlForEmail(appUrl)}/forgot-password.html and the pending change
-       will not complete.</p>
-    <p>If it was you, nothing more to do here.</p>
+    <p>The email address on your Naseeb account has been changed to
+       <strong>${escapeHtmlForEmail(newEmailMasked)}</strong>. This address will no
+       longer receive account email.</p>
+    <p>Everyone signed in to the account has been signed out, including on the
+       device that made the change.</p>
+    <p><strong>If this was not you</strong>, act now: someone else may control the
+       account. Reset your password at
+       ${escapeHtmlForEmail(appUrl)}/forgot-password.html — a reset now goes to the
+       new address, so if you cannot complete it, contact us through the site
+       straight away and say that your address was changed without your knowledge.</p>
+    <p>This message contains no link that changes anything and no way to sign in.
+       We will never ask you for your password.</p>
   `;
 }
 

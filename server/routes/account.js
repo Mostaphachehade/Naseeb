@@ -13,8 +13,7 @@ const rights = require('../lib/accountRights');
 const eligibility = require('../lib/eligibility');
 const policies = require('../lib/policies');
 const dataExport = require('../lib/dataExport');
-const { sendEmail } = require('../lib/email');
-const { emailChangeNoticeHtml, emailChangeConfirmHtml } = require('../lib/emailTemplates');
+const outbox = require('../lib/emailChangeOutbox');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const router = express.Router();
@@ -194,49 +193,28 @@ router.post('/email-change', authLimiter, requireAuth, async (req, res) => {
     noStore(res);
     const { password, new_email: newEmail } = req.body || {};
 
+    // The change and its notification are one transaction. Nothing is sent from
+    // here: a delivery worker mints the token and sends the message, so a mail
+    // outage leaves a durable record rather than a silent failure.
     await client.query('BEGIN');
     await rights.assertRecentPassword(client, { userId: req.userId, password });
     const started = await rights.startEmailChange(client, { userId: req.userId, newEmail });
-    const who = await client.query('SELECT name FROM users WHERE id = $1', [req.userId]);
     await client.query('COMMIT');
 
-    const confirmUrl = `${APP_URL}/verify-email-change.html#token=${encodeURIComponent(started.token)}`;
+    // Drained immediately so the common case is fast, and deliberately not
+    // awaited for its result: whether it succeeds or not, the record is already
+    // committed and the retry loop owns it from here.
+    outbox.drainInBackground({ limit: 5, appUrl: APP_URL });
 
-    // Two messages. The new address gets the only copy of the token; the old one
-    // gets a warning with no link that completes anything, so a person who did
-    // not do this is told to secure the account rather than invited to click.
-    sendEmail({
-      to: started.newEmail,
-      subject: 'Confirm your new email address',
-      html: emailChangeConfirmHtml({
-        name: who.rows[0] && who.rows[0].name,
-        confirmUrl,
-        expiresAt: started.expiresAt,
-      }),
-      // The body carries the only copy of a working token. `sensitive` keeps it
-      // out of the development log the same way a claim invitation is kept out —
-      // terminal scrollback and CI output are not places for a live credential.
-      sensitive: true,
-    }).catch((err) => console.error('Email-change confirmation could not be sent:', err.message));
-
-    const masked = started.newEmail.replace(/^(.).*(@.*)$/, '$1***$2');
-    sendEmail({
-      to: started.previousEmail,
-      subject: 'Someone asked to change your Naseeb email address',
-      html: emailChangeNoticeHtml({
-        name: who.rows[0] && who.rows[0].name,
-        newEmailMasked: masked,
-        appUrl: APP_URL,
-      }),
-    }).catch((err) => console.error('Email-change notice could not be sent:', err.message));
-
-    // The token is not in this response, not in the log line above, and not in
-    // any read endpoint. It exists in one email and as a hash in one row.
+    // No token in this response, because none exists yet — it is minted in the
+    // worker, immediately before the send. And the wording says what is true:
+    // delivery is pending. It does not claim an email was sent.
     res.status(202).json({
       status: 'pending',
       new_email: started.newEmail,
       expires_at: started.expiresAt,
-      note: 'Your account email has not changed. It changes only when the new address is confirmed, and you will be signed out everywhere when it does.',
+      delivery: 'pending',
+      note: 'Your account email has not changed. We are sending a confirmation link to the new address — if it does not arrive, it will be retried automatically. The change only takes effect when that link is used, and you will be signed out everywhere when it does.',
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -275,6 +253,8 @@ router.post('/email-change/confirm', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'That link is missing its token.', code: 'TOKEN_REQUIRED' });
     }
 
+    // One transaction: the address moves, every session ends, and the warning to
+    // the old address is enqueued. Either all three happen or none does.
     await client.query('BEGIN');
     const request = await rights.completeEmailChange(client, { token });
     // Every session ends, including the one that started this. The threat being
@@ -282,6 +262,11 @@ router.post('/email-change/confirm', authLimiter, async (req, res) => {
     // leaving that session alive afterwards would defeat the whole exercise.
     await sessions.revokeAllForUser(client, request.user_id, sessions.REVOCATION.EMAIL_CHANGED);
     await client.query('COMMIT');
+
+    // After the commit, and unawaited. A warning that fails to send must not
+    // undo a change the person already verified — it stays queued and is
+    // retried.
+    outbox.drainInBackground({ limit: 5, appUrl: APP_URL });
 
     res.json({
       status: 'completed',

@@ -532,12 +532,22 @@ async function unseed() {
   await pool.query('DELETE FROM ad_inquiries WHERE id = ANY($1)', [cleanup.inquiries]);
   await pool.query('DELETE FROM host_status_events WHERE user_id = ANY($1) OR changed_by = ANY($1)', [cleanup.users]);
   await pool.query('DELETE FROM host_applications WHERE user_id = ANY($1)', [cleanup.users]);
+  await pool.query('DELETE FROM email_change_notifications WHERE user_id = ANY($1)', [cleanup.users]);
   await pool.query('DELETE FROM email_change_requests WHERE user_id = ANY($1)', [cleanup.users]);
-  await pool.query('DELETE FROM privacy_requests WHERE id = ANY($1)', [cleanup.privacyRequests]);
-  // privacy_request_events is append-only and is left alone on purpose.
+  // privacy_requests, its events and its execution evidence all refuse DELETE at
+  // the database. They are left alone on purpose, and with them the accounts
+  // they point at — the isolated database is reset with DROP SCHEMA ... CASCADE.
   await pool.query('DELETE FROM sessions WHERE user_id = ANY($1)', [cleanup.users]);
   await pool.query('DELETE FROM session_families WHERE user_id = ANY($1)', [cleanup.users]);
-  await pool.query('DELETE FROM users WHERE id = ANY($1)', [cleanup.users]);
+  const carryingRequests = await pool.query(
+    'SELECT DISTINCT user_id FROM privacy_requests WHERE user_id = ANY($1)',
+    [cleanup.users]
+  );
+  const blocked = new Set(carryingRequests.rows.map((r) => r.user_id));
+  const removable = cleanup.users.filter((id) => !blocked.has(id));
+  if (removable.length) {
+    await pool.query('DELETE FROM users WHERE id = ANY($1)', [removable]);
+  }
   await pool.query('DELETE FROM site_settings WHERE key = ANY($1)', [cleanup.settings]);
 }
 

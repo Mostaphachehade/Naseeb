@@ -100,11 +100,11 @@ CSRF tokens are HMACs computed per request from the session secret. They are
 
 | | |
 | --- | --- |
-| Fields | `id`, `user_id`, `token_hash`, `new_email`, `previous_email`, `status`, `created_at`, `expires_at`, `completed_at`, `cancelled_at`, `cancelled_reason` |
+| Fields | `email_change_requests`: `id`, `user_id`, `token_hash`, `new_email`, `previous_email`, `status`, `created_at`, `expires_at`, `completed_at`, `cancelled_at`, `cancelled_reason`. `email_change_notifications` (the outbox): `id`, `change_id`, `user_id`, `kind`, `status`, `attempts`, `next_attempt_at`, `lease_owner`, `lease_expires_at`, `last_error_category`, `last_attempt_at`, `sent_at`, `failed_at`, `cancelled_reason`, `idempotency_key`. `email_change_notification_events`: append-only delivery history. |
 | Purpose | Move an account's address safely: the change is pending until the *new* address proves it received a token. |
 | Access | The account holder sees the pending target address and its expiry — never the token. Administrators do not have a route to this table. |
 | Classification | `token_hash` **sensitive**; `new_email` / `previous_email` **confidential**. |
-| Retention implemented | Rows are kept after completion, cancellation and expiry — the history of address changes is deliberately preserved. Tokens are stored only as SHA-256; the plaintext exists in exactly one email. |
+| Retention implemented | Rows are kept after completion, cancellation and expiry — the history of address changes is deliberately preserved. `token_hash` is NULL until a delivery worker mints a token immediately before sending it, and every retry overwrites it, so at most one link is live at a time and an undelivered change never has a token at all. The outbox and its events hold no address, token, link or body; the recipient is derived from the change record at send time. See `docs/PRIVACY_AND_RIGHTS.md` §6a. |
 | Awaiting decision | How long a completed change record is kept. It contains a former address, which is personal data about the same person. |
 | Correction / deletion | Not correctable. A pending change is cancellable by the holder, with a recorded reason. |
 | External recipient | Resend — two separate messages, one to each address. The **old** address receives a warning with no completing link. |
@@ -339,6 +339,11 @@ data that is present:
 
 | Rule | Enforced by | Proved by |
 | --- | --- | --- |
+| A privacy request can change state but never be erased | `privacy_requests_no_delete` BEFORE DELETE trigger | `test/account-rights.test.js` sf5 |
+| An email-change notification survives a provider outage | `email_change_notifications` outbox, lease + backoff | `test/account-rights.test.js` ob1, ob7 |
+| Only the newest verification link works | fresh token per attempt, hash overwritten | `test/account-rights.test.js` ob3 |
+| A retry cannot extend a change's expiry | `expires_at` never written after creation | `test/account-rights.test.js` ob4 |
+| No address, token, link or body reaches a log | `sensitive` sends, masked dev recipient, category-only errors | `test/account-rights.test.js` ob15 |
 | A deletion request cannot be marked completed | `DELETION_EXECUTION_IMPLEMENTED`, the route check, and the `privacy_requests_no_phantom_deletion` CHECK | `test/account-rights.test.js` sf1 |
 | A completion names what was actually done | `assertExecutionEvidence` + `privacy_request_executions` | `test/account-rights.test.js` sf1d |
 | No route hard-deletes an account | The disabled route; no `DELETE FROM users` anywhere under `server/routes/` | `test/account-rights.test.js` sf2 |

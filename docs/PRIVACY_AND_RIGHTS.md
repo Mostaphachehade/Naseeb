@@ -199,20 +199,155 @@ because of that one scenario.
 10. **Cancellation and expiry are recorded**, not deleted.
 
 **Delivery failure changes nothing.** The state change and the send are
-decoupled: starting a change writes a pending row, and the send is a
-fire-and-forget call with a `.catch`. A message that never arrives leaves the
-account exactly where it was, holding its old address.
+decoupled — see §6a. A message that never arrives leaves the account exactly
+where it was, holding its old address, with the intent to notify durably queued.
 
 **The token never appears in a log.** The confirmation email is sent with
 `sensitive: true`, so the development mail logger prints the subject and
-suppresses the body — the same treatment a claim invitation gets. A test
-captures every `console` write during the flow and asserts no completing link
-appears in any of them.
+suppresses the body. The recipient is masked there too (`a***@example.com`) — a
+development log is terminal scrollback and CI output, and an address printed
+there is an address disclosed. A test captures every `console` write across a
+full change, including a forced provider failure, and asserts that neither
+address, the token, a link, a body or the provider's own message appears.
 
 **The token arrives in a URL fragment**, `#token=…`, and
 `verify-email-change-1.js` captures it before anything else runs — the same rule
 the claim page follows. A fragment is never sent to a server, so the token does
 not reach an access log, a proxy, or a `Referer` header on the way in.
+
+---
+
+## 6a. The email-change outbox
+
+Both messages are security-critical, in opposite directions. The verification is
+the only way a change can complete. The warning to the old address is the only
+signal an account holder gets that somebody moved the address their password
+reset goes to — which is precisely the message an attacker wants to go missing.
+Sending either as an unawaited promise made a mail outage completely silent.
+
+So the **intent** is written in the same transaction as the thing that caused it,
+and delivery is a separate retryable step against that record.
+
+### Schema
+
+`email_change_notifications`
+
+| Column | Purpose |
+| --- | --- |
+| `change_id`, `user_id` | What this is about. **No foreign key** — a cascade from a deleted account must not silently remove the record that a security notice was owed. |
+| `kind` | `verification` or `old_address_warning` |
+| `status` | `pending` / `sent` / `failed` / `cancelled` |
+| `attempts`, `next_attempt_at` | Capped exponential backoff, finite limit (6) |
+| `lease_owner`, `lease_expires_at` | The processing lease |
+| `last_error_category`, `last_attempt_at` | A category, never a provider message |
+| `sent_at`, `failed_at`, `cancelled_reason` | Outcome |
+| `idempotency_key` | `changeId:kind`, uniquely indexed |
+
+`email_change_notification_events` — append-only (`BEFORE UPDATE OR DELETE`),
+recording `enqueued`, `token_superseded`, `sent`, `attempt_failed`,
+`failed_terminal`, `cancelled` and `manual_retry`.
+
+**What neither table holds:** a plaintext token, a copy of the token hash, a
+rendered link, an email body or subject, a recipient address, a session or CSRF
+value, a password, a cookie, a provider secret, or anything the provider said.
+The recipient is **derived** by joining the change record at send time —
+duplicating an address here would put a second copy of personal data in a table
+that exists to hold none. A test asserts no such column exists and sweeps every
+text column in the schema for the plaintext token.
+
+### Token lifecycle
+
+A pending change is created with **no token**. `token_hash` is `NULL`, and
+between that moment and the first send there is nothing anywhere that could be
+turned into a working link. A change that is never delivered never has a token
+at all.
+
+A token exists only inside `attemptDelivery`, in worker memory, immediately
+before the message goes out:
+
+1. **Phase 1 (transaction).** Resolve the recipient from the change record.
+   Refuse if the change is completed, cancelled, expired, superseded or gone —
+   each cancels the notification with that reason rather than retrying forever.
+   Mint 32 random bytes, write only the SHA-256 to `email_change_requests`, and
+   commit.
+2. **Phase 2 (no transaction open).** Send. The plaintext is a local variable
+   and an argument to the template; it is never returned, stored, logged or put
+   in a result.
+3. **Phase 3 (transaction).** Record `sent`, or a category and a backed-off
+   `next_attempt_at`, or terminal failure.
+
+**Every retry mints a fresh token and overwrites the hash**, so there is exactly
+one live token per pending change at any moment and it is the one in the most
+recent message. Every previously generated link stops working.
+
+**`expires_at` is never touched.** It is set once, at creation. A retry issues a
+fresh token that dies at the *original* deadline, so the retry loop cannot
+extend the life of a change by a millisecond. The mint itself is guarded:
+`UPDATE … WHERE status = 'pending' AND expires_at > now`, so an expired,
+cancelled or completed change produces no token at all.
+
+### The safe failure direction, chosen deliberately
+
+If the provider accepted a message but the response was lost, the outbox still
+believes the send failed and will retry. **That retry invalidates the link in the
+message that may have arrived** and sends a new one. A person can therefore
+receive two emails and find the first link dead.
+
+That is the direction we chose. The alternative — leaving the uncertain link live
+so both work — means an unknown number of valid tokens for an operation that
+moves an account's recovery address, with no way to count or revoke them. A
+confusing email is a support question; a second live token is a security hole.
+
+### Concurrency
+
+Rows are claimed with `FOR UPDATE SKIP LOCKED` inside a short transaction that
+also stamps a lease and increments `attempts`, then commits **before** the
+network call. Two workers — two instances, or a scheduled tick overlapping a
+manual drain — each take rows the other has not.
+
+`SKIP LOCKED` protects only for the length of the claiming transaction, which is
+why the lease exists: it protects the row for the rest of the attempt and
+**expires on its own** after 120 seconds, so a worker that dies mid-send leaves a
+row that becomes claimable again without anybody intervening. A test claims a row
+as a "crashed" worker, proves nobody else can take it while the lease is live,
+expires the lease, and proves the next worker recovers it.
+
+**No database transaction is held open across the network call.** That is the
+deliberate difference from the older claim-invitation outbox
+(`server/lib/claimNotifications.js`), which does hold one — a divergence worth
+knowing about rather than assuming both work the same way.
+
+### Failure and retry
+
+Capped exponential backoff (`min(2^attempts, 60)` minutes), a finite limit of 6
+attempts, then `failed`. A terminal failure logs a **sanitised** alert — the
+notification id, the kind, the attempt count and the error category, never an
+address or the provider's text — and reports through
+`errorReporting.reportError`, so the Sentry scrubber from `6212e49` is in the
+path.
+
+A failed notification is visible in the administrator queue, top of the list.
+**Manual retry is deliberate and audited**: an administrator, re-read from the
+database, and a mandatory reason recorded on the append-only trail. It requeues
+rather than sending, so a retry that fails again is another attempt through the
+same path rather than a second implementation. An already-delivered notification
+returns 409 rather than being resent.
+
+### The old-address warning
+
+Enqueued inside the same transaction that moves the address and revokes every
+session — either all three happen or none does. A warning that fails to send
+therefore **cannot undo a change the person already verified**; it stays queued
+and is retried, and the sessions stay revoked.
+
+The message carries no verification token, no completing link, no link to the
+completion page and nothing that signs anybody in — the person reading it may be
+an account holder who has just been locked out, and handing them a live session
+URL would be the opposite of help. The new address is **masked**
+(`a***@example.com`). It points at the password-reset route, which exists, and
+otherwise says to contact us through the site — **no support address, phone
+number or hours are invented**, because none has been approved
+(`docs/UAE_COUNSEL_REVIEW.md` A5/A6).
 
 ---
 
@@ -273,8 +408,27 @@ stays in the administrator queue, and still requires follow-up.
   decision must send it back. A screen left open while somebody else decided is
   refused with `STALE_DECISION`, **writes no event, and changes no status**. A
   missing version is refused too — an omitted field is not permission.
-- **Nothing is deletable.** `privacy_request_events` rejects UPDATE and DELETE
-  at the database, and no route at any privilege level deletes a request.
+- **Nothing is deletable — including the request itself.** A privacy request may
+  change state; it cannot be erased. A `BEFORE DELETE` trigger on
+  `privacy_requests` refuses a targeted delete, refuses an unqualified
+  `DELETE FROM`, and refuses the cascade from a deleted account — so an account
+  carrying a privacy request cannot be removed at all through application SQL.
+  Controlled `UPDATE`s (status, outcome, notes, version) are untouched: the
+  trigger is DELETE-only. `privacy_request_events` and
+  `privacy_request_executions` reject UPDATE **and** DELETE on top of that, and
+  no route at any privilege level deletes any of the three.
+
+  The trigger is row-level rather than statement-level, which is a deliberate
+  narrowing. A statement-level trigger fires on the internal `DELETE` PostgreSQL
+  issues for an `ON DELETE CASCADE` even when it matches zero rows, which made
+  *every* account undeletable, including accounts that had never made a request.
+  Refusing to delete a request is the goal; refusing to delete every user is a
+  bug that looks like security. The row-level trigger still fails an unqualified
+  bulk delete, because it fires on the first row.
+
+  The isolated test database is reset with `DROP SCHEMA … CASCADE`, which removes
+  the table and its trigger together rather than deleting rows through it. No
+  test deletes a request through the application.
 - **Administrator authorization is re-read from Postgres on every request.**
   Removing the flag mid-session stops the next call; suspending the account
   stops it at authentication.
