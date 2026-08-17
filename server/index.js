@@ -15,8 +15,7 @@ errorReporting.init(Sentry);
 
 const app = require('./app');
 const {
-  pool, init, BASELINE_SQL, ensureSlotExclusionConstraint,
-  isSlotProtectionActive, SLOT_CONSTRAINT_NAME,
+  pool, ensureSlotExclusionConstraint, isSlotProtectionActive, SLOT_CONSTRAINT_NAME,
 } = require('./db');
 const { isAdsCheckoutEnabled, areClaimsEnabled } = require('./lib/featureFlags');
 const claimScheduler = require('./lib/claimScheduler');
@@ -91,17 +90,31 @@ const shutdown = createShutdownCoordinator({
 // ledger — see server/lib/migrations.js for why that distinction is not
 // cosmetic.
 async function start() {
-  const summary = await migrations.migrate(pool, { init, baselineSql: BASELINE_SQL });
-
-  // Every boot, not only when the baseline runs.
+  // Startup VERIFIES. It does not migrate and it does not adopt.
   //
-  // This lived inside init(), which ran on every start. Once the migration
-  // ledger arrived, init() stopped running on a database that already had the
-  // schema — and this went with it, silently. It is a VERIFICATION step, not a
-  // migration: it inspects existing bookings, reports any overlapping pair, and
-  // adds the constraint when it can. Skipping it on an adopted database would
-  // mean the overlap report only ever appeared on a fresh one, which is the
-  // database that cannot have overlaps.
+  // A web process that migrates on boot will eventually boot against a database
+  // somebody did not expect — a restored copy, a rolled-back deploy, a staging
+  // URL in the wrong environment — and change it. The first version of this
+  // ledger was worse: it would ADOPT such a database, writing "already migrated"
+  // because a users table existed, after which nothing checked again.
+  //
+  // So: report what the ledger says, refuse readiness while it is wrong, and
+  // leave the fixing to `node scripts/migrate.js`, run by a person who has read
+  // what it is about to do.
+  const schema = await migrations.verify(pool);
+  if (!schema.ok) {
+    console.error(
+      `Schema is not ready: ${schema.problems.join('; ')}. ` +
+        'Run `node scripts/migrate.js status` to see what is missing, then `migrate up` or ' +
+        '`migrate adopt`. This process will start and serve /healthz, but /readyz will fail ' +
+        'until the schema is correct — it will not change the database itself.'
+    );
+  }
+
+  // A verification step rather than a migration: it inspects existing bookings,
+  // reports any overlapping pair and adds the constraint only when it safely
+  // can. Read-mostly and idempotent, and it never resolves an overlap itself —
+  // those are real commercial records.
   await ensureSlotExclusionConstraint(pool);
 
   await assertSlotProtection();
@@ -119,7 +132,8 @@ async function start() {
   const state = config.deploymentState();
   const server = app.listen(PORT, () => {
     console.log(
-      `Naseeb running at http://localhost:${PORT} (schema ${summary.version}, deployment ${state}).`
+      `Naseeb running at http://localhost:${PORT} (schema ${migrations.SCHEMA_VERSION}, ` +
+        `deployment ${state}, schema ${schema.ok ? 'verified' : 'NOT READY'}).`
     );
     const disclosure = config.stateDisclosure();
     if (disclosure) console.log(disclosure.disclosure);

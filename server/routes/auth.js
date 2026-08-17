@@ -8,6 +8,7 @@ const { authLimiter } = require('../middleware/rateLimit');
 const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
 const sessions = require('../lib/sessions');
 const eligibility = require('../lib/eligibility');
+const emailDelivery = require('../lib/emailDelivery');
 const { tokenForFamily } = require('../lib/csrf');
 
 const router = express.Router();
@@ -77,6 +78,11 @@ async function sendVerificationEmail(user, token) {
 
 router.post('/signup', authLimiter, async (req, res) => {
   try {
+    // Before anything is written. An account that cannot be sent its
+    // verification email is an account nobody can finish creating — and one the
+    // person cannot create again, because the address is now taken.
+    if (emailDelivery.refuseIfUndeliverable(res, { action: 'signup' })) return;
+
     const { name, email, password, age_confirmed: ageConfirmed } = req.body;
 
     if (!name || !email || !password) {
@@ -298,6 +304,10 @@ router.get('/verify', async (req, res) => {
 
 router.post('/resend-verification', authLimiter, requireAuth, async (req, res) => {
   try {
+    // The whole action is the send. Issuing a fresh token that invalidates the
+    // previous one and then failing to deliver it would leave somebody worse
+    // off than before they pressed the button.
+    if (emailDelivery.refuseIfUndeliverable(res, { action: 'resend_verification' })) return;
     const result = await pool.query('SELECT * FROM users WHERE id = $1', [req.userId]);
     const user = result.rows[0];
     if (!user) {
@@ -322,6 +332,10 @@ router.post('/resend-verification', authLimiter, requireAuth, async (req, res) =
 
 router.post('/forgot-password', authLimiter, async (req, res) => {
   try {
+    // Same: a reset token written but never delivered is a live credential
+    // nobody asked for, sitting in a row.
+    if (emailDelivery.refuseIfUndeliverable(res, { action: 'password_reset' })) return;
+
     const { email } = req.body;
     if (!email || !EMAIL_RE.test(email.trim())) {
       return res.status(400).json({ error: 'Please enter a valid email address.' });

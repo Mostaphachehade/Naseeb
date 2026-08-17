@@ -33,6 +33,7 @@ try {
 // Required after configureTestEnv(), which is what points DATABASE_URL at the
 // approved test database — server/db.js builds its Pool at require time.
 const { pool, init } = require('../server/db');
+const migrations = require('../server/lib/migrations');
 
 async function main() {
   // DROP SCHEMA is the honest version of a reset: it takes tables, indexes,
@@ -40,8 +41,22 @@ async function main() {
   // column from an abandoned branch can't survive into a fresh run.
   await pool.query('DROP SCHEMA IF EXISTS public CASCADE');
   await pool.query('CREATE SCHEMA public');
+
+  // The test reset is DELIBERATELY NOT the production migration path: it drops
+  // the schema, which nothing in production may ever do. It then runs the same
+  // migrations so the ledger exists and readiness can be exercised — without
+  // that, every readiness test would fail on "migration not applied" and the
+  // suite would be testing a state no deployment is ever in.
+  //
+  // `migrate` here is only ever pointed at the isolated test database: the guard
+  // above has already refused anything else.
+  const summary = await migrations.migrate(pool, {
+    log: { log: () => {}, error: console.error },
+  });
   await init();
-  console.log(`Test schema reset: ${target.describe}`);
+  console.log(
+    `Test schema reset: ${target.describe} (migrations ${summary.applied.join(', ') || 'none'}, verified ${summary.verified})`
+  );
   await pool.end();
 }
 

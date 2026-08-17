@@ -189,6 +189,7 @@ test('op3. a disabled feature does not require its provider credentials', () => 
       COOKIE_SECURE: undefined,
       DATABASE_SSL: undefined,
       RESEND_API_KEY: 're_fabricated_value_for_this_fixture_only',
+      EMAIL_FROM: 'Naseeb <hello@fabricated-naseeb-domain.ae>',
       SENTRY_DSN: 'https://fabricated@o0.ingest.sentry.io/1',
     },
     () => config.validate()
@@ -274,6 +275,8 @@ test('op4b. production refuses a test database, an insecure cookie and the dev m
     APP_URL: 'https://example.invalid',
     INTEGRITY_SIGNAL_SECRET: 'fabricated-integrity-secret-0123456789abcdefghij',
     TRUSTED_PROXY_HOPS: '1',
+    RESEND_API_KEY: 're_fabricated_value_for_this_fixture_only',
+    EMAIL_FROM: 'Naseeb <hello@fabricated-naseeb-domain.ae>',
   };
 
   const testDb = withEnv(
@@ -687,13 +690,13 @@ test('op15-16. liveness survives a database outage; readiness does not', async (
 });
 
 test('op17. readiness fails when the schema or a critical protection is missing', async () => {
-  const verified = await migrations.verify(pool, { baselineSql: BASELINE_SQL });
+  const verified = await migrations.verify(pool);
   assert.equal(verified.ok, true, JSON.stringify(verified.problems));
 
   // A missing constraint fails verification.
   await pool.query('ALTER TABLE privacy_requests DROP CONSTRAINT privacy_requests_no_phantom_deletion');
   try {
-    const broken = await migrations.verify(pool, { baselineSql: BASELINE_SQL });
+    const broken = await migrations.verify(pool);
     assert.equal(broken.ok, false);
     assert.ok(broken.problems.some((p) => /privacy_requests_no_phantom_deletion/.test(p)));
 
@@ -712,7 +715,7 @@ test('op17. readiness fails when the schema or a critical protection is missing'
   // A missing trigger fails too.
   await pool.query('DROP TRIGGER privacy_requests_no_delete ON privacy_requests');
   try {
-    const broken = await migrations.verify(pool, { baselineSql: BASELINE_SQL });
+    const broken = await migrations.verify(pool);
     assert.equal(broken.ok, false);
     assert.ok(broken.problems.some((p) => /privacy_requests_no_delete/.test(p)));
   } finally {
@@ -722,7 +725,7 @@ test('op17. readiness fails when the schema or a critical protection is missing'
     );
   }
 
-  const restored = await migrations.verify(pool, { baselineSql: BASELINE_SQL });
+  const restored = await migrations.verify(pool);
   assert.equal(restored.ok, true, JSON.stringify(restored.problems));
 });
 
@@ -832,7 +835,7 @@ test('op20. a shutdown that cannot finish exits non-zero after the timeout', asy
 test('op21. migration locking prevents concurrent application', async () => {
   const applied = await migrations.appliedMigrations(pool);
   assert.ok(applied.length >= 1, 'the ledger has entries');
-  assert.ok(applied.some((m) => m.id === '0001_baseline'));
+  assert.ok(applied.some((m) => m.id === '001_baseline'));
 
   // Every migration recorded exactly once, whatever ran before.
   const ids = applied.map((m) => m.id);
@@ -863,8 +866,8 @@ test('op21. migration locking prevents concurrent application', async () => {
   }
 
   // Re-running is a no-op, however many times.
-  const a = await migrations.migrate(pool, { init, baselineSql: BASELINE_SQL, log: { log() {} } });
-  const b = await migrations.migrate(pool, { init, baselineSql: BASELINE_SQL, log: { log() {} } });
+  const a = await migrations.migrate(pool, { baselineSql: BASELINE_SQL, log: { log() {}, error() {} } });
+  const b = await migrations.migrate(pool, { baselineSql: BASELINE_SQL, log: { log() {}, error() {} } });
   assert.deepEqual(a.applied, []);
   assert.deepEqual(b.applied, []);
 
@@ -875,22 +878,21 @@ test('op21. migration locking prevents concurrent application', async () => {
 test('op22. an edited historical migration is detected and refused', async () => {
   // The checksum of the baseline is the hash of the SQL it runs, so editing the
   // bootstrap changes it.
-  const real = migrations.checksumFor(migrations.MIGRATIONS[0], { baselineSql: BASELINE_SQL });
-  const edited = migrations.checksumFor(migrations.MIGRATIONS[0], {
-    baselineSql: `${BASELINE_SQL}\n-- an edit somebody made later`,
-  });
-  assert.notEqual(real, edited, 'editing the baseline changes its checksum');
+  const real = migrations.checksumFor(migrations.MIGRATIONS[0]);
+  assert.equal(real, migrations.checksum(BASELINE_SQL), 'the baseline is checksummed from its frozen file');
+  const edited = migrations.checksum(`${BASELINE_SQL}\n-- an edit somebody made later`);
+  assert.notEqual(real, edited, 'editing the frozen baseline changes its checksum');
 
   // Simulate a database whose ledger records a different checksum: that is what
   // an edited historical migration looks like from here.
-  await pool.query("UPDATE schema_migrations SET checksum = 'tampered' WHERE id = '0001_baseline'");
+  await pool.query("UPDATE schema_migrations SET checksum = 'tampered' WHERE id = '001_baseline'");
   try {
     await assert.rejects(
-      () => migrations.migrate(pool, { init, baselineSql: BASELINE_SQL, log: { log() {} } }),
+      () => migrations.migrate(pool, { baselineSql: BASELINE_SQL, log: { log() {}, error() {} } }),
       /has changed since it was applied/
     );
 
-    const verified = await migrations.verify(pool, { baselineSql: BASELINE_SQL });
+    const verified = await migrations.verify(pool);
     assert.equal(verified.ok, false);
     assert.ok(verified.problems.some((p) => /checksum mismatch/.test(p)));
 
@@ -898,11 +900,11 @@ test('op22. an edited historical migration is detected and refused', async () =>
     const res = await api().get('/readyz');
     assert.equal(res.status, 503);
     assert.ok(res.body.failing.includes('schema'));
-    assert.ok(!JSON.stringify(res.body).includes('0001_baseline'));
+    assert.ok(!JSON.stringify(res.body).includes('001_baseline'));
   } finally {
     await pool.query('UPDATE schema_migrations SET checksum = $1 WHERE id = $2', [
       real,
-      '0001_baseline',
+      '001_baseline',
     ]);
   }
 
@@ -910,35 +912,60 @@ test('op22. an edited historical migration is detected and refused', async () =>
   // exactly the case a rollback produces and nobody tested.
   await pool.query(
     `INSERT INTO schema_migrations (id, checksum, description, applied_by)
-     VALUES ('9999_from_the_future','x','fabricated','migrate')`
+     VALUES ('999_from_the_future','x','fabricated','migrate')`
   );
   try {
-    const ahead = await migrations.verify(pool, { baselineSql: BASELINE_SQL });
+    const ahead = await migrations.verify(pool);
     assert.equal(ahead.ok, false);
     assert.ok(ahead.problems.some((p) => /schema is ahead of this code/.test(p)));
   } finally {
-    await pool.query("DELETE FROM schema_migrations WHERE id = '9999_from_the_future'");
+    await pool.query("DELETE FROM schema_migrations WHERE id = '999_from_the_future'");
   }
 
-  const restored = await migrations.verify(pool, { baselineSql: BASELINE_SQL });
+  const restored = await migrations.verify(pool);
   assert.equal(restored.ok, true, JSON.stringify(restored.problems));
 });
 
 test('op22b. no migration silently deletes commercial or audit data', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'server', 'lib', 'migrations.js'), 'utf8');
-  const bodies = migrations.MIGRATIONS.map((m) => m.run.toString()).join('\n');
+  const bodyFor = (m) => (m.sqlFile ? migrations.sqlFor(m) : m.run.toString());
 
-  [/DROP\s+TABLE/i, /TRUNCATE/i, /DELETE\s+FROM/i, /DROP\s+COLUMN/i].forEach((pattern) => {
-    assert.ok(!pattern.test(bodies), `a migration body must not contain ${pattern}`);
+  // Nothing may drop a table, truncate one, or delete rows. Not in the frozen
+  // baseline and not in anything after it.
+  const everything = migrations.MIGRATIONS.map(bodyFor).join('\n');
+  [/DROP\s+TABLE/i, /TRUNCATE/i, /DELETE\s+FROM/i].forEach((pattern) => {
+    assert.ok(!pattern.test(everything), `a migration body must not contain ${pattern}`);
   });
+
+  // `DROP COLUMN` is judged separately, because the frozen baseline contains
+  // exactly one and it is the safe kind: `entries.integrity_status_reason` was
+  // copied into `integrity_admin_notes` by the two UPDATEs immediately above it
+  // before being dropped, because the old name read like entrant-facing text
+  // and one careless SELECT would have made it so. That statement is now
+  // historical and unchangeable. What must never happen is a NEW migration
+  // dropping a column — so the baseline is exempted by name and everything
+  // after it is not.
+  const baselineDrops = [...bodyFor(migrations.MIGRATIONS[0]).matchAll(/DROP\s+COLUMN[^;]*/gi)];
+  assert.equal(baselineDrops.length, 1, 'the baseline drops exactly one column');
+  assert.match(baselineDrops[0][0], /integrity_status_reason/);
+  assert.match(
+    bodyFor(migrations.MIGRATIONS[0]),
+    /SET integrity_admin_notes = integrity_status_reason/,
+    'and its content was preserved first'
+  );
+
+  const afterBaseline = migrations.MIGRATIONS.slice(1).map(bodyFor).join('\n');
+  assert.ok(
+    !/DROP\s+COLUMN/i.test(afterBaseline),
+    'no migration after the baseline may drop a column'
+  );
 
   // There is no `down`, deliberately.
   assert.ok(migrations.MIGRATIONS.every((m) => !m.down), 'no automatic rollback exists');
-  assert.ok(/no automatic destructive rollback/i.test(source), 'and the reason is written down');
+  const source = fs.readFileSync(path.join(ROOT, 'server', 'lib', 'migrations.js'), 'utf8');
+  assert.ok(/never called from web startup/i.test(source), 'startup does not migrate');
 
-  // The baseline is recorded as adopted rather than executed on a database that
-  // predates the ledger — the honesty property the whole strategy rests on.
-  assert.ok(/applied_by = 'adoption'|'adoption'/.test(source));
+  // Adoption is recorded as adopted, never as executed.
+  assert.ok(/'adopted'/.test(source));
 });
 
 // ---------------------------------------------------------------------------

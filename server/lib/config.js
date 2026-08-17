@@ -33,6 +33,7 @@ const riskSignals = require('./riskSignals');
 const { resolveTrustProxy } = require('./proxyTrust');
 const claimCrypto = require('./claimCrypto');
 const policies = require('./policies');
+const emailDelivery = require('./emailDelivery');
 
 // ---------------------------------------------------------------------------
 // Classification
@@ -107,10 +108,10 @@ const VARIABLES = [
   { name: 'STRIPE_WEBHOOK_SECRET', kind: KIND.CONDITIONAL, exposure: EXPOSURE.SECRET,
     enabledBy: 'ADS_CHECKOUT_ENABLED',
     purpose: 'Verifies webhook signatures. Different per environment.' },
-  { name: 'RESEND_API_KEY', kind: KIND.OPTIONAL, exposure: EXPOSURE.SECRET,
-    purpose: 'Sends email. Without it, nothing is delivered — see the note below.' },
-  { name: 'EMAIL_FROM', kind: KIND.OPTIONAL, exposure: EXPOSURE.PUBLIC,
-    purpose: 'Sender identity. A verified domain is required by the provider.' },
+  { name: 'RESEND_API_KEY', kind: KIND.PRODUCTION, exposure: EXPOSURE.SECRET,
+    purpose: 'Sends email. REQUIRED in production — verification, recovery, claims and security warnings all depend on it.' },
+  { name: 'EMAIL_FROM', kind: KIND.PRODUCTION, exposure: EXPOSURE.PUBLIC,
+    purpose: 'Sender identity, shape-validated. A verified domain is required by the provider; the shared onboarding domain is refused.' },
   { name: 'ADMIN_NOTIFY_EMAIL', kind: KIND.OPTIONAL, exposure: EXPOSURE.PUBLIC,
     purpose: 'Where new host applications are announced.' },
   { name: 'CLOUDINARY_CLOUD_NAME', kind: KIND.OPTIONAL, exposure: EXPOSURE.PUBLIC,
@@ -125,6 +126,10 @@ const VARIABLES = [
     purpose: 'Analytics. Never loaded on account, claim, admin or owner pages.' },
   { name: 'DEPLOYMENT_STATE', kind: KIND.OPTIONAL, exposure: EXPOSURE.PUBLIC,
     purpose: 'development | staging | private_beta | public_launch. See section below.' },
+  { name: 'EMAIL_DELIVERY_ENABLED', kind: KIND.OPTIONAL, exposure: EXPOSURE.PUBLIC,
+    purpose: 'Temporary email maintenance mode. Defaults ON; refused at public launch.' },
+  { name: 'NOTIFICATION_FAILURE_THRESHOLD', kind: KIND.OPTIONAL, exposure: EXPOSURE.PUBLIC,
+    purpose: 'Terminally failed notifications in 24h before readiness reports degraded.' },
   { name: 'MAINTENANCE_BATCH_LIMIT', kind: KIND.OPTIONAL, exposure: EXPOSURE.PUBLIC,
     purpose: 'Upper bound on rows a maintenance job touches per run.' },
   { name: 'SHUTDOWN_TIMEOUT_MS', kind: KIND.OPTIONAL, exposure: EXPOSURE.PUBLIC,
@@ -269,15 +274,24 @@ function validate({ env = process.env, production = isProduction() } = {}) {
       );
     }
 
+    // Email is REQUIRED in production. It was optional, with the consequence
+    // written down — which was not good enough: verification, password
+    // recovery, claim invitations, email-change verification and the
+    // old-address security warning are core workflows, and a process that
+    // starts without them and reports itself healthy is lying.
+    //
+    // `private_beta` does not exempt it. A beta with real accounts in it is a
+    // deployment where somebody will need to recover a password.
     if (!present('RESEND_API_KEY')) {
-      // Not a refusal. A platform that cannot boot without a mail provider is a
-      // platform that cannot boot during a provider outage — but the
-      // consequence has to be stated rather than discovered.
-      warn(
+      fail(
         'RESEND_API_KEY',
-        'is not set. NO EMAIL WILL BE DELIVERED: verification, password reset, claim invitations, winner notices and email-change confirmations will all be written to the log instead. The outbox will keep retrying and will never succeed.'
+        'is not set. Email verification, password recovery, claim invitations, email-change verification and the old-address security warning cannot be delivered, and each is a core workflow. Set it, or set EMAIL_DELIVERY_ENABLED=false to run a deliberate, temporary maintenance mode in which those actions refuse with a 503 instead of creating unusable state.'
       );
     }
+    // Shape only. No provider call is made here or anywhere at startup: that
+    // would make every boot depend on somebody else's uptime.
+    emailDelivery.senderProblems().forEach((problem) => fail('EMAIL_FROM', problem));
+
     if (!present('SENTRY_DSN')) {
       warn('SENTRY_DSN', 'is not set. Errors reach the platform log only; nothing alerts.');
     }
@@ -360,6 +374,19 @@ function validate({ env = process.env, production = isProduction() } = {}) {
     fail('DATABASE_SSL', 'is disabled in production. The connection would be unencrypted.');
   }
 
+  // --- email maintenance mode ---------------------------------------------
+  //
+  // Explicit and temporary. Reported as a WARNING rather than a problem so the
+  // process can run — that is the point of the mode — but loudly, because a
+  // deployment silently not sending email is the failure this whole section
+  // exists to prevent.
+  if (!emailDelivery.isDeliveryEnabled()) {
+    warn(
+      'EMAIL_DELIVERY_ENABLED',
+      'is off. Signup verification, resend verification, password reset, email change and new claim invitations will refuse with 503 rather than create state that cannot be completed. Existing signed-in sessions are unaffected. This is a temporary maintenance mode and must not be left on.'
+    );
+  }
+
   // --- launch state -------------------------------------------------------
   const state = deploymentState();
   if (state === 'public_launch') {
@@ -399,6 +426,20 @@ function launchBlockers() {
 
   if (areClaimsEnabled() && !claimCrypto.isConfigured()) {
     blockers.push('cannot be public_launch: claims are enabled but claim encryption is unavailable.');
+  }
+
+  // A public launch with no working email is a platform where nobody can verify
+  // an address or recover an account.
+  if (!emailDelivery.isProviderConfigured()) {
+    blockers.push('cannot be public_launch: no email provider is configured.');
+  }
+  emailDelivery.senderProblems().forEach((problem) => {
+    blockers.push(`cannot be public_launch: EMAIL_FROM ${problem}`);
+  });
+  if (!emailDelivery.isDeliveryEnabled()) {
+    blockers.push(
+      'cannot be public_launch: EMAIL_DELIVERY_ENABLED is off. The email maintenance mode is temporary and is never a launch state.'
+    );
   }
 
   return blockers;

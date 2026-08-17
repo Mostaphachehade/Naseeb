@@ -33,6 +33,7 @@ const { pool } = require('../db');
 const migrations = require('../lib/migrations');
 const config = require('../lib/config');
 const errorReporting = require('../lib/errorReporting');
+const emailDelivery = require('../lib/emailDelivery');
 const { BASELINE_SQL } = require('../db');
 
 const router = express.Router();
@@ -132,6 +133,34 @@ async function readinessChecks() {
     } catch (err) {
       failures.push('schema');
       detail.push('schema verification did not complete');
+    }
+  }
+
+  // 4. Mandatory notification delivery. Two ways this fails: nothing is
+  //    configured to send, or too many notifications have reached terminal
+  //    failure recently — which means messages people are waiting on are not
+  //    arriving even though the provider is configured.
+  //
+  //    Reported as one generic category. No recipient, no provider error, no
+  //    subject, no body.
+  if (dbUp) {
+    try {
+      const notifications = await withTimeout(
+        emailDelivery.notificationHealth(pool),
+        READINESS_TIMEOUT_MS,
+        'notifications'
+      );
+      if (!notifications.ok) {
+        failures.push('notifications');
+        detail.push(
+          notifications.reason === 'delivery_failures'
+            ? `${notifications.failed_recently} notification(s) reached terminal failure in the last ${emailDelivery.FAILURE_WINDOW_HOURS}h (threshold ${emailDelivery.TERMINAL_FAILURE_THRESHOLD})`
+            : `email delivery unavailable: ${notifications.reason}`
+        );
+      }
+    } catch (err) {
+      failures.push('notifications');
+      detail.push('notification health check did not complete');
     }
   }
 

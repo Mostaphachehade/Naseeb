@@ -14,8 +14,9 @@
     "db:init": "node -e \"require('./server/db').init().then(() => process.exit(0))\"",
     "test:browser-security": "node scripts/browser-hostile-data.js",
     "maintenance": "node scripts/maintenance.js",
-    "migrate": "node -e \"const{pool,init,BASELINE_SQL}=require('./server/db');require('./server/lib/migrations').migrate(pool,{init,baselineSql:BASELINE_SQL}).then(s=>{console.log(JSON.stringify(s));return pool.end()}).then(()=>process.exit(0)).catch(e=>{console.error('migrate failed:',e.message);process.exit(1)})\"",
-    "backup:verify": "node scripts/backup-verify.js"
+    "migrate": "node scripts/migrate.js",
+    "backup:verify": "node scripts/backup-verify.js",
+    "schema:snapshot": "node scripts/schema-snapshot.js"
   },
   "dependencies": {
     "@sentry/node": "^10.68.0",

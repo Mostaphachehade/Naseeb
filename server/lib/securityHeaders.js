@@ -172,6 +172,25 @@ function securityHeaders(req, res, next) {
   // never in a Referer at all — this covers everything else.
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
+  // Until public launch, nothing here should be indexed.
+  //
+  // A private beta that turns up in search results is a private beta in name
+  // only: the pages carry draft policies, unreviewed legal text and "to be
+  // confirmed" placeholders, and a search engine will happily cache all of it
+  // and keep serving it long after the page changes. The header applies to
+  // every response, including the API and the 404 page, because a crawler that
+  // reaches one of those has still reached the platform.
+  //
+  // Set from the deployment state rather than an environment variable of its
+  // own, so it cannot drift from what the site tells its visitors.
+  //
+  // Required lazily: server/lib/config.js reads sessions.js, which reads this
+  // file, and a top-level require would be a cycle.
+  // eslint-disable-next-line global-require
+  if (!require('./config').isPublicLaunch()) {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  }
+
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
   // Redundant with frame-ancestors for modern browsers, and harmless for the

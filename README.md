@@ -422,18 +422,29 @@ provider dashboard can do.
 The short version:
 
 ```bash
-npm run migrate            # apply the schema; safe to run twice, locked
+npm run migrate status     # what the ledger says, and whether the schema matches
+npm run migrate verify     # read-only comparison against the frozen baseline
+npm run migrate up         # execute pending migrations, then verify
+npm run migrate adopt      # record an ALREADY-MATCHING schema, after verifying it
 npm run maintenance all    # every cleanup job; safe to run twice, locked
 npm run backup:verify      # dump + restore into a scratch database, verified
 ```
+
+**The web process never migrates.** It verifies and fails readiness. Changing a
+schema is a thing a person runs, having read what it is about to do — a process
+that migrates on boot will, sooner or later, boot against a database somebody
+did not expect and change it. `server/migrations/001_baseline.sql` is frozen and
+checksummed; everything after it is `002`, `003`, and nothing is ever added
+to `001`. See `docs/OPERATIONS.md` §6.
 
 **Health.** `GET /healthz` answers "is this process alive" and deliberately does
 **not** touch the database — if it did, a database outage would make every
 instance look dead and the platform would restart them all. `GET /readyz`
 answers "can this safely serve traffic" and checks configuration, connectivity,
-the schema version, migration checksums and the critical constraints and
-triggers. A failing readiness response carries **categories only** — no host, no
-table name, no variable, no stack trace.
+the schema version, migration checksums, the critical constraints and triggers,
+and whether mandatory email notifications can actually be delivered. A failing
+readiness response carries **categories only** — no host, no table name, no
+variable, no recipient, no stack trace.
 
 **Maintenance is scheduled outside the web process.** Every cleanup used to run
 on an in-process timer, on a route somebody happened to visit, or on nothing at

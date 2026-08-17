@@ -11,6 +11,7 @@ const { winnerEmailHtml, entryEmailHtml } = require('../lib/emailTemplates');
 const claims = require('../lib/claims');
 const notifications = require('../lib/claimNotifications');
 const { areClaimsEnabled } = require('../lib/featureFlags');
+const emailDelivery = require('../lib/emailDelivery');
 const integrity = require('../lib/entryIntegrity');
 const riskSignals = require('../lib/riskSignals');
 const eligibility = require('../lib/eligibility');
@@ -513,6 +514,14 @@ router.post('/:id/draw', requireAuth, requireHostAccess, async (req, res) => {
     // told, and it holds no token — the sender issues a fresh one.
     let claim = null;
     if (areClaimsEnabled()) {
+      // A draw commits a winner. If the invitation that tells them cannot be
+      // delivered, the winner never learns they won and the claim expires into
+      // an admin queue — so the draw is refused before it happens rather than
+      // producing a winner nobody can reach.
+      if (emailDelivery.refuseIfUndeliverable(res, { action: 'draw_winner' })) {
+        await client.query('ROLLBACK');
+        return undefined;
+      }
       claim = await claims.createClaimForDraw(client, {
         giveawayId: req.params.id,
         winnerUserId: winner.user_id,

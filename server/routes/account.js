@@ -14,6 +14,7 @@ const eligibility = require('../lib/eligibility');
 const policies = require('../lib/policies');
 const dataExport = require('../lib/dataExport');
 const outbox = require('../lib/emailChangeOutbox');
+const emailDelivery = require('../lib/emailDelivery');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const router = express.Router();
@@ -191,6 +192,12 @@ router.post('/email-change', authLimiter, requireAuth, async (req, res) => {
   const client = await pool.connect();
   try {
     noStore(res);
+
+    // Before the pending change exists. A change nobody can confirm is a row
+    // that blocks the next attempt (one pending change per account) and an
+    // address the person believes is being moved.
+    if (emailDelivery.refuseIfUndeliverable(res, { action: 'email_change' })) return;
+
     const { password, new_email: newEmail } = req.body || {};
 
     // The change and its notification are one transaction. Nothing is sent from

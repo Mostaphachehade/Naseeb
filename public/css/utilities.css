@@ -274,3 +274,24 @@
 .u-age-attest input.u-age-attest-box, .u-age-attest input[type="checkbox"] { width:auto; margin:3px 0 0; flex:0 0 auto; }
 .u-rights-grid.u-rights-grid.u-rights-grid { display:grid; gap:18px; margin-bottom:32px; }
 .u-request-row.u-request-row.u-request-row { border-top:1px solid rgba(11,59,54,0.12); padding:12px 0; }
+
+/* The deployment strip: what this environment actually is.
+   Deliberately not dismissible and deliberately not subtle — a private beta
+   that looks like a finished product is a claim of production readiness,
+   whatever the documentation says. Sits directly under the header, above the
+   maintenance banner when both are present. */
+.deployment-banner {
+  background: var(--gold, #C9A15A);
+  color: var(--ink, #072925);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  border-bottom: 1px solid rgba(7, 41, 37, 0.2);
+}
+.deployment-banner .wrap {
+  padding: 8px 24px;
+}
+.deployment-banner strong {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.78rem;
+}

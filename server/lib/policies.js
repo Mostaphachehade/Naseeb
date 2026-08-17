@@ -243,7 +243,13 @@ function currentPolicies() {
         effectiveDate: policy.effectiveDate,
         isEffective: isEffective(policy),
         acceptable: canBeAccepted(policy),
-        blockers: policy.blockers,
+        // `blockers` is deliberately NOT here. It names the outstanding legal
+        // work — which counsel has not reviewed what, which registration is
+        // unresolved — and this object is served to unauthenticated callers by
+        // GET /api/config. That a policy is a draft with no effective date is
+        // the truthful disclosure a visitor needs; the list of what is holding
+        // it up is internal readiness detail. The administrator policy view
+        // reads `POLICIES` directly and still shows them.
       },
     ])
   );

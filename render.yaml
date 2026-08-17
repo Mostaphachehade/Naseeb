@@ -38,6 +38,34 @@ services:
     buildCommand: npm ci
     startCommand: npm start
 
+    # ---------------------------------------------------------------------
+    # There is deliberately NO preDeployCommand that migrates
+    # ---------------------------------------------------------------------
+    #
+    # Render offers `preDeployCommand`, and putting `node scripts/migrate.js up`
+    # in it would be the obvious thing to do. It is not done, on purpose.
+    #
+    # A schema change that runs automatically on deploy is a schema change
+    # nobody read before it happened — and sooner or later it runs against a
+    # database somebody did not expect: a restored copy, a rolled-back deploy, a
+    # staging URL pasted into the wrong environment group. Worse, the first
+    # version of this ledger would have ADOPTED such a database, recording
+    # "already migrated" because a `users` table existed, after which nothing
+    # ever checked again.
+    #
+    # So the schema is changed by a person, before the deploy, having read what
+    # the command is about to do:
+    #
+    #     node scripts/migrate.js status
+    #     node scripts/migrate.js verify
+    #     node scripts/migrate.js up        # or: adopt --dry-run, then adopt
+    #
+    # The web process verifies and fails readiness. A deploy against a database
+    # whose schema is not ready comes up and answers 503 on /readyz — which is
+    # the intended behaviour, and is what `healthCheckPath` below acts on.
+    #
+    # See docs/OPERATIONS.md §6 and runbook §9.2.
+
     # Render polls this and takes an instance out of rotation when it fails.
     # `/readyz` rather than `/healthz` on purpose: readiness knows about the
     # database, the schema and the configuration, and returns 503 while any of
@@ -76,10 +104,26 @@ services:
         sync: false
       - key: APP_URL
         sync: false
+      # Email is REQUIRED in production, whatever the deployment state — a
+      # private beta with real accounts in it is a deployment where somebody
+      # will need to recover a password. The process refuses to start without
+      # a provider key, and EMAIL_FROM is shape-validated: the provider's
+      # shared onboarding domain (resend.dev) and the reserved example domains
+      # are refused, because a From the provider rejects makes every send fail.
+      # No provider call is made at startup.
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
         sync: false
+
+      # Deliberately NOT set. Setting it to false is a temporary maintenance
+      # mode for a planned provider migration, during which signup, password
+      # reset, email change, the winner draw and claim reissue return 503
+      # before creating state that could never be completed. It defaults on,
+      # and it is refused at public launch. Set it in the dashboard for the
+      # duration of a migration and remove it afterwards.
+      # - key: EMAIL_DELIVERY_ENABLED
+      #   value: false
       - key: ADMIN_NOTIFY_EMAIL
         sync: false
       - key: CLOUDINARY_CLOUD_NAME

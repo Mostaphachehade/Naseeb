@@ -1,0 +1,3881 @@
+{
+  "tables": [
+    {
+      "table_name": "ad_inquiries"
+    },
+    {
+      "table_name": "ads"
+    },
+    {
+      "table_name": "claim_notifications"
+    },
+    {
+      "table_name": "claim_rescue_queue"
+    },
+    {
+      "table_name": "email_change_notification_events"
+    },
+    {
+      "table_name": "email_change_notifications"
+    },
+    {
+      "table_name": "email_change_requests"
+    },
+    {
+      "table_name": "entries"
+    },
+    {
+      "table_name": "entry_integrity_case_events"
+    },
+    {
+      "table_name": "entry_integrity_cases"
+    },
+    {
+      "table_name": "entry_integrity_events"
+    },
+    {
+      "table_name": "entry_risk_signals"
+    },
+    {
+      "table_name": "giveaways"
+    },
+    {
+      "table_name": "host_applications"
+    },
+    {
+      "table_name": "host_status_events"
+    },
+    {
+      "table_name": "policy_acceptances"
+    },
+    {
+      "table_name": "privacy_request_events"
+    },
+    {
+      "table_name": "privacy_request_executions"
+    },
+    {
+      "table_name": "privacy_requests"
+    },
+    {
+      "table_name": "prize_claim_events"
+    },
+    {
+      "table_name": "prize_claims"
+    },
+    {
+      "table_name": "session_families"
+    },
+    {
+      "table_name": "sessions"
+    },
+    {
+      "table_name": "site_settings"
+    },
+    {
+      "table_name": "stripe_events"
+    },
+    {
+      "table_name": "users"
+    }
+  ],
+  "columns": [
+    {
+      "table_name": "ad_inquiries",
+      "column_name": "business_name",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ad_inquiries",
+      "column_name": "contact_email",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ad_inquiries",
+      "column_name": "contact_phone",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ad_inquiries",
+      "column_name": "contacted",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ad_inquiries",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ad_inquiries",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ad_inquiries",
+      "column_name": "message",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "active",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "amount_aed",
+      "data_type": "numeric",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "amount_fils",
+      "data_type": "bigint",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": "64"
+    },
+    {
+      "table_name": "ads",
+      "column_name": "business_name",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "click_count",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "ads",
+      "column_name": "contact_email",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "currency",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'AED'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "disputed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "ends_at",
+      "data_type": "date",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "hold_expires_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "image_url",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "media_type",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'image'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "paid",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "paid_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "payment_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'pending'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "quote_version",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "refunded_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "slot_release_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "slot_released_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "slot_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'released'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "starts_at",
+      "data_type": "date",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "stripe_payment_intent",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "stripe_session_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "target_url",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "ads",
+      "column_name": "unit_price_fils",
+      "data_type": "bigint",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": "64"
+    },
+    {
+      "table_name": "ads",
+      "column_name": "weeks",
+      "data_type": "integer",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "attempts",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "claim_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "delivered_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "kind",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "last_attempt_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "last_error_category",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "next_attempt_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'pending'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_notifications",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "claim_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "closed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "closed_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "closed_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "giveaway_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "host_user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "opened_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "opened_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "opened_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'open'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "actor_role",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "actor_user_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "attempt",
+      "data_type": "integer",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "change_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "error_category",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "event",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "note",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "notification_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "attempts",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "cancelled_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "change_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "failed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "idempotency_key",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "kind",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "last_attempt_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "last_error_category",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "lease_expires_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "lease_owner",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "next_attempt_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "sent_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'pending'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_notifications",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "cancelled_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "cancelled_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "completed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "expires_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "new_email",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "previous_email",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'pending'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "token_hash",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "email_change_requests",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entries",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entries",
+      "column_name": "giveaway_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entries",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entries",
+      "column_name": "integrity_admin_notes",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entries",
+      "column_name": "integrity_reason_code",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entries",
+      "column_name": "integrity_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'eligible'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entries",
+      "column_name": "integrity_status_changed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entries",
+      "column_name": "integrity_status_changed_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entries",
+      "column_name": "integrity_version",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "entries",
+      "column_name": "ticket_number",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "entries",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "actor_role",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "actor_user_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "admin_notes",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "case_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "entry_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "from_status",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "giveaway_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "resolution",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "column_name": "to_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "entry_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "giveaway_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "opened_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "opened_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "opened_reason",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "post_draw",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "resolution",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "resolution_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "resolved_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "resolved_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'open'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "column_name": "version",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "actor_role",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "actor_user_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "admin_notes",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "entry_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "from_status",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "giveaway_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "metadata",
+      "data_type": "jsonb",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "reason_code",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "column_name": "to_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "column_name": "detail",
+      "data_type": "jsonb",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "column_name": "entry_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "column_name": "expires_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "column_name": "giveaway_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "column_name": "network_hmac",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "column_name": "severity",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'info'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "column_name": "signal_code",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "column_name": "window_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "description",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "entry_deadline",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "estimated_value_aed",
+      "data_type": "real",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": "24"
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "funded_by",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "host_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "image_url",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "max_entries_per_person",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "1",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_delivered",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_delivered_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "prize_description",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'active'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "title",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "giveaways",
+      "column_name": "winner_entry_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "applicant_type",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "business_name",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "contact_email",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "contact_phone",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "contacted",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "decided_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "decided_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "decision_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "full_name",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "message",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "plan",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'pending'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "trade_license",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_applications",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_status_events",
+      "column_name": "application_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_status_events",
+      "column_name": "changed_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_status_events",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_status_events",
+      "column_name": "from_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_status_events",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_status_events",
+      "column_name": "reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_status_events",
+      "column_name": "source",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_status_events",
+      "column_name": "to_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "host_status_events",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "policy_acceptances",
+      "column_name": "acceptance_kind",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "policy_acceptances",
+      "column_name": "accepted_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "policy_acceptances",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "policy_acceptances",
+      "column_name": "policy_effective_date",
+      "data_type": "date",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "policy_acceptances",
+      "column_name": "policy_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "policy_acceptances",
+      "column_name": "policy_version",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "policy_acceptances",
+      "column_name": "source",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "policy_acceptances",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_events",
+      "column_name": "actor_role",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_events",
+      "column_name": "actor_user_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_events",
+      "column_name": "admin_notes",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_events",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_events",
+      "column_name": "from_status",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_events",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_events",
+      "column_name": "outcome_code",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_events",
+      "column_name": "request_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_events",
+      "column_name": "to_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_events",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "action_kind",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "categories_anonymised",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "column_default": "'[]'::jsonb",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "categories_erased",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "column_default": "'[]'::jsonb",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "categories_retained",
+      "data_type": "jsonb",
+      "is_nullable": "NO",
+      "column_default": "'[]'::jsonb",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "executed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "executed_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "executed_by_job",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "request_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "summary",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "admin_notes",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "blockers",
+      "data_type": "jsonb",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "closed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "closed_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "outcome_code",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "reference",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "request_type",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'submitted'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "user_message",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "privacy_requests",
+      "column_name": "version",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "max_length": "",
+      "numeric_precision": "32"
+    },
+    {
+      "table_name": "prize_claim_events",
+      "column_name": "actor_role",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claim_events",
+      "column_name": "actor_user_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claim_events",
+      "column_name": "claim_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claim_events",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claim_events",
+      "column_name": "from_status",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claim_events",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claim_events",
+      "column_name": "note",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claim_events",
+      "column_name": "to_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "cancelled_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "claimed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "consent_version",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "consented_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "delivered_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "delivery_ciphertext",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "delivery_erased_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "delivery_iv",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "delivery_key_version",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "delivery_reported_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "delivery_tag",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "disputed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "disputed_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "entry_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "expired_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "giveaway_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "invitation_sent_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "preparing_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "resolved_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "resolved_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "shipped_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'awaiting_claim'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "token_expires_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "token_hash",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "token_issued_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "token_used_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "prize_claims",
+      "column_name": "winner_user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "session_families",
+      "column_name": "absolute_expires_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "session_families",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "session_families",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "session_families",
+      "column_name": "revocation_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "session_families",
+      "column_name": "revoked_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "session_families",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "expires_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "family_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "last_used_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "replaced_by_session_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "revocation_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "revoked_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "rotated_from_session_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "rotation_grace_until",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "token_hash",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "user_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "site_settings",
+      "column_name": "key",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "site_settings",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "site_settings",
+      "column_name": "value",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "stripe_events",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "stripe_events",
+      "column_name": "processed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "stripe_events",
+      "column_name": "type",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "account_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'active'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "account_status_changed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "account_status_changed_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "account_status_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "age_attestation_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'unknown'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "age_attestation_version",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "age_attested_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "email",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "email_verified",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "true",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "host_status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'not_requested'::text",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "host_status_changed_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "host_status_changed_by",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "host_status_reason",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "is_admin",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "is_verified_business",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "name",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "password_hash",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "reset_token",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "reset_token_expires",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "verification_token",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    },
+    {
+      "table_name": "users",
+      "column_name": "verification_token_expires",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": "",
+      "max_length": "",
+      "numeric_precision": ""
+    }
+  ],
+  "primary_keys": [
+    {
+      "table_name": "ad_inquiries",
+      "conname": "ad_inquiries_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "ads",
+      "conname": "ads_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "claim_notifications",
+      "conname": "claim_notifications_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "conname": "claim_rescue_queue_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "conname": "email_change_notification_events_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "email_change_notifications",
+      "conname": "email_change_notifications_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "email_change_requests",
+      "conname": "email_change_requests_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "entries",
+      "conname": "entries_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "conname": "entry_integrity_case_events_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "conname": "entry_integrity_cases_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "conname": "entry_integrity_events_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "conname": "entry_risk_signals_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "host_applications",
+      "conname": "host_applications_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "host_status_events",
+      "conname": "host_status_events_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "policy_acceptances",
+      "conname": "policy_acceptances_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "privacy_request_events",
+      "conname": "privacy_request_events_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "conname": "privacy_request_executions_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "privacy_requests",
+      "conname": "privacy_requests_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "prize_claim_events",
+      "conname": "prize_claim_events_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "prize_claims",
+      "conname": "prize_claims_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "session_families",
+      "conname": "session_families_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "sessions",
+      "conname": "sessions_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "site_settings",
+      "conname": "site_settings_pkey",
+      "definition": "PRIMARY KEY (key)"
+    },
+    {
+      "table_name": "stripe_events",
+      "conname": "stripe_events_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "table_name": "users",
+      "conname": "users_pkey",
+      "definition": "PRIMARY KEY (id)"
+    }
+  ],
+  "unique_constraints": [
+    {
+      "table_name": "entries",
+      "conname": "entries_giveaway_id_user_id_key",
+      "definition": "UNIQUE (giveaway_id, user_id)"
+    },
+    {
+      "table_name": "policy_acceptances",
+      "conname": "policy_acceptances_user_id_policy_id_policy_version_key",
+      "definition": "UNIQUE (user_id, policy_id, policy_version)"
+    },
+    {
+      "table_name": "privacy_requests",
+      "conname": "privacy_requests_reference_key",
+      "definition": "UNIQUE (reference)"
+    },
+    {
+      "table_name": "prize_claims",
+      "conname": "prize_claims_giveaway_id_key",
+      "definition": "UNIQUE (giveaway_id)"
+    },
+    {
+      "table_name": "sessions",
+      "conname": "sessions_token_hash_key",
+      "definition": "UNIQUE (token_hash)"
+    },
+    {
+      "table_name": "users",
+      "conname": "users_email_key",
+      "definition": "UNIQUE (email)"
+    }
+  ],
+  "check_constraints": [
+    {
+      "table_name": "email_change_requests",
+      "conname": "email_change_status_valid",
+      "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'completed'::text, 'cancelled'::text, 'expired'::text])))"
+    },
+    {
+      "table_name": "entries",
+      "conname": "entries_integrity_status_valid",
+      "definition": "CHECK ((integrity_status = ANY (ARRAY['eligible'::text, 'under_review'::text, 'disqualified'::text])))"
+    },
+    {
+      "table_name": "entries",
+      "conname": "entries_reason_code_valid",
+      "definition": "CHECK (((integrity_reason_code IS NULL) OR (integrity_reason_code = ANY (ARRAY['under_review'::text, 'disqualified'::text, 'reinstated'::text, 'review_routine_check'::text, 'review_signal_follow_up'::text, 'disqualified_entry_rule'::text, 'disqualified_terms'::text, 'reinstated_after_review'::text, 'legacy_unspecified'::text]))))"
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "conname": "entry_integrity_cases_state_valid",
+      "definition": "CHECK (((status = ANY (ARRAY['open'::text, 'upheld_blocked'::text, 'resolved'::text])) AND ((status = 'open'::text) OR ((resolution = ANY (ARRAY['reinstated'::text, 'upheld'::text, 'no_action'::text])) AND (resolution_reason IS NOT NULL) AND (length(btrim(resolution_reason)) >= 3))) AND ((status <> 'upheld_blocked'::text) OR (resolution = 'upheld'::text)) AND ((resolution <> 'upheld'::text) OR (status = 'upheld_blocked'::text))))"
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "conname": "entry_integrity_events_actor_valid",
+      "definition": "CHECK ((actor_role = ANY (ARRAY['admin'::text, 'system'::text])))"
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "conname": "entry_integrity_events_notes_required",
+      "definition": "CHECK (((actor_role <> 'admin'::text) OR ((admin_notes IS NOT NULL) AND (length(btrim(admin_notes)) >= 3)) OR ((reason IS NOT NULL) AND (length(btrim(reason)) >= 3))))"
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "conname": "entry_integrity_events_reason_code_valid",
+      "definition": "CHECK ((reason_code = ANY (ARRAY['under_review'::text, 'disqualified'::text, 'reinstated'::text, 'review_routine_check'::text, 'review_signal_follow_up'::text, 'disqualified_entry_rule'::text, 'disqualified_terms'::text, 'reinstated_after_review'::text, 'legacy_unspecified'::text, 'signal_recorded'::text])))"
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "conname": "entry_integrity_events_status_valid",
+      "definition": "CHECK (((to_status = ANY (ARRAY['eligible'::text, 'under_review'::text, 'disqualified'::text])) AND ((from_status IS NULL) OR (from_status = ANY (ARRAY['eligible'::text, 'under_review'::text, 'disqualified'::text])))))"
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "conname": "entry_risk_signals_severity_valid",
+      "definition": "CHECK ((severity = ANY (ARRAY['info'::text, 'review'::text])))"
+    },
+    {
+      "table_name": "host_applications",
+      "conname": "host_applications_status_valid",
+      "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'withdrawn'::text])))"
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "conname": "privacy_execution_has_actor",
+      "definition": "CHECK (((executed_by IS NOT NULL) <> (executed_by_job IS NOT NULL)))"
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "conname": "privacy_execution_kind_valid",
+      "definition": "CHECK ((action_kind = ANY (ARRAY['erasure'::text, 'anonymisation'::text, 'access_response'::text, 'correction'::text])))"
+    },
+    {
+      "table_name": "privacy_requests",
+      "conname": "privacy_requests_closure_explained",
+      "definition": "CHECK (((status <> ALL (ARRAY['completed'::text, 'declined'::text, 'unable_to_complete'::text, 'awaiting_policy'::text])) OR ((outcome_code IS NOT NULL) AND (admin_notes IS NOT NULL) AND (length(btrim(admin_notes)) >= 3))))"
+    },
+    {
+      "table_name": "privacy_requests",
+      "conname": "privacy_requests_no_phantom_deletion",
+      "definition": "CHECK ((NOT ((request_type = 'deletion'::text) AND (status = 'completed'::text))))"
+    },
+    {
+      "table_name": "privacy_requests",
+      "conname": "privacy_requests_status_valid",
+      "definition": "CHECK ((status = ANY (ARRAY['submitted'::text, 'in_review'::text, 'awaiting_information'::text, 'awaiting_policy'::text, 'completed'::text, 'declined'::text, 'unable_to_complete'::text])))"
+    },
+    {
+      "table_name": "privacy_requests",
+      "conname": "privacy_requests_type_valid",
+      "definition": "CHECK ((request_type = ANY (ARRAY['access'::text, 'correction'::text, 'deletion'::text, 'objection'::text])))"
+    },
+    {
+      "table_name": "users",
+      "conname": "users_account_status_valid",
+      "definition": "CHECK ((account_status = ANY (ARRAY['active'::text, 'suspended'::text, 'deactivated'::text])))"
+    },
+    {
+      "table_name": "users",
+      "conname": "users_age_attestation_valid",
+      "definition": "CHECK ((age_attestation_status = ANY (ARRAY['unknown'::text, 'confirmed'::text])))"
+    },
+    {
+      "table_name": "users",
+      "conname": "users_host_status_valid",
+      "definition": "CHECK ((host_status = ANY (ARRAY['not_requested'::text, 'pending'::text, 'approved'::text, 'rejected'::text, 'suspended'::text])))"
+    }
+  ],
+  "foreign_keys": [
+    {
+      "table_name": "claim_notifications",
+      "conname": "claim_notifications_claim_id_fkey",
+      "definition": "FOREIGN KEY (claim_id) REFERENCES prize_claims(id)"
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "conname": "claim_rescue_queue_claim_id_fkey",
+      "definition": "FOREIGN KEY (claim_id) REFERENCES prize_claims(id)"
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "conname": "claim_rescue_queue_closed_by_fkey",
+      "definition": "FOREIGN KEY (closed_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "conname": "claim_rescue_queue_giveaway_id_fkey",
+      "definition": "FOREIGN KEY (giveaway_id) REFERENCES giveaways(id)"
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "conname": "claim_rescue_queue_host_user_id_fkey",
+      "definition": "FOREIGN KEY (host_user_id) REFERENCES users(id)"
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "conname": "claim_rescue_queue_opened_by_fkey",
+      "definition": "FOREIGN KEY (opened_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "email_change_requests",
+      "conname": "email_change_requests_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "entries",
+      "conname": "entries_giveaway_id_fkey",
+      "definition": "FOREIGN KEY (giveaway_id) REFERENCES giveaways(id)"
+    },
+    {
+      "table_name": "entries",
+      "conname": "entries_integrity_status_changed_by_fkey",
+      "definition": "FOREIGN KEY (integrity_status_changed_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "entries",
+      "conname": "entries_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(id)"
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "conname": "entry_integrity_cases_entry_id_fkey",
+      "definition": "FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "conname": "entry_integrity_cases_giveaway_id_fkey",
+      "definition": "FOREIGN KEY (giveaway_id) REFERENCES giveaways(id)"
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "conname": "entry_integrity_cases_opened_by_fkey",
+      "definition": "FOREIGN KEY (opened_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "conname": "entry_integrity_cases_resolved_by_fkey",
+      "definition": "FOREIGN KEY (resolved_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "conname": "entry_risk_signals_entry_id_fkey",
+      "definition": "FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "conname": "entry_risk_signals_giveaway_id_fkey",
+      "definition": "FOREIGN KEY (giveaway_id) REFERENCES giveaways(id)"
+    },
+    {
+      "table_name": "giveaways",
+      "conname": "giveaways_host_id_fkey",
+      "definition": "FOREIGN KEY (host_id) REFERENCES users(id)"
+    },
+    {
+      "table_name": "host_applications",
+      "conname": "host_applications_decided_by_fkey",
+      "definition": "FOREIGN KEY (decided_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "host_applications",
+      "conname": "host_applications_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(id)"
+    },
+    {
+      "table_name": "host_status_events",
+      "conname": "host_status_events_application_id_fkey",
+      "definition": "FOREIGN KEY (application_id) REFERENCES host_applications(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "host_status_events",
+      "conname": "host_status_events_changed_by_fkey",
+      "definition": "FOREIGN KEY (changed_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "host_status_events",
+      "conname": "host_status_events_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(id)"
+    },
+    {
+      "table_name": "policy_acceptances",
+      "conname": "policy_acceptances_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(id)"
+    },
+    {
+      "table_name": "privacy_requests",
+      "conname": "privacy_requests_closed_by_fkey",
+      "definition": "FOREIGN KEY (closed_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "privacy_requests",
+      "conname": "privacy_requests_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "prize_claim_events",
+      "conname": "prize_claim_events_actor_user_id_fkey",
+      "definition": "FOREIGN KEY (actor_user_id) REFERENCES users(id)"
+    },
+    {
+      "table_name": "prize_claim_events",
+      "conname": "prize_claim_events_claim_id_fkey",
+      "definition": "FOREIGN KEY (claim_id) REFERENCES prize_claims(id)"
+    },
+    {
+      "table_name": "prize_claims",
+      "conname": "prize_claims_disputed_by_fkey",
+      "definition": "FOREIGN KEY (disputed_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "prize_claims",
+      "conname": "prize_claims_entry_id_fkey",
+      "definition": "FOREIGN KEY (entry_id) REFERENCES entries(id)"
+    },
+    {
+      "table_name": "prize_claims",
+      "conname": "prize_claims_giveaway_id_fkey",
+      "definition": "FOREIGN KEY (giveaway_id) REFERENCES giveaways(id)"
+    },
+    {
+      "table_name": "prize_claims",
+      "conname": "prize_claims_resolved_by_fkey",
+      "definition": "FOREIGN KEY (resolved_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "prize_claims",
+      "conname": "prize_claims_winner_user_id_fkey",
+      "definition": "FOREIGN KEY (winner_user_id) REFERENCES users(id)"
+    },
+    {
+      "table_name": "session_families",
+      "conname": "session_families_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "sessions",
+      "conname": "sessions_family_id_fkey",
+      "definition": "FOREIGN KEY (family_id) REFERENCES session_families(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "sessions",
+      "conname": "sessions_replaced_by_session_id_fkey",
+      "definition": "FOREIGN KEY (replaced_by_session_id) REFERENCES sessions(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "sessions",
+      "conname": "sessions_rotated_from_session_id_fkey",
+      "definition": "FOREIGN KEY (rotated_from_session_id) REFERENCES sessions(id) ON DELETE SET NULL"
+    },
+    {
+      "table_name": "sessions",
+      "conname": "sessions_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "users",
+      "conname": "users_account_status_changed_by_fkey",
+      "definition": "FOREIGN KEY (account_status_changed_by) REFERENCES users(id)"
+    },
+    {
+      "table_name": "users",
+      "conname": "users_host_status_changed_by_fkey",
+      "definition": "FOREIGN KEY (host_status_changed_by) REFERENCES users(id)"
+    }
+  ],
+  "exclusion_constraints": [
+    {
+      "table_name": "ads",
+      "conname": "ads_no_overlapping_slots",
+      "definition": "EXCLUDE USING gist (daterange(starts_at, ends_at, '[]'::text) WITH &&) WHERE (((slot_status = ANY (ARRAY['held'::text, 'paid'::text])) AND (starts_at IS NOT NULL) AND (ends_at IS NOT NULL))) DEFERRABLE"
+    }
+  ],
+  "indexes": [
+    {
+      "table_name": "ad_inquiries",
+      "indexname": "ad_inquiries_pkey",
+      "indexdef": "CREATE UNIQUE INDEX ad_inquiries_pkey ON ad_inquiries USING btree (id)"
+    },
+    {
+      "table_name": "ads",
+      "indexname": "ads_no_overlapping_slots",
+      "indexdef": "CREATE INDEX ads_no_overlapping_slots ON ads USING gist (daterange(starts_at, ends_at, '[]'::text)) WHERE ((slot_status = ANY (ARRAY['held'::text, 'paid'::text])) AND (starts_at IS NOT NULL) AND (ends_at IS NOT NULL))"
+    },
+    {
+      "table_name": "ads",
+      "indexname": "ads_pkey",
+      "indexdef": "CREATE UNIQUE INDEX ads_pkey ON ads USING btree (id)"
+    },
+    {
+      "table_name": "ads",
+      "indexname": "idx_ads_stripe_payment_intent",
+      "indexdef": "CREATE INDEX idx_ads_stripe_payment_intent ON ads USING btree (stripe_payment_intent) WHERE (stripe_payment_intent IS NOT NULL)"
+    },
+    {
+      "table_name": "ads",
+      "indexname": "idx_ads_stripe_session_id",
+      "indexdef": "CREATE INDEX idx_ads_stripe_session_id ON ads USING btree (stripe_session_id) WHERE (stripe_session_id IS NOT NULL)"
+    },
+    {
+      "table_name": "claim_notifications",
+      "indexname": "claim_notifications_pkey",
+      "indexdef": "CREATE UNIQUE INDEX claim_notifications_pkey ON claim_notifications USING btree (id)"
+    },
+    {
+      "table_name": "claim_notifications",
+      "indexname": "idx_claim_notifications_claim",
+      "indexdef": "CREATE INDEX idx_claim_notifications_claim ON claim_notifications USING btree (claim_id)"
+    },
+    {
+      "table_name": "claim_notifications",
+      "indexname": "idx_claim_notifications_due",
+      "indexdef": "CREATE INDEX idx_claim_notifications_due ON claim_notifications USING btree (next_attempt_at) WHERE (status = 'pending'::text)"
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "indexname": "claim_rescue_queue_pkey",
+      "indexdef": "CREATE UNIQUE INDEX claim_rescue_queue_pkey ON claim_rescue_queue USING btree (id)"
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "indexname": "idx_claim_rescue_host",
+      "indexdef": "CREATE INDEX idx_claim_rescue_host ON claim_rescue_queue USING btree (host_user_id, status)"
+    },
+    {
+      "table_name": "claim_rescue_queue",
+      "indexname": "uniq_claim_rescue_open",
+      "indexdef": "CREATE UNIQUE INDEX uniq_claim_rescue_open ON claim_rescue_queue USING btree (claim_id) WHERE (status = 'open'::text)"
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "indexname": "email_change_notification_events_pkey",
+      "indexdef": "CREATE UNIQUE INDEX email_change_notification_events_pkey ON email_change_notification_events USING btree (id)"
+    },
+    {
+      "table_name": "email_change_notification_events",
+      "indexname": "idx_email_change_notification_events_notification",
+      "indexdef": "CREATE INDEX idx_email_change_notification_events_notification ON email_change_notification_events USING btree (notification_id, created_at)"
+    },
+    {
+      "table_name": "email_change_notifications",
+      "indexname": "email_change_notifications_pkey",
+      "indexdef": "CREATE UNIQUE INDEX email_change_notifications_pkey ON email_change_notifications USING btree (id)"
+    },
+    {
+      "table_name": "email_change_notifications",
+      "indexname": "idx_email_change_notifications_change",
+      "indexdef": "CREATE INDEX idx_email_change_notifications_change ON email_change_notifications USING btree (change_id)"
+    },
+    {
+      "table_name": "email_change_notifications",
+      "indexname": "idx_email_change_notifications_due",
+      "indexdef": "CREATE INDEX idx_email_change_notifications_due ON email_change_notifications USING btree (next_attempt_at) WHERE (status = 'pending'::text)"
+    },
+    {
+      "table_name": "email_change_notifications",
+      "indexname": "uniq_email_change_notification_key",
+      "indexdef": "CREATE UNIQUE INDEX uniq_email_change_notification_key ON email_change_notifications USING btree (idempotency_key)"
+    },
+    {
+      "table_name": "email_change_requests",
+      "indexname": "email_change_requests_pkey",
+      "indexdef": "CREATE UNIQUE INDEX email_change_requests_pkey ON email_change_requests USING btree (id)"
+    },
+    {
+      "table_name": "email_change_requests",
+      "indexname": "uniq_email_change_pending",
+      "indexdef": "CREATE UNIQUE INDEX uniq_email_change_pending ON email_change_requests USING btree (user_id) WHERE (status = 'pending'::text)"
+    },
+    {
+      "table_name": "email_change_requests",
+      "indexname": "uniq_email_change_token",
+      "indexdef": "CREATE UNIQUE INDEX uniq_email_change_token ON email_change_requests USING btree (token_hash) WHERE (token_hash IS NOT NULL)"
+    },
+    {
+      "table_name": "entries",
+      "indexname": "entries_giveaway_id_user_id_key",
+      "indexdef": "CREATE UNIQUE INDEX entries_giveaway_id_user_id_key ON entries USING btree (giveaway_id, user_id)"
+    },
+    {
+      "table_name": "entries",
+      "indexname": "entries_pkey",
+      "indexdef": "CREATE UNIQUE INDEX entries_pkey ON entries USING btree (id)"
+    },
+    {
+      "table_name": "entries",
+      "indexname": "idx_entries_integrity",
+      "indexdef": "CREATE INDEX idx_entries_integrity ON entries USING btree (giveaway_id, integrity_status)"
+    },
+    {
+      "table_name": "entries",
+      "indexname": "idx_entries_user_id",
+      "indexdef": "CREATE INDEX idx_entries_user_id ON entries USING btree (user_id)"
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "indexname": "entry_integrity_case_events_pkey",
+      "indexdef": "CREATE UNIQUE INDEX entry_integrity_case_events_pkey ON entry_integrity_case_events USING btree (id)"
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "indexname": "idx_entry_integrity_case_events_case",
+      "indexdef": "CREATE INDEX idx_entry_integrity_case_events_case ON entry_integrity_case_events USING btree (case_id, created_at)"
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "indexname": "entry_integrity_cases_pkey",
+      "indexdef": "CREATE UNIQUE INDEX entry_integrity_cases_pkey ON entry_integrity_cases USING btree (id)"
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "indexname": "idx_integrity_cases_open",
+      "indexdef": "CREATE INDEX idx_integrity_cases_open ON entry_integrity_cases USING btree (giveaway_id, status)"
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "indexname": "uniq_integrity_case_live_entry",
+      "indexdef": "CREATE UNIQUE INDEX uniq_integrity_case_live_entry ON entry_integrity_cases USING btree (entry_id) WHERE ((status = ANY (ARRAY['open'::text, 'upheld_blocked'::text])) AND (entry_id IS NOT NULL))"
+    },
+    {
+      "table_name": "entry_integrity_cases",
+      "indexname": "uniq_integrity_case_live_giveaway",
+      "indexdef": "CREATE UNIQUE INDEX uniq_integrity_case_live_giveaway ON entry_integrity_cases USING btree (giveaway_id) WHERE ((status = ANY (ARRAY['open'::text, 'upheld_blocked'::text])) AND (entry_id IS NULL))"
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "indexname": "entry_integrity_events_pkey",
+      "indexdef": "CREATE UNIQUE INDEX entry_integrity_events_pkey ON entry_integrity_events USING btree (id)"
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "indexname": "idx_entry_integrity_events_entry",
+      "indexdef": "CREATE INDEX idx_entry_integrity_events_entry ON entry_integrity_events USING btree (entry_id, created_at)"
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "indexname": "entry_risk_signals_pkey",
+      "indexdef": "CREATE UNIQUE INDEX entry_risk_signals_pkey ON entry_risk_signals USING btree (id)"
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "indexname": "idx_entry_risk_signals_entry",
+      "indexdef": "CREATE INDEX idx_entry_risk_signals_entry ON entry_risk_signals USING btree (entry_id)"
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "indexname": "idx_entry_risk_signals_expiry",
+      "indexdef": "CREATE INDEX idx_entry_risk_signals_expiry ON entry_risk_signals USING btree (expires_at)"
+    },
+    {
+      "table_name": "entry_risk_signals",
+      "indexname": "idx_entry_risk_signals_network",
+      "indexdef": "CREATE INDEX idx_entry_risk_signals_network ON entry_risk_signals USING btree (network_hmac, created_at) WHERE (network_hmac IS NOT NULL)"
+    },
+    {
+      "table_name": "giveaways",
+      "indexname": "giveaways_pkey",
+      "indexdef": "CREATE UNIQUE INDEX giveaways_pkey ON giveaways USING btree (id)"
+    },
+    {
+      "table_name": "giveaways",
+      "indexname": "idx_giveaways_host_id",
+      "indexdef": "CREATE INDEX idx_giveaways_host_id ON giveaways USING btree (host_id)"
+    },
+    {
+      "table_name": "giveaways",
+      "indexname": "idx_giveaways_status_deadline",
+      "indexdef": "CREATE INDEX idx_giveaways_status_deadline ON giveaways USING btree (status, entry_deadline)"
+    },
+    {
+      "table_name": "host_applications",
+      "indexname": "host_applications_pkey",
+      "indexdef": "CREATE UNIQUE INDEX host_applications_pkey ON host_applications USING btree (id)"
+    },
+    {
+      "table_name": "host_applications",
+      "indexname": "idx_host_applications_user_id",
+      "indexdef": "CREATE INDEX idx_host_applications_user_id ON host_applications USING btree (user_id)"
+    },
+    {
+      "table_name": "host_applications",
+      "indexname": "uniq_host_application_open",
+      "indexdef": "CREATE UNIQUE INDEX uniq_host_application_open ON host_applications USING btree (user_id) WHERE ((status = 'pending'::text) AND (user_id IS NOT NULL))"
+    },
+    {
+      "table_name": "host_status_events",
+      "indexname": "host_status_events_pkey",
+      "indexdef": "CREATE UNIQUE INDEX host_status_events_pkey ON host_status_events USING btree (id)"
+    },
+    {
+      "table_name": "host_status_events",
+      "indexname": "idx_host_status_events_user",
+      "indexdef": "CREATE INDEX idx_host_status_events_user ON host_status_events USING btree (user_id, created_at)"
+    },
+    {
+      "table_name": "policy_acceptances",
+      "indexname": "idx_policy_acceptances_user",
+      "indexdef": "CREATE INDEX idx_policy_acceptances_user ON policy_acceptances USING btree (user_id)"
+    },
+    {
+      "table_name": "policy_acceptances",
+      "indexname": "policy_acceptances_pkey",
+      "indexdef": "CREATE UNIQUE INDEX policy_acceptances_pkey ON policy_acceptances USING btree (id)"
+    },
+    {
+      "table_name": "policy_acceptances",
+      "indexname": "policy_acceptances_user_id_policy_id_policy_version_key",
+      "indexdef": "CREATE UNIQUE INDEX policy_acceptances_user_id_policy_id_policy_version_key ON policy_acceptances USING btree (user_id, policy_id, policy_version)"
+    },
+    {
+      "table_name": "privacy_request_events",
+      "indexname": "idx_privacy_request_events_request",
+      "indexdef": "CREATE INDEX idx_privacy_request_events_request ON privacy_request_events USING btree (request_id, created_at)"
+    },
+    {
+      "table_name": "privacy_request_events",
+      "indexname": "privacy_request_events_pkey",
+      "indexdef": "CREATE UNIQUE INDEX privacy_request_events_pkey ON privacy_request_events USING btree (id)"
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "indexname": "idx_privacy_request_executions_request",
+      "indexdef": "CREATE INDEX idx_privacy_request_executions_request ON privacy_request_executions USING btree (request_id, executed_at)"
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "indexname": "privacy_request_executions_pkey",
+      "indexdef": "CREATE UNIQUE INDEX privacy_request_executions_pkey ON privacy_request_executions USING btree (id)"
+    },
+    {
+      "table_name": "privacy_requests",
+      "indexname": "idx_privacy_requests_open",
+      "indexdef": "CREATE INDEX idx_privacy_requests_open ON privacy_requests USING btree (status, created_at)"
+    },
+    {
+      "table_name": "privacy_requests",
+      "indexname": "idx_privacy_requests_user",
+      "indexdef": "CREATE INDEX idx_privacy_requests_user ON privacy_requests USING btree (user_id, created_at)"
+    },
+    {
+      "table_name": "privacy_requests",
+      "indexname": "privacy_requests_pkey",
+      "indexdef": "CREATE UNIQUE INDEX privacy_requests_pkey ON privacy_requests USING btree (id)"
+    },
+    {
+      "table_name": "privacy_requests",
+      "indexname": "privacy_requests_reference_key",
+      "indexdef": "CREATE UNIQUE INDEX privacy_requests_reference_key ON privacy_requests USING btree (reference)"
+    },
+    {
+      "table_name": "prize_claim_events",
+      "indexname": "idx_prize_claim_events_claim",
+      "indexdef": "CREATE INDEX idx_prize_claim_events_claim ON prize_claim_events USING btree (claim_id, created_at)"
+    },
+    {
+      "table_name": "prize_claim_events",
+      "indexname": "prize_claim_events_pkey",
+      "indexdef": "CREATE UNIQUE INDEX prize_claim_events_pkey ON prize_claim_events USING btree (id)"
+    },
+    {
+      "table_name": "prize_claims",
+      "indexname": "idx_prize_claims_status",
+      "indexdef": "CREATE INDEX idx_prize_claims_status ON prize_claims USING btree (status)"
+    },
+    {
+      "table_name": "prize_claims",
+      "indexname": "idx_prize_claims_token_hash",
+      "indexdef": "CREATE UNIQUE INDEX idx_prize_claims_token_hash ON prize_claims USING btree (token_hash) WHERE (token_hash IS NOT NULL)"
+    },
+    {
+      "table_name": "prize_claims",
+      "indexname": "idx_prize_claims_winner",
+      "indexdef": "CREATE INDEX idx_prize_claims_winner ON prize_claims USING btree (winner_user_id)"
+    },
+    {
+      "table_name": "prize_claims",
+      "indexname": "prize_claims_giveaway_id_key",
+      "indexdef": "CREATE UNIQUE INDEX prize_claims_giveaway_id_key ON prize_claims USING btree (giveaway_id)"
+    },
+    {
+      "table_name": "prize_claims",
+      "indexname": "prize_claims_pkey",
+      "indexdef": "CREATE UNIQUE INDEX prize_claims_pkey ON prize_claims USING btree (id)"
+    },
+    {
+      "table_name": "session_families",
+      "indexname": "idx_session_families_user",
+      "indexdef": "CREATE INDEX idx_session_families_user ON session_families USING btree (user_id) WHERE (revoked_at IS NULL)"
+    },
+    {
+      "table_name": "session_families",
+      "indexname": "session_families_pkey",
+      "indexdef": "CREATE UNIQUE INDEX session_families_pkey ON session_families USING btree (id)"
+    },
+    {
+      "table_name": "sessions",
+      "indexname": "idx_sessions_expiry",
+      "indexdef": "CREATE INDEX idx_sessions_expiry ON sessions USING btree (expires_at)"
+    },
+    {
+      "table_name": "sessions",
+      "indexname": "idx_sessions_family",
+      "indexdef": "CREATE INDEX idx_sessions_family ON sessions USING btree (family_id)"
+    },
+    {
+      "table_name": "sessions",
+      "indexname": "idx_sessions_user",
+      "indexdef": "CREATE INDEX idx_sessions_user ON sessions USING btree (user_id) WHERE (revoked_at IS NULL)"
+    },
+    {
+      "table_name": "sessions",
+      "indexname": "sessions_pkey",
+      "indexdef": "CREATE UNIQUE INDEX sessions_pkey ON sessions USING btree (id)"
+    },
+    {
+      "table_name": "sessions",
+      "indexname": "sessions_token_hash_key",
+      "indexdef": "CREATE UNIQUE INDEX sessions_token_hash_key ON sessions USING btree (token_hash)"
+    },
+    {
+      "table_name": "sessions",
+      "indexname": "uniq_session_family_live",
+      "indexdef": "CREATE UNIQUE INDEX uniq_session_family_live ON sessions USING btree (family_id) WHERE (revoked_at IS NULL)"
+    },
+    {
+      "table_name": "sessions",
+      "indexname": "uniq_session_successor",
+      "indexdef": "CREATE UNIQUE INDEX uniq_session_successor ON sessions USING btree (rotated_from_session_id) WHERE (rotated_from_session_id IS NOT NULL)"
+    },
+    {
+      "table_name": "site_settings",
+      "indexname": "site_settings_pkey",
+      "indexdef": "CREATE UNIQUE INDEX site_settings_pkey ON site_settings USING btree (key)"
+    },
+    {
+      "table_name": "stripe_events",
+      "indexname": "stripe_events_pkey",
+      "indexdef": "CREATE UNIQUE INDEX stripe_events_pkey ON stripe_events USING btree (id)"
+    },
+    {
+      "table_name": "users",
+      "indexname": "idx_users_reset_token",
+      "indexdef": "CREATE INDEX idx_users_reset_token ON users USING btree (reset_token) WHERE (reset_token IS NOT NULL)"
+    },
+    {
+      "table_name": "users",
+      "indexname": "idx_users_verification_token",
+      "indexdef": "CREATE INDEX idx_users_verification_token ON users USING btree (verification_token) WHERE (verification_token IS NOT NULL)"
+    },
+    {
+      "table_name": "users",
+      "indexname": "users_email_key",
+      "indexdef": "CREATE UNIQUE INDEX users_email_key ON users USING btree (email)"
+    },
+    {
+      "table_name": "users",
+      "indexname": "users_pkey",
+      "indexdef": "CREATE UNIQUE INDEX users_pkey ON users USING btree (id)"
+    }
+  ],
+  "triggers": [
+    {
+      "table_name": "email_change_notification_events",
+      "tgname": "email_change_notification_events_immutable",
+      "definition": "CREATE TRIGGER email_change_notification_events_immutable BEFORE DELETE OR UPDATE ON email_change_notification_events FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only()"
+    },
+    {
+      "table_name": "entry_integrity_case_events",
+      "tgname": "entry_integrity_case_events_immutable",
+      "definition": "CREATE TRIGGER entry_integrity_case_events_immutable BEFORE DELETE OR UPDATE ON entry_integrity_case_events FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only()"
+    },
+    {
+      "table_name": "entry_integrity_events",
+      "tgname": "entry_integrity_events_immutable",
+      "definition": "CREATE TRIGGER entry_integrity_events_immutable BEFORE DELETE OR UPDATE ON entry_integrity_events FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only()"
+    },
+    {
+      "table_name": "privacy_request_events",
+      "tgname": "privacy_request_events_immutable",
+      "definition": "CREATE TRIGGER privacy_request_events_immutable BEFORE DELETE OR UPDATE ON privacy_request_events FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only()"
+    },
+    {
+      "table_name": "privacy_request_executions",
+      "tgname": "privacy_request_executions_immutable",
+      "definition": "CREATE TRIGGER privacy_request_executions_immutable BEFORE DELETE OR UPDATE ON privacy_request_executions FOR EACH ROW EXECUTE FUNCTION integrity_audit_append_only()"
+    },
+    {
+      "table_name": "privacy_requests",
+      "tgname": "privacy_requests_no_delete",
+      "definition": "CREATE TRIGGER privacy_requests_no_delete BEFORE DELETE ON privacy_requests FOR EACH ROW EXECUTE FUNCTION privacy_requests_no_delete()"
+    }
+  ],
+  "functions": [
+    {
+      "proname": "integrity_audit_append_only",
+      "definition": "CREATE OR REPLACE FUNCTION integrity_audit_append_only()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\n    BEGIN\n      RAISE EXCEPTION '% is append-only; % is not permitted', TG_TABLE_NAME, TG_OP;\n    END;\n    $function$"
+    },
+    {
+      "proname": "privacy_requests_no_delete",
+      "definition": "CREATE OR REPLACE FUNCTION privacy_requests_no_delete()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\n    BEGIN\n      RAISE EXCEPTION\n        'privacy_requests rows cannot be deleted; a request may change state but is never erased'\n        USING ERRCODE = 'raise_exception';\n    END;\n    $function$"
+    }
+  ],
+  "extensions": [
+    {
+      "extname": "plpgsql"
+    }
+  ]
+}

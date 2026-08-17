@@ -403,11 +403,69 @@ function renderVerificationBanner() {
 // Owner-toggled, informational only — doesn't block any functionality,
 // just tells visitors something might be flaky right now. Dismissible per
 // browser tab (sessionStorage) so it doesn't nag on every page nav.
-async function renderMaintenanceBanner() {
+// What this deployment is, said on the page rather than only in a header.
+//
+// A private beta that looks exactly like a finished product IS a claim of
+// production readiness, whatever the documentation says — so while the
+// deployment is not a public launch, every page carries a strip that names the
+// state and says plainly that the Terms and Privacy Policy are drafts.
+//
+// Deliberately NOT dismissible. The maintenance banner below can be dismissed
+// because it is transient; this one is a standing fact about the deployment,
+// and a fact somebody clicked away is a fact the next visitor does not see.
+//
+// It shows only the coarse state and the disclosure sentence — never the launch
+// blockers, which name outstanding legal work and missing configuration.
+async function renderDeploymentBanner(config) {
+  try {
+    if (!config || config.is_public_launch) return;
+    const header = document.querySelector('header.site');
+    if (!header || document.querySelector('.deployment-banner')) return;
+
+    const LABELS = {
+      private_beta: 'Private beta',
+      staging: 'Staging',
+      development: 'Development',
+    };
+    const label = LABELS[config.deployment_state] || 'Not a public launch';
+
+    const banner = el('div', { class: 'deployment-banner' }, [
+      el('div', { class: 'wrap' }, [
+        el('strong', { text: label }),
+        ' — ',
+        el('span', {
+          text:
+            config.deployment_disclosure ||
+            'This deployment is not a public launch. The Terms of Service and Privacy Policy are drafts with no effective date, and nothing here has been reviewed by qualified counsel.',
+        }),
+      ]),
+    ]);
+    header.insertAdjacentElement('afterend', banner);
+
+    // A truthful, temporary message when email cannot be delivered, so nobody
+    // fills in a signup or reset form that is going to 503.
+    if (config.email_delivery_available === false) {
+      const notice = el('div', { class: 'deployment-banner' }, [
+        el('div', { class: 'wrap' }, [
+          el('strong', { text: 'Email temporarily unavailable' }),
+          ' — ',
+          el('span', {
+            text:
+              'Signing up, resetting a password and changing an email address are paused while we sort this out, because each of them needs an email to reach you. Everything else works, and you stay signed in.',
+          }),
+        ]),
+      ]);
+      banner.insertAdjacentElement('afterend', notice);
+    }
+  } catch (err) {
+    // Non-critical.
+  }
+}
+
+async function renderMaintenanceBanner(config) {
   if (sessionStorage.getItem('naseeb_maintenance_dismissed') === 'true') return;
   try {
-    const config = await fetch('/api/config').then((r) => r.json());
-    if (!config.maintenance_mode) return;
+    if (!config || !config.maintenance_mode) return;
     const header = document.querySelector('header.site');
     if (!header || document.querySelector('.maintenance-banner')) return;
 
@@ -544,7 +602,13 @@ function statCard(number, label) {
 // no synchronous copy of that answer any more, which is the point.
 document.addEventListener('DOMContentLoaded', async () => {
   renderFooter();
-  renderMaintenanceBanner();
+  // One fetch, two banners. The deployment strip goes up first because it is a
+  // standing fact rather than a transient notice.
+  const siteConfig = await fetch('/api/config')
+    .then((r) => r.json())
+    .catch(() => null);
+  await renderDeploymentBanner(siteConfig);
+  renderMaintenanceBanner(siteConfig);
   await sessionReady;
   renderHeader();
   renderVerificationBanner();

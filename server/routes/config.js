@@ -2,6 +2,8 @@ const express = require('express');
 const { getSetting } = require('../lib/settings');
 const { areClaimsEnabled } = require('../lib/featureFlags');
 const { currentPolicies } = require('../lib/policies');
+const appConfig = require('../lib/config');
+const emailDelivery = require('../lib/emailDelivery');
 
 const router = express.Router();
 
@@ -29,6 +31,26 @@ router.get('/', async (req, res) => {
       // So the policy pages can show which version a reader is looking at
       // without that version being hard-coded into the markup twice.
       policies: currentPolicies(),
+
+      // What this deployment IS, so every page can say so.
+      //
+      // The COARSE state only — `private_beta`, `staging`, `development`,
+      // `public_launch`. Deliberately not the launch blockers: those name the
+      // policy work that is outstanding and the provider configuration that is
+      // missing, which is an internal readiness detail and not something an
+      // unauthenticated page should enumerate.
+      deployment_state: appConfig.deploymentState(),
+      is_public_launch: appConfig.isPublicLaunch(),
+      // Present on any non-launch deployment. The wording is the truthful
+      // disclosure; it carries no blocker detail and no configuration.
+      deployment_disclosure: appConfig.stateDisclosure()
+        ? appConfig.stateDisclosure().disclosure
+        : null,
+
+      // So the UI can say email is temporarily unavailable rather than letting
+      // somebody fill in a signup form that will 503. A boolean and nothing
+      // else — no provider name, no reason detail, no configuration.
+      email_delivery_available: emailDelivery.canDeliver(),
     });
   } catch (err) {
     console.error(err);

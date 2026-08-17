@@ -17,6 +17,7 @@ const { areClaimsEnabled } = require('../lib/featureFlags');
 const notifications = require('../lib/claimNotifications');
 const integrity = require('../lib/entryIntegrity');
 const { runMaintenanceOnce } = require('../lib/claimScheduler');
+const emailDelivery = require('../lib/emailDelivery');
 
 const router = express.Router();
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
@@ -479,6 +480,12 @@ router.get('/admin/review', requireAdmin, async (req, res) => {
 // Between invalidating the old one and the send succeeding, no token is valid
 // at all — the safe direction to be wrong in.
 router.post('/:id/admin/reissue', claimActionLimiter, requireAdmin, async (req, res) => {
+  // Before anything, because this route's first act is to kill every existing
+  // token. Reissuing into a deployment that cannot send would take away a link
+  // the winner may still have and replace it with one that never arrives —
+  // strictly worse than doing nothing.
+  if (emailDelivery.refuseIfUndeliverable(res, { action: 'claim_invitation_reissue' })) return;
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

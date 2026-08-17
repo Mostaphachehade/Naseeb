@@ -1,106 +1,87 @@
 // Proving that the running code and the database schema are the same vintage.
 //
 // ---------------------------------------------------------------------------
-// What was here before, and why it needed something
+// What changed, and why the first version was not good enough
 // ---------------------------------------------------------------------------
 //
-// `db.init()` is one large idempotent bootstrap: CREATE TABLE IF NOT EXISTS,
-// ADD COLUMN IF NOT EXISTS, DO $$ blocks that add a constraint when it is
-// absent. It runs on every boot, under an advisory lock, and it works.
+// The first ledger had two flaws that a checksum cannot paper over:
 //
-// What it cannot do is answer a question that matters during a deploy: **is the
-// database this process is talking to the one this code expects?** A rollback
-// to an older release leaves new columns in place and old code running against
-// them — usually fine, occasionally not. A half-finished deploy leaves a
-// constraint missing with nothing recording that fact. And an idempotent script
-// that somebody edits produces a different schema on a fresh database than on
-// an existing one, silently, forever.
+//   1. **The baseline was a file people edit.** It was `db.init()`'s template
+//      literal, which every feature phase appended to. Checksumming that records
+//      only that it changed again. The baseline is now
+//      `server/migrations/001_baseline.sql`, frozen — future changes are `002`,
+//      `003`, and nothing is ever added to `001`.
 //
-// ---------------------------------------------------------------------------
-// The baseline strategy, stated plainly
-// ---------------------------------------------------------------------------
-//
-// Rewriting 1,400 lines of accumulated DDL into an ordered migration history
-// would be inventing a past that did not happen. Every existing database got
-// its schema from `init()`, not from a numbered sequence, and a ledger claiming
-// otherwise would be a lie told by the thing whose whole job is to be trusted.
-//
-// So:
-//
-//   * **0001_baseline** IS `db.init()`. It is checksummed by hashing the SQL
-//     text `init()` executes. It is idempotent by construction and safe to
-//     re-run.
-//
-//   * An **existing** database is ADOPTED: the ledger records the baseline with
-//     `applied_by = 'adoption'` and a note saying the schema predates the
-//     ledger. It is not marked as having been executed, because it was not.
-//
-//   * A **fresh** database records `applied_by = 'migrate'`.
-//
-//   * Everything after the baseline is an ordinary numbered migration: ordered,
-//     idempotent, checksummed, applied once.
-//
-// Adoption is detectable and honest. `SELECT applied_by FROM schema_migrations`
-// tells you which databases were adopted and which were built.
+//   2. **Adoption was a guess.** A database with a `users` table was recorded as
+//      fully migrated on the strength of one `to_regclass`. A database missing a
+//      column, a CHECK or an append-only trigger would be marked done and then
+//      fail at runtime on the one operation that object was protecting.
+//      Adoption now requires an object-by-object verification against the frozen
+//      baseline, it is an **explicit CLI action**, and on any difference it
+//      refuses and writes no row.
 //
 // ---------------------------------------------------------------------------
-// Guarantees
+// Two safe paths onto the ledger
 // ---------------------------------------------------------------------------
 //
-//   * **Concurrent deploys cannot double-apply.** One advisory lock around the
-//     whole run; a second process waits, then finds the work done.
-//   * **An edited historical migration is detected.** The checksum recorded at
-//     application time is compared on every check. A mismatch is a hard failure,
-//     not a warning: it means the code and the database disagree about what was
-//     applied and nobody can tell which is right.
-//   * **No automatic destructive rollback.** There is no `down`. Reversing a
-//     migration is a new migration, written deliberately.
-//   * **Nothing deletes commercial or audit data.** Enforced by review and by a
-//     test that greps every migration body for a destructive verb.
+//   **Verified adoption** — `node scripts/migrate.js adopt`
+//   For a database whose schema already equals the baseline. Read-only
+//   verification first; the ledger row is written only if every expected table,
+//   column, type, nullability, default, key, index, foreign-key action, CHECK,
+//   exclusion constraint, trigger, function and extension matches. It is
+//   recorded as `adopted`, never as executed, because it was not executed.
+//
+//   **Baseline execution** — `node scripts/migrate.js up`
+//   For an empty or older database. Runs the idempotent baseline under the
+//   advisory lock, verifies the full schema afterwards, and records it as
+//   `migrate` **only after verification passes**. A failure rolls back and
+//   writes nothing: a partial migration must never be recorded as applied.
+//
+// **Web startup does neither.** It verifies and fails readiness. Silently
+// adopting or mutating an unknown production database during a boot is exactly
+// the behaviour this file exists to prevent.
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const schemaVerify = require('./schemaVerify');
 
 // Bumped when the expected schema changes. Readiness compares this to what the
 // ledger says has actually been applied.
 const SCHEMA_VERSION = '0002';
 
-// Distinct from the claim-maintenance and ad-slot locks; the three must never
-// contend.
+// Distinct from the claim-maintenance, ad-slot and per-job maintenance locks;
+// none of them may contend.
 const MIGRATION_LOCK_KEY = 918273645;
+
+const MIGRATIONS_DIR = path.join(__dirname, '..', 'migrations');
 
 // ---------------------------------------------------------------------------
 // The migrations
 // ---------------------------------------------------------------------------
 //
-// `sql` may be a string or a function taking a client. The baseline is a
-// function because its body lives in db.js.
+// Ordered by id, which is why they are numbered. `sqlFile` is read from disk and
+// checksummed; a migration may instead supply `run` for something SQL cannot
+// express, and is then checksummed from its source.
 //
-// A migration must be idempotent: it may run against a database where it has
-// already had its effect (an adopted one, most obviously) and must succeed.
+// **Nothing may be added to 001.** Its checksum is recorded in every deployed
+// database, and changing it is a deliberate, breaking act.
 const MIGRATIONS = [
   {
-    id: '0001_baseline',
+    id: '001_baseline',
     description:
-      'The schema as built by db.init(). Idempotent bootstrap; adopted rather than executed on a database that predates the ledger.',
+      'The schema as it stood when the ledger was introduced. Frozen; idempotent; adopted rather than executed on a database that already matches it.',
     baseline: true,
-    // Checksummed from the SQL init() runs, so an edit to the bootstrap is
-    // visible here rather than silently producing two different schemas.
-    run: async (client, { init }) => init(client),
+    sqlFile: '001_baseline.sql',
   },
   {
-    id: '0002_operational_readiness',
+    id: '002_schema_ledger',
     description:
-      'Constraint verification support for the readiness probe. Adds no columns and touches no data.',
-    run: async (client) => {
-      // Deliberately a no-op DDL that records the ledger is live. Everything it
-      // would have created already exists in the baseline; the migration exists
-      // so the ordered path is exercised by a real second entry rather than
-      // being theoretical until the first schema change needs it.
-      await client.query('SELECT 1');
-    },
+      'Records that the ledger is live. Adds no table, column or constraint and touches no data.',
+    sqlFile: '002_schema_ledger.sql',
   },
 ];
 
-// The critical constraints readiness verifies. Named rather than counted: a
+// The critical objects readiness verifies by name. Named rather than counted: a
 // count tells you something changed, a name tells you what.
 const CRITICAL_CONSTRAINTS = [
   { name: 'privacy_requests_no_phantom_deletion', table: 'privacy_requests', kind: 'check' },
@@ -123,12 +104,38 @@ function checksum(text) {
   return crypto.createHash('sha256').update(String(text)).digest('hex');
 }
 
-// The baseline's checksum comes from the SQL text db.js executes, so editing
-// the bootstrap changes it. Everything else is hashed from its own source.
-function checksumFor(migration, { baselineSql = '' } = {}) {
-  if (migration.baseline) return checksum(baselineSql);
+function sqlFor(migration) {
+  if (!migration.sqlFile) return null;
+  return fs.readFileSync(path.join(MIGRATIONS_DIR, migration.sqlFile), 'utf8');
+}
+
+// A migration's checksum is over its own frozen content. The baseline's is the
+// file, so editing the file is detected; a `run` migration's is its source.
+function checksumFor(migration) {
+  if (migration.sqlFile) return checksum(sqlFor(migration));
   return checksum(migration.run.toString());
 }
+
+// Every checksum, computed once. Useful for a report and for a test that adding
+// a migration must not change the baseline's.
+function checksums() {
+  return Object.fromEntries(MIGRATIONS.map((m) => [m.id, checksumFor(m)]));
+}
+
+// Deterministic order, asserted rather than assumed: `MIGRATIONS` is applied in
+// array order, and the array must be sorted by id.
+function orderedIds() {
+  return MIGRATIONS.map((m) => m.id);
+}
+
+function isOrdered() {
+  const ids = orderedIds();
+  return ids.every((id, i) => i === 0 || ids[i - 1] < id);
+}
+
+// ---------------------------------------------------------------------------
+// The ledger
+// ---------------------------------------------------------------------------
 
 async function ensureLedger(client) {
   await client.query(`
@@ -136,13 +143,18 @@ async function ensureLedger(client) {
       id TEXT PRIMARY KEY,
       checksum TEXT NOT NULL,
       description TEXT,
-      -- 'migrate' when this process ran it; 'adoption' when the schema already
-      -- existed and the ledger was written to describe reality rather than to
-      -- claim the migration executed.
+      -- 'migrate'  this process executed it.
+      -- 'adopted'  the schema already matched the baseline and was VERIFIED
+      --            object by object before this row was written. Never written
+      --            on the strength of a table existing.
       applied_by TEXT NOT NULL,
       applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      -- The schema fingerprint at the moment of adoption, so a later question
+      -- about what was verified has an answer.
+      schema_fingerprint TEXT,
       note TEXT
     );
+    ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS schema_fingerprint TEXT;
   `);
 }
 
@@ -153,38 +165,157 @@ async function appliedMigrations(client) {
 }
 
 // Does this database predate the ledger? True when the core tables exist but no
-// ledger row does — which is exactly the adoption case.
-async function looksAdopted(client) {
+// ledger row does.
+//
+// This is a QUESTION, not a decision. It used to be the whole of adoption; it is
+// now only what tells the CLI which path to offer.
+async function looksPreLedger(client) {
+  await ensureLedger(client);
   const ledger = await client.query('SELECT COUNT(*)::int AS n FROM schema_migrations');
   if (ledger.rows[0].n > 0) return false;
-  const users = await client.query(
-    "SELECT to_regclass('public.users') IS NOT NULL AS present"
-  );
+  const users = await client.query("SELECT to_regclass('public.users') IS NOT NULL AS present");
   return Boolean(users.rows[0].present);
 }
 
-// Runs whatever has not been applied, under one advisory lock.
-//
-// `init` is injected rather than required, so this module does not depend on
-// db.js and db.js can depend on it.
-async function migrate(pool, { init, baselineSql = '', log = console } = {}) {
-  const client = await pool.connect();
-  const summary = { applied: [], adopted: [], alreadyApplied: [], version: SCHEMA_VERSION };
+// ---------------------------------------------------------------------------
+// The one data-dependent object
+// ---------------------------------------------------------------------------
 
+// `ads_no_overlapping_slots` cannot be part of the frozen baseline: whether it
+// can exist depends on the rows already in the table, and a migration that
+// deleted or moved a paid booking to make room for a constraint would be
+// destroying a commercial record to satisfy its own bookkeeping.
+//
+// So it is applied here, after the SQL, and its absence is reported rather than
+// forced. Required lazily because `server/db.js` is what owns the decision and
+// requiring it at module load would tie this file's load order to the pool's.
+function slotConstraintModule() {
+  // eslint-disable-next-line global-require -- see above
+  return require('../db');
+}
+
+async function slotProtection(client) {
+  const db = slotConstraintModule();
+  const active = await db.isSlotProtectionActive(client);
+  if (active) return { active: true, blockedByData: false, overlaps: 0 };
+  const overlaps = await db.findOverlappingSlots(client);
+  return { active: false, blockedByData: overlaps.length > 0, overlaps: overlaps.length };
+}
+
+// ---------------------------------------------------------------------------
+// Verified adoption
+// ---------------------------------------------------------------------------
+
+// Explicit. Never called from web startup.
+//
+// Refuses — and writes nothing — unless the target schema matches the frozen
+// baseline object for object. `dryRun` performs the same verification and
+// reports, without touching the ledger.
+async function adopt(pool, { dryRun = false, log = console } = {}) {
+  const client = await pool.connect();
   try {
-    // Blocking, not try-lock: a concurrent deploy should wait and then find the
-    // work already done, rather than starting a web process against a schema
-    // that is still being changed.
     await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
     await ensureLedger(client);
 
-    const adopting = await looksAdopted(client);
+    const existing = await client.query('SELECT COUNT(*)::int AS n FROM schema_migrations');
+    if (existing.rows[0].n > 0) {
+      return { ok: false, reason: 'ledger_not_empty', adopted: [] };
+    }
+
+    const users = await client.query("SELECT to_regclass('public.users') IS NOT NULL AS present");
+    if (!users.rows[0].present) {
+      return {
+        ok: false,
+        reason: 'database_is_empty',
+        hint: 'Nothing to adopt. Run `migrate up` to execute the baseline.',
+        adopted: [],
+      };
+    }
+
+    const comparison = await schemaVerify.verifyAgainstSnapshot(client);
+    if (!comparison.ok) {
+      // Object NAMES only. A CHECK definition can quote a value, and this
+      // reaches a log.
+      log.error(
+        `Adoption refused: the schema does not match the expected snapshot (${comparison.summary.missing} missing, ${comparison.summary.altered} altered).`
+      );
+      comparison.missing.slice(0, 40).forEach((m) => log.error(`  missing ${m.kind}: ${m.object}`));
+      comparison.altered.slice(0, 40).forEach((m) => log.error(`  altered ${m.kind}: ${m.object}`));
+      return { ok: false, reason: 'schema_mismatch', comparison, adopted: [] };
+    }
+
+    // The one data-dependent object. Absent because real bookings overlap is a
+    // commercial conflict on an otherwise-correct schema, and adoption may
+    // proceed with checkout gated. Absent for no reason at all is an
+    // unprotected database, and adoption refuses so somebody runs `migrate up`
+    // — which adds it — rather than recording the gap as verified.
+    const slots = await slotProtection(client);
+    if (comparison.conditional.length > 0 && !slots.blockedByData) {
+      log.error(
+        'Adoption refused: the booking-overlap protection is missing and there is no data conflict preventing it. Run `migrate up`, which adds it.'
+      );
+      return { ok: false, reason: 'slot_protection_missing', comparison, slots, adopted: [] };
+    }
+
+    if (dryRun) {
+      return { ok: true, reason: 'dry_run', comparison, adopted: [] };
+    }
+
+    const target = await schemaVerify.read(client, 'public');
+    const print = schemaVerify.fingerprint(target);
+
+    // The baseline is adopted; anything after it is executed, because a
+    // pre-ledger database cannot have run a migration that did not exist.
+    await client.query(
+      `INSERT INTO schema_migrations (id, checksum, description, applied_by, schema_fingerprint, note)
+       VALUES ($1, $2, $3, 'adopted', $4, $5)`,
+      [
+        MIGRATIONS[0].id,
+        checksumFor(MIGRATIONS[0]),
+        MIGRATIONS[0].description,
+        print,
+        'Schema predates the ledger and was verified object by object against the frozen baseline before this row was written. Adopted, not executed.',
+      ]
+    );
+
+    log.log(`Adopted ${MIGRATIONS[0].id} after full schema verification.`);
+    return { ok: true, adopted: [MIGRATIONS[0].id], fingerprint: print, comparison, slots };
+  } finally {
+    await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]).catch(() => {});
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Baseline execution and forward migrations
+// ---------------------------------------------------------------------------
+
+// Explicit. Never called from web startup.
+//
+// Runs whatever has not been applied, under one advisory lock, verifying the
+// schema after the baseline and recording a migration only once it has actually
+// succeeded.
+async function migrate(pool, { log = console } = {}) {
+  if (!isOrdered()) {
+    throw new Error('Migrations are not in ascending id order. Fix the list before running.');
+  }
+
+  const client = await pool.connect();
+  const summary = { applied: [], alreadyApplied: [], version: SCHEMA_VERSION };
+
+  try {
+    // Blocking, not try-lock: a concurrent deploy should wait and then find the
+    // work done, rather than starting a web process against a half-changed
+    // schema.
+    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
+    await ensureLedger(client);
+
     const applied = new Map(
       (await client.query('SELECT * FROM schema_migrations')).rows.map((r) => [r.id, r])
     );
 
     for (const migration of MIGRATIONS) {
-      const expected = checksumFor(migration, { baselineSql });
+      const expected = checksumFor(migration);
       const existing = applied.get(migration.id);
 
       if (existing) {
@@ -197,43 +328,68 @@ async function migrate(pool, { init, baselineSql = '', log = console } = {}) {
         continue;
       }
 
-      if (adopting && migration.baseline) {
-        // The schema is already here. Record that, and say how it got here.
-        // eslint-disable-next-line no-await-in-loop -- ordered by definition
-        await client.query(
-          `INSERT INTO schema_migrations (id, checksum, description, applied_by, note)
-           VALUES ($1, $2, $3, 'adoption', $4)`,
-          [
-            migration.id,
-            expected,
-            migration.description,
-            'Schema predates the migration ledger. Recorded as adopted, not executed: db.init() built this database before the ledger existed.',
-          ]
-        );
-        summary.adopted.push(migration.id);
-        continue;
-      }
-
+      // Each migration is its own transaction. PostgreSQL rolls DDL back, so a
+      // failure part-way leaves the database as it was and — because the ledger
+      // row is written inside the same transaction — records nothing.
       // eslint-disable-next-line no-await-in-loop -- migrations are ordered
-      await migration.run(client, { init });
-      // eslint-disable-next-line no-await-in-loop
-      await client.query(
-        `INSERT INTO schema_migrations (id, checksum, description, applied_by)
-         VALUES ($1, $2, $3, 'migrate')`,
-        [migration.id, expected, migration.description]
+      await client.query('BEGIN');
+      try {
+        const sql = migration.sqlFile ? sqlFor(migration) : null;
+        // eslint-disable-next-line no-await-in-loop
+        if (sql) await client.query(sql);
+        // eslint-disable-next-line no-await-in-loop
+        else await migration.run(client);
+
+        // eslint-disable-next-line no-await-in-loop
+        await client.query(
+          `INSERT INTO schema_migrations (id, checksum, description, applied_by)
+           VALUES ($1, $2, $3, 'migrate')`,
+          [migration.id, expected, migration.description]
+        );
+        // eslint-disable-next-line no-await-in-loop
+        await client.query('COMMIT');
+        summary.applied.push(migration.id);
+      } catch (err) {
+        // eslint-disable-next-line no-await-in-loop
+        await client.query('ROLLBACK').catch(() => {});
+        throw new Error(`Migration ${migration.id} failed and was rolled back. Nothing was recorded.`);
+      }
+    }
+
+    // The data-dependent constraint, applied after the SQL and outside the
+    // per-migration transactions. It inspects the existing bookings and refuses
+    // to act when real ones overlap — no row is deleted, moved or released to
+    // make it fit. See `ensureSlotExclusionConstraint`.
+    const slotResult = await slotConstraintModule().ensureSlotExclusionConstraint(client);
+    summary.slotProtection = slotResult.status;
+    if (slotResult.status === 'blocked') {
+      log.error(
+        `Booking-overlap protection could NOT be applied: ${slotResult.overlaps.length} existing booking pair(s) overlap. Both sides of every pair have been left exactly as they were. Self-serve ad checkout stays disabled until somebody resolves them by hand.`
       );
-      summary.applied.push(migration.id);
+    }
+
+    // Verified AFTER everything, and outside the per-migration transactions, so
+    // the answer describes the committed state.
+    //
+    // The baseline is idempotent, so an older database that was upgraded rather
+    // than adopted must still end up equal to it. If it does not, the ledger has
+    // already recorded the migration — so this is reported loudly and the caller
+    // decides. It is deliberately not a silent pass.
+    const comparison = await schemaVerify.verifyAgainstSnapshot(client);
+    summary.verified = comparison.ok;
+    summary.comparison = comparison;
+
+    if (!comparison.ok) {
+      log.error(
+        `Schema verification FAILED after migrating (${comparison.summary.missing} missing, ${comparison.summary.altered} altered). The database is not what this code expects.`
+      );
+      comparison.missing.slice(0, 40).forEach((m) => log.error(`  missing ${m.kind}: ${m.object}`));
+      comparison.altered.slice(0, 40).forEach((m) => log.error(`  altered ${m.kind}: ${m.object}`));
     }
 
     if (summary.applied.length) {
       log.log(`Schema migrations applied: ${summary.applied.join(', ')}.`);
     }
-    if (summary.adopted.length) {
-      log.log(
-        `Schema adopted into the migration ledger: ${summary.adopted.join(', ')}. Recorded as adopted rather than executed.`
-      );
-    }
-
     return summary;
   } finally {
     await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]).catch(() => {});
@@ -241,11 +397,12 @@ async function migrate(pool, { init, baselineSql = '', log = console } = {}) {
   }
 }
 
-// Read-only. Used by readiness, which must never mutate anything.
-//
-// Returns a structured verdict with no table content and no configuration
-// detail — the caller decides how much of it reaches a response.
-async function verify(pool, { baselineSql = '' } = {}) {
+// ---------------------------------------------------------------------------
+// Verification, for readiness
+// ---------------------------------------------------------------------------
+
+// Read-only. Never mutates, never adopts, never migrates.
+async function verify(pool) {
   const problems = [];
 
   const ledger = await pool
@@ -256,7 +413,7 @@ async function verify(pool, { baselineSql = '' } = {}) {
     return {
       ok: false,
       version: SCHEMA_VERSION,
-      problems: ['schema ledger is missing'],
+      problems: ['schema ledger is missing — run the migration command'],
       applied: [],
     };
   }
@@ -269,21 +426,20 @@ async function verify(pool, { baselineSql = '' } = {}) {
       problems.push(`migration ${migration.id} has not been applied`);
       return;
     }
-    if (row.checksum !== checksumFor(migration, { baselineSql })) {
+    if (row.checksum !== checksumFor(migration)) {
       problems.push(`migration ${migration.id} checksum mismatch`);
     }
   });
 
-  // An id in the database that this code does not know about means the database
-  // is NEWER than the code — a rollback that left the schema ahead. Worth
-  // failing on: old code against a new schema is exactly the case nobody tested.
+  // A ledger id this code does not know about means the database is NEWER than
+  // the code — a rollback that left the schema ahead. Old code against a new
+  // schema is the case nobody tested.
   ledger.rows.forEach((row) => {
     if (!MIGRATIONS.some((m) => m.id === row.id)) {
       problems.push(`database has unknown migration ${row.id} (schema is ahead of this code)`);
     }
   });
 
-  // Critical constraints and triggers, by name.
   const constraints = await pool.query(
     'SELECT conname FROM pg_constraint WHERE conname = ANY($1)',
     [CRITICAL_CONSTRAINTS.map((c) => c.name)]
@@ -314,13 +470,20 @@ module.exports = {
   SCHEMA_VERSION,
   MIGRATION_LOCK_KEY,
   MIGRATIONS,
+  MIGRATIONS_DIR,
   CRITICAL_CONSTRAINTS,
   CRITICAL_TRIGGERS,
   checksum,
   checksumFor,
+  checksums,
+  sqlFor,
+  slotProtection,
+  orderedIds,
+  isOrdered,
   ensureLedger,
   appliedMigrations,
-  looksAdopted,
+  looksPreLedger,
+  adopt,
   migrate,
   verify,
 };
