@@ -9,3 +9,9 @@ npm-debug.log*
 .DS_Store
 .claude/settings.local.json
 .browser-security/
+
+# Database dumps produced by scripts/backup-verify.js run in a temp directory
+# and are removed on exit — this is a second line for a dump written by hand.
+*.dump
+*.sql.gz
+pgdump-*/

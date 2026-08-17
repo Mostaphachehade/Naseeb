@@ -12,7 +12,10 @@
     "test:db:stop": "scripts/test-db.sh stop",
     "test:db:destroy": "scripts/test-db.sh destroy",
     "db:init": "node -e \"require('./server/db').init().then(() => process.exit(0))\"",
-    "test:browser-security": "node scripts/browser-hostile-data.js"
+    "test:browser-security": "node scripts/browser-hostile-data.js",
+    "maintenance": "node scripts/maintenance.js",
+    "migrate": "node -e \"const{pool,init,BASELINE_SQL}=require('./server/db');require('./server/lib/migrations').migrate(pool,{init,baselineSql:BASELINE_SQL}).then(s=>{console.log(JSON.stringify(s));return pool.end()}).then(()=>process.exit(0)).catch(e=>{console.error('migrate failed:',e.message);process.exit(1)})\"",
+    "backup:verify": "node scripts/backup-verify.js"
   },
   "dependencies": {
     "@sentry/node": "^10.68.0",
@@ -29,5 +32,16 @@
   },
   "devDependencies": {
     "supertest": "^7.2.2"
-  }
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "files": [
+    "server/",
+    "public/",
+    "scripts/",
+    "docs/",
+    "README.md",
+    "render.yaml"
+  ]
 }

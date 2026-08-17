@@ -19,6 +19,7 @@ const claimRoutes = require('./routes/claims');
 const accountRoutes = require('./routes/account');
 const { csrfProtection } = require('./lib/csrf');
 const { securityHeaders } = require('./lib/securityHeaders');
+const healthRoutes = require('./routes/health');
 const { isRenderableMediaUrl } = require('./lib/mediaUrls');
 const { resolveTrustProxy } = require('./lib/proxyTrust');
 
@@ -63,6 +64,16 @@ app.use(
 );
 app.use(compression());
 app.use(cors({ origin: process.env.APP_URL || 'http://localhost:3000' }));
+
+// Health probes, mounted early and outside /api on purpose.
+//
+// Early, because a readiness check that queues behind body parsing, CORS
+// negotiation and CSRF is a check that reports "slow" as "unhealthy". Outside
+// /api, because they are not part of the API surface: no CSRF, no session, no
+// rate limit, and nothing they do can mutate anything. They still get the full
+// security-header stack above, which is why this sits after `securityHeaders`
+// rather than at the very top.
+app.use(healthRoutes.router);
 
 // Mounted BEFORE express.json(), and the ordering is load-bearing rather than
 // stylistic. Stripe signs the exact bytes it sent; express.json() would consume
@@ -220,3 +231,6 @@ app.use((req, res) => {
 });
 
 module.exports = app;
+// Exposed so the shutdown coordinator can flip readiness false before anything
+// is torn down, and so tests can drive it.
+module.exports.health = healthRoutes;

@@ -14,13 +14,16 @@ const errorReporting = require('./lib/errorReporting');
 errorReporting.init(Sentry);
 
 const app = require('./app');
-const { init, isSlotProtectionActive, SLOT_CONSTRAINT_NAME } = require('./db');
+const {
+  pool, init, BASELINE_SQL, ensureSlotExclusionConstraint,
+  isSlotProtectionActive, SLOT_CONSTRAINT_NAME,
+} = require('./db');
 const { isAdsCheckoutEnabled, areClaimsEnabled } = require('./lib/featureFlags');
-const { isConfigured: isClaimEncryptionConfigured } = require('./lib/claimCrypto');
 const claimScheduler = require('./lib/claimScheduler');
-const sessions = require('./lib/sessions');
-const riskSignals = require('./lib/riskSignals');
-const { resolveTrustProxy } = require('./lib/proxyTrust');
+const emailChangeOutbox = require('./lib/emailChangeOutbox');
+const migrations = require('./lib/migrations');
+const config = require('./lib/config');
+const { createShutdownCoordinator } = require('./lib/shutdown');
 
 // A rejected promise nobody awaited terminates the process on modern Node.
 // Most of this codebase awaits everything, but a background send or a
@@ -37,135 +40,27 @@ process.on('unhandledRejection', (reason) => {
   );
 });
 
-// Taking card payments without a verified webhook is the failure this whole
-// phase exists to prevent: checkout would work, customers would be charged, and
-// nothing would ever mark their bookings paid. Refusing to boot is the only
-// honest response — a warning would scroll past and the site would look fine
-// while quietly losing every payment.
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
 //
-// Only variable *names* appear here. Their values are never logged.
-function assertPaymentConfiguration() {
-  if (!isAdsCheckoutEnabled()) return;
-
-  const missing = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'].filter(
-    (name) => !process.env[name]
-  );
-  if (missing.length === 0) return;
-
-  console.error(
-    `ADS_CHECKOUT_ENABLED is on, but ${missing.join(' and ')} ${
-      missing.length > 1 ? 'are' : 'is'
-    } not set. Refusing to start: customers could be charged for bookings that ` +
-      'nothing would ever mark as paid. Set the missing variable(s), or set ' +
-      'ADS_CHECKOUT_ENABLED=false to run without self-serve ad checkout.'
-  );
-  process.exit(1);
-}
-
-// Claims hold the most sensitive data on the platform — a winner's home
-// address and phone number. Without a key there is nowhere safe to put them, so
-// in production that is a refusal to start rather than a surprise 503 the first
-// time somebody wins something. Elsewhere it is a warning: local development
-// and CI can exercise everything except the encrypted path.
+// One validator, in server/lib/config.js. This used to be five functions here,
+// each with its own idea of what production meant and its own decision about
+// whether to warn or refuse — and three variables that were checked nowhere.
 //
-// Only variable names appear here, never key material.
-function assertClaimConfiguration() {
-  if (!areClaimsEnabled()) return;
-  if (isClaimEncryptionConfigured()) return;
+// It refuses to continue in production and warns elsewhere, so a developer can
+// still run the site without a Stripe account. Only variable NAMES are ever
+// printed.
+config.assertStartupConfiguration();
 
-  const message =
-    'Prize claims are enabled but CLAIM_ENCRYPTION_KEY is missing or invalid. Winner delivery ' +
-    'details are encrypted with it, so claims cannot be completed without one. Generate a key ' +
-    "with:  node -e \"console.log('v1:' + require('crypto').randomBytes(32).toString('base64'))\"  " +
-    'and set CLAIM_ENCRYPTION_KEY, or set CLAIMS_ENABLED=false to run without prize claims.';
-
-  if (process.env.NODE_ENV === 'production') {
-    console.error(`${message} Refusing to start.`);
-    process.exit(1);
-  }
-  console.error(`WARNING: ${message}`);
-}
-
-// Sessions are cookies now, and a cookie that a network observer can read is a
-// cookie anyone on the path can replay. Production has no legitimate reason to
-// run without Secure, so this is a refusal to start rather than a warning that
-// scrolls past while the site looks fine.
-//
-// SESSION_SECRET signs the CSRF tokens. Without it csrf.js issues no token at
-// all, so every state-changing request would be refused — better to say so at
-// boot than to have the site half-work. Only variable names appear here.
-function assertSessionConfiguration() {
-  const problems = [...sessions.assertCookieSecurity(), ...sessions.assertSessionSecret()];
-
-  if (problems.length === 0) return;
-
-  const message =
-    `Session configuration is not safe:\n  - ${problems.join('\n  - ')}\n` +
-    "Generate a secret with:  node -e \"console.log(require('crypto').randomBytes(48).toString('base64url'))\"";
-
-  if (process.env.NODE_ENV === 'production') {
-    console.error(`${message}\nRefusing to start.`);
-    process.exit(1);
-  }
-  console.error(`WARNING: ${message}`);
-}
-
-// The integrity signal secret keys the network hashes. A missing or weak one in
-// production would make those hashes guessable, which turns "we cannot reverse
-// this" into "anybody who knows the scheme can test addresses against it". The
-// proxy configuration is checked in the same breath because a limiter that can
-// be given a new identity per request is not a limiter.
-function assertIntegrityConfiguration() {
-  const problems = [];
-
-  try {
-    riskSignals.assertSignalSecret();
-  } catch (err) {
-    problems.push(err.message);
-  }
-
-  try {
-    const trust = resolveTrustProxy();
-    if (process.env.NODE_ENV === 'production' && trust.source === 'default') {
-      console.log(
-        `Proxy trust: ${trust.description} (TRUSTED_PROXY_HOPS is unset; 1 is the value Render needs).`
-      );
-    }
-  } catch (err) {
-    problems.push(err.message);
-  }
-
-  if (problems.length === 0) return;
-
-  const message = `Entry-integrity configuration is not safe:\n  - ${problems.join('\n  - ')}`;
-  if (process.env.NODE_ENV === 'production') {
-    console.error(`${message}\nRefusing to start.`);
-    process.exit(1);
-  }
-  console.error(`WARNING: ${message}`);
-}
-
-assertPaymentConfiguration();
-assertClaimConfiguration();
-assertSessionConfiguration();
-assertIntegrityConfiguration();
-
-// Runs after init(), which is what creates the constraint when it can. If it
-// still isn't there afterwards, the migration declined to add it — almost
-// always because bookings already overlap, which it reports and refuses to
-// resolve on its own.
-//
-// Selling the slot without this constraint means the only thing standing
+// The one check that needs the database, so it cannot live in the validator:
+// selling the ad slot without the exclusion constraint means the only thing
 // between two advertisers and the same dates is application code being right
-// every time. That is exactly the assumption that produced the bug, so with
-// checkout on it is not a warning, it is a refusal to start.
-//
-// With checkout off the site runs perfectly well unprotected: nothing can book
-// a slot, so nothing can double-book one. That is what makes it possible to
-// deploy, read the overlap report, and fix the data.
+// every time. With checkout off, nothing can book a slot, so nothing can
+// double-book one — which is what makes it possible to deploy, read the overlap
+// report and fix the data.
 async function assertSlotProtection() {
   if (!isAdsCheckoutEnabled()) return;
-
   if (await isSlotProtectionActive()) return;
 
   console.error(
@@ -180,24 +75,66 @@ async function assertSlotProtection() {
 
 const PORT = process.env.PORT || 3000;
 
-init()
-  .then(async () => {
-    await assertSlotProtection();
+// The coordinator is built before anything starts, so a SIGTERM arriving during
+// startup is handled by the same path as one arriving at 3am under load.
+const shutdown = createShutdownCoordinator({
+  pool,
+  scheduler: claimScheduler,
+  outbox: emailChangeOutbox,
+  setReady: app.health.setReady,
+}).install();
 
-    // Retention, claim expiry and undelivered invitations run on their own from
-    // here. Deliberately in-process and on a timer rather than behind an HTTP
-    // route: there is no endpoint to call, so there is nothing for the public
-    // to invoke. Only one instance does the work per tick — see the advisory
-    // lock in claimScheduler.
-    if (areClaimsEnabled()) {
-      claimScheduler.start();
-    }
+// Applies the schema and records what was applied.
+//
+// `migrate` runs the baseline (which is db.init()) under an advisory lock, and
+// records it as ADOPTED rather than executed on a database that predates the
+// ledger — see server/lib/migrations.js for why that distinction is not
+// cosmetic.
+async function start() {
+  const summary = await migrations.migrate(pool, { init, baselineSql: BASELINE_SQL });
 
-    app.listen(PORT, () => {
-      console.log(`Naseeb running at http://localhost:${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error('Failed to start:', err.message);
-    process.exit(1);
+  // Every boot, not only when the baseline runs.
+  //
+  // This lived inside init(), which ran on every start. Once the migration
+  // ledger arrived, init() stopped running on a database that already had the
+  // schema — and this went with it, silently. It is a VERIFICATION step, not a
+  // migration: it inspects existing bookings, reports any overlapping pair, and
+  // adds the constraint when it can. Skipping it on an adopted database would
+  // mean the overlap report only ever appeared on a fresh one, which is the
+  // database that cannot have overlaps.
+  await ensureSlotExclusionConstraint(pool);
+
+  await assertSlotProtection();
+
+  // Retention, claim expiry and both outboxes also run on their own from here.
+  //
+  // This is now a SAFETY NET rather than the schedule. The real schedule is
+  // `scripts/maintenance.js`, run by the platform — because an in-process timer
+  // stops when the process sleeps, and on a free plan the web service sleeps.
+  // See docs/OPERATIONS.md.
+  if (areClaimsEnabled() && shutdown.mayStartWork()) {
+    claimScheduler.start();
+  }
+
+  const state = config.deploymentState();
+  const server = app.listen(PORT, () => {
+    console.log(
+      `Naseeb running at http://localhost:${PORT} (schema ${summary.version}, deployment ${state}).`
+    );
+    const disclosure = config.stateDisclosure();
+    if (disclosure) console.log(disclosure.disclosure);
   });
+
+  // Handed to the coordinator only once it exists. Until this point a shutdown
+  // has nothing to close, which is correct — there is no server yet.
+  shutdown.attachServer(server);
+  return server;
+}
+
+start().catch((err) => {
+  // Message only. A migration or connection error can carry a connection string
+  // in its stack, and this line goes to a platform log.
+  console.error('Failed to start:', err.message);
+  errorReporting.reportError(err, { source: 'startup' });
+  process.exit(1);
+});

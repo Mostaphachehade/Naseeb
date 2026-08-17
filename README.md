@@ -69,7 +69,9 @@ npm start
 
 Then open http://localhost:3000
 
-Tables are created automatically on first run if they don't already exist.
+Tables are created automatically on first run if they don't already exist —
+through the migration ledger, which records what was applied and detects an
+edited historical migration. See `docs/OPERATIONS.md` §6.
 
 > **`npm run db:init` is a production-capable command.** It runs the schema
 > migration in `server/db.js` against whatever `DATABASE_URL` is in your
@@ -136,6 +138,11 @@ naseeb/
     lib/dataExport.js          # what a person may download about themselves
     lib/policies.js            # policy status/version/effective date. Inert by design
     lib/errorReporting.js      # Sentry config + the beforeSend scrubber
+    lib/config.js              # THE startup validator + the configuration matrix
+    lib/migrations.js          # schema ledger, checksums, baseline adoption
+    lib/maintenance.js         # every scheduled cleanup, locked and bounded
+    lib/shutdown.js            # the graceful-shutdown coordinator
+    routes/health.js           # /healthz (no database) and /readyz (everything)
     routes/config.js           # exposes non-secret Cloudinary config to the frontend
   public/
     index.html            # browse giveaways
@@ -405,6 +412,59 @@ either. Controlled updates are unaffected.
 classification, retention implemented vs. awaiting decision, and external processors.
 `docs/PRIVACY_AND_RIGHTS.md` has the request state machine, the email-change design and
 the deletion/anonymisation proposal.
+
+## Operations
+
+`docs/OPERATIONS.md` is the operational reference: the audit, the configuration
+matrix, the maintenance schedule, the runbooks, and what only the owner or a
+provider dashboard can do.
+
+The short version:
+
+```bash
+npm run migrate            # apply the schema; safe to run twice, locked
+npm run maintenance all    # every cleanup job; safe to run twice, locked
+npm run backup:verify      # dump + restore into a scratch database, verified
+```
+
+**Health.** `GET /healthz` answers "is this process alive" and deliberately does
+**not** touch the database — if it did, a database outage would make every
+instance look dead and the platform would restart them all. `GET /readyz`
+answers "can this safely serve traffic" and checks configuration, connectivity,
+the schema version, migration checksums and the critical constraints and
+triggers. A failing readiness response carries **categories only** — no host, no
+table name, no variable, no stack trace.
+
+**Maintenance is scheduled outside the web process.** Every cleanup used to run
+on an in-process timer, on a route somebody happened to visit, or on nothing at
+all — `deleteExpiredSessions` and `expireStaleEmailChanges` had no caller.
+A timer inside a process that sleeps does not fire, so retention now runs from
+`scripts/maintenance.js` on a platform schedule. Each job takes a Postgres
+advisory lock, processes bounded batches, is idempotent, exits non-zero on
+failure, prints one JSON line of counts, and distinguishes "nothing to do" from
+"broken".
+
+**Configuration is validated in one place** (`server/lib/config.js`) before the
+process listens. Errors name the variable and never the value. Production
+refuses a missing, weak, placeholder-shaped or contradictory setting, refuses a
+database named like a test one, and refuses the development mail logger. A
+disabled feature demands nothing.
+
+**Deployment state is separate from public launch.** `DEPLOYMENT_STATE` is
+`development` / `staging` / `private_beta` / `public_launch`; unset means
+private beta in production, never a public launch by omission. `public_launch`
+**fails startup validation today** — both policies are drafts with no effective
+date and their blockers are outstanding. No committed file sets it.
+
+**Shutdown is coordinated**: readiness false, then stop scheduling, then close
+the server, settle the outboxes, close the pool — and exit non-zero if that does
+not finish inside `SHUTDOWN_TIMEOUT_MS`, because a hung shutdown reporting
+success is a deploy that looks healthy while a connection leaks.
+
+**Schema changes go through a ledger** with checksums (`server/lib/migrations.js`).
+The baseline *is* `db.init()`; a database that predates the ledger is recorded as
+**adopted**, not executed, because it was not. An edited historical migration, an
+unapplied one, or a schema ahead of the code all fail readiness.
 
 ## Environment variables
 

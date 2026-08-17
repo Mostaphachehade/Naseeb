@@ -243,8 +243,17 @@ async function recordEntrySignals(client, { entryId, giveawayId, userId, ip, now
 
 // Retention. Idempotent by construction: deleting rows already past their
 // expiry twice deletes nothing the second time.
-async function purgeExpiredSignals(client) {
-  const result = await client.query('DELETE FROM entry_risk_signals WHERE expires_at <= NOW()');
+// Bounded when a limit is given — the scheduled job passes one. Before Phase
+// 2.4A this ran only when an administrator pressed a button, which meant the
+// retention window was a hope rather than a schedule.
+async function purgeExpiredSignals(client, { limit = null } = {}) {
+  const result = await client.query(
+    `DELETE FROM entry_risk_signals
+      WHERE id IN (
+        SELECT id FROM entry_risk_signals WHERE expires_at <= NOW() LIMIT $1
+      )`,
+    [limit && limit > 0 ? Math.floor(limit) : 100000]
+  );
   return result.rowCount;
 }
 

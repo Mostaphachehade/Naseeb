@@ -45,8 +45,18 @@ const pool = new Pool({
   ssl: sslConfig(),
 });
 
-async function init() {
-  await pool.query(`
+// The baseline schema, as one SQL string rather than inline in init().
+//
+// Extracted so it can be CHECKSUMMED: server/lib/migrations.js hashes this text
+// to detect an edit to the bootstrap. An idempotent script that somebody
+// changes produces a different schema on a fresh database than on an existing
+// one, silently and forever, and the checksum is what turns that into a loud
+// failure at the next deploy.
+//
+// Nothing is interpolated into it. A template literal with a variable in it
+// could not be checksummed meaningfully, and would be an injection surface in
+// the one place in this codebase that runs unparameterised SQL.
+const BASELINE_SQL = `
     -- Serialises concurrent callers of init(). Postgres runs this whole
     -- multi-statement string as one implicit transaction, so the lock is held
     -- for the migration and released on commit.
@@ -1362,7 +1372,13 @@ async function init() {
     -- delete a request is the goal; refusing to delete every user is a bug that
     -- happens to look like security.
     DROP TRIGGER IF EXISTS privacy_requests_no_bulk_delete ON privacy_requests;
-  `);
+`;
+
+// Runs the baseline. Takes an optional client so the migration runner can
+// execute it inside its own connection; defaults to the pool for db:init and
+// for the test reset path.
+async function init(client = pool) {
+  await client.query(BASELINE_SQL);
 
   // Separate from the batch above because it has to inspect existing data and
   // decide whether the constraint can be applied at all — see the function.
@@ -1482,6 +1498,7 @@ async function isSlotProtectionActive(client = pool) {
 module.exports = {
   pool,
   init,
+  BASELINE_SQL,
   findOverlappingSlots,
   ensureSlotExclusionConstraint,
   isSlotProtectionActive,

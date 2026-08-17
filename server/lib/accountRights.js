@@ -403,12 +403,18 @@ async function completeEmailChange(client, { token, now = new Date() }) {
   return request;
 }
 
-async function expireStaleEmailChanges(client, { now = new Date() } = {}) {
+// Bounded when a limit is given — the scheduled job passes one. See
+// scripts/maintenance.js.
+async function expireStaleEmailChanges(client, { now = new Date(), limit = null } = {}) {
   const result = await client.query(
     `UPDATE email_change_requests
         SET status = 'expired', cancelled_at = NOW(), cancelled_reason = 'expired'
-      WHERE status = 'pending' AND expires_at <= $1`,
-    [now]
+      WHERE id IN (
+        SELECT id FROM email_change_requests
+         WHERE status = 'pending' AND expires_at <= $1
+         LIMIT $2
+      )`,
+    [now, limit && limit > 0 ? Math.floor(limit) : 100000]
   );
   return result.rowCount;
 }

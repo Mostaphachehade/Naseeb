@@ -614,19 +614,26 @@ async function revokeAllForUser(client, userId, reason) {
 
 // Housekeeping only. Expired rows are already refused by authenticate(); this
 // keeps the table from growing without bound.
-async function deleteExpiredSessions(client = pool, { olderThanDays = 30 } = {}) {
+async function deleteExpiredSessions(client = pool, { olderThanDays = 30, limit = null } = {}) {
   // Families, not rows: a family cascades to its members, so a rotation chain
   // is removed whole rather than leaving orphaned predecessors behind.
   //
-  // NOTE: nothing calls this on a schedule. Expired families are already
-  // refused by authenticate(), so this is housekeeping rather than a control —
-  // but it is housekeeping that has to be scheduled by someone. See
-  // docs/SESSIONS.md §"Operational requirements".
+  // Bounded when a limit is given, which is how the scheduled job calls it: a
+  // single DELETE across a year of accumulated families holds locks for as long
+  // as it takes and times out having achieved nothing. The caller re-runs until
+  // a pass returns less than the limit.
+  //
+  // Scheduled by scripts/maintenance.js — see docs/OPERATIONS.md. It used to
+  // have no caller at all.
   const result = await client.query(
     `DELETE FROM session_families
-      WHERE absolute_expires_at < NOW() - ($1 || ' days')::interval
+      WHERE id IN (
+        SELECT id FROM session_families
+         WHERE absolute_expires_at < NOW() - ($1 || ' days')::interval
+         LIMIT $2
+      )
       RETURNING id`,
-    [String(olderThanDays)]
+    [String(olderThanDays), limit && limit > 0 ? Math.floor(limit) : 100000]
   );
   return result.rowCount;
 }

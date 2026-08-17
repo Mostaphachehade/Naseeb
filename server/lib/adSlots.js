@@ -67,17 +67,24 @@ async function lockSlotAllocation(client) {
 // The row is never deleted. An abandoned booking is a commercial record — who
 // tried to buy what dates, when, and why it lapsed — and the released_at and
 // release_reason columns are the audit trail for it.
-async function expireStaleHolds(client) {
+// Bounded when a limit is given — the scheduled job passes one. Previously
+// released only when a request happened to hit the ads route.
+async function expireStaleHolds(client, { limit = null } = {}) {
   const result = await client.query(
     `UPDATE ads
         SET slot_status = 'released',
             slot_released_at = NOW(),
             slot_release_reason = 'hold_expired',
             payment_status = CASE WHEN payment_status = 'pending' THEN 'expired' ELSE payment_status END
-      WHERE slot_status = 'held'
-        AND hold_expires_at IS NOT NULL
-        AND hold_expires_at <= NOW()
-      RETURNING id`
+      WHERE id IN (
+        SELECT id FROM ads
+         WHERE slot_status = 'held'
+           AND hold_expires_at IS NOT NULL
+           AND hold_expires_at <= NOW()
+         LIMIT $1
+      )
+      RETURNING id`,
+    [limit && limit > 0 ? Math.floor(limit) : 100000]
   );
   return result.rowCount;
 }
