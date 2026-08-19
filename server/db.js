@@ -47,6 +47,37 @@ const pool = new Pool({
   ssl: sslConfig(),
 });
 
+// An idle client that dies must not take the process with it.
+//
+// `pg.Pool` emits `error` when a connection it is holding IDLE fails — a
+// provider idle timeout, a failover, a restart, a network blip. An `error` event
+// with no listener is an unhandled EventEmitter error, and Node raises those as
+// an uncaughtException. So without this line, the single most ordinary event in
+// the life of a hosted database — a connection going away while nothing is using
+// it — crashes the web process.
+//
+// There was no listener at all. It surfaced first in the test suite, where
+// dropping a fixture database killed an idle client and failed a whole file
+// whose every test had passed; the same defect in production is a restart.
+//
+// Swallowed deliberately, and only here: the pool discards the broken client and
+// opens another on the next query, which is the correct recovery. It is reported
+// so it is not invisible — through the sanitising reporter, because a pg error
+// can carry the host, the user and occasionally more.
+pool.on('error', (err) => {
+  // Required lazily: errorReporting is a leaf, but this file is required by
+  // almost everything and is not the place to add a load-order dependency.
+  try {
+    // eslint-disable-next-line global-require
+    require('./lib/errorReporting').reportError(err, { source: 'pg_pool_idle_client' });
+  } catch (reportErr) {
+    // Reporting must never be the thing that crashes the process either.
+    console.error('Idle database client failed, and the error could not be reported.');
+  }
+  // Message only. Never the error object, which can carry connection detail.
+  console.error(`Idle database client error (the pool will reconnect): ${err.message}`);
+});
+
 // The baseline schema lives in server/migrations/001_baseline.sql, FROZEN.
 //
 // It used to be a template literal here that every feature phase appended to.

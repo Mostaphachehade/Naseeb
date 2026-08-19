@@ -73,25 +73,63 @@ async function createFixture(label) {
   const name = fixtureName(label);
   await admin.query(`CREATE DATABASE ${name}`);
   const pool = new Pool({ connectionString: urlForDatabase(name), ssl: false, max: 4 });
+
+  // A pool with no `error` listener is a landmine.
+  //
+  // `pg.Pool` emits `error` when an IDLE client's connection dies — which is
+  // exactly what happens to a fixture pool when its database is dropped out from
+  // under it. An `error` event with no listener is an unhandled EventEmitter
+  // error, which Node raises as an uncaughtException, which the test runner
+  // attributes to whichever test's async context happened to open that client.
+  //
+  // That is precisely how this file failed twice in ten runs: teardown dropped a
+  // database, a still-idle client died with "terminating connection due to
+  // administrator command", and the runner reported the whole FILE as failed
+  // while every one of its thirteen tests had passed.
+  //
+  // Teardown killing our own connections is expected, so it is handled rather
+  // than left to become a crash.
+  pool.on('error', () => {});
+
   const fixture = { name, pool };
   fixtures.push(fixture);
   return fixture;
 }
 
 async function dropFixture(fixture) {
+  // End the pool first, and give any in-flight close a moment to finish. `end()`
+  // resolves when the clients it knows about are closed; a client still mid-
+  // connect is not one of those, and dropping the database underneath it is what
+  // produced the asynchronous error above.
   await fixture.pool.end().catch(() => {});
+
+  // Then terminate anything still attached, explicitly and by name, before
+  // dropping. `DROP DATABASE … WITH (FORCE)` does the same thing implicitly, but
+  // doing it as its own statement means the terminations have already completed
+  // when the DROP runs, rather than racing it.
   await admin
-    .query(`DROP DATABASE IF EXISTS ${fixture.name} WITH (FORCE)`)
-    .catch(async () => {
-      // Older servers have no WITH (FORCE).
-      await admin.query(`DROP DATABASE IF EXISTS ${fixture.name}`).catch(() => {});
-    });
+    .query(
+      `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+        WHERE datname = $1 AND pid <> pg_backend_pid()`,
+      [fixture.name]
+    )
+    .catch(() => {});
+
+  await admin.query(`DROP DATABASE IF EXISTS ${fixture.name}`).catch(async () => {
+    // A connection that appeared between the terminate and the drop. FORCE is
+    // the fallback rather than the default.
+    await admin
+      .query(`DROP DATABASE IF EXISTS ${fixture.name} WITH (FORCE)`)
+      .catch(() => {});
+  });
 }
 
 const silent = { log() {}, error() {} };
 
 before(async () => {
   admin = new Pool({ connectionString: urlForDatabase('postgres'), ssl: false, max: 2 });
+  // Same reason as the fixture pools: an unhandled `error` event is a crash.
+  admin.on('error', () => {});
   await admin.query('SELECT 1');
 });
 
