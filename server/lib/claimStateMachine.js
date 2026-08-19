@@ -38,6 +38,30 @@ const TERMINAL = new Set([STATES.DELIVERED, STATES.CANCELLED]);
 // granted exactly the host's three forward moves and nothing else — see
 // RESCUE_ELIGIBLE_STATES below, and server/lib/claimRescue.js for when it may
 // be assumed at all.
+// ---------------------------------------------------------------------------
+// The fulfilment role model is NOT the approved one
+// ---------------------------------------------------------------------------
+//
+// The approved future model is: the sponsor supplies or funds the prize; Naseeb
+// manages the winner relationship, coordinates delivery or fulfilment, and is
+// who the winner contacts; the winner alone confirms receipt; and the sponsor or
+// host does not drive the winner's claim state as though they were the
+// fulfilment operator.
+//
+// The transitions below still give `ROLES.HOST` the operational moves —
+// `PREPARING_DELIVERY`, `SHIPPED_OR_ARRANGED`, `DELIVERED_PENDING_CONFIRMATION`.
+// The winner already holds the one that matters most (only `ROLES.WINNER` can
+// move a claim to `DELIVERED`), and `ADMIN_RESCUE` already lets Naseeb act when
+// a host does not. But the shape is a host-operated fulfilment workflow, and the
+// approved model is a Naseeb-operated one.
+//
+// Changing it touches consent wording, delivery-detail access, the dispute path,
+// retention and the audit trail, and it is not a change to make against a
+// deadline. So it is recorded here as FALSE, `config.launchBlockers()` reads
+// this constant, and no deployment can accept a real campaign until somebody
+// changes it deliberately — with the work done and tested.
+const FULFILMENT_ROLE_MODEL_RESOLVED = false;
+
 const ROLES = {
   WINNER: 'winner',
   HOST: 'host',
@@ -179,6 +203,7 @@ function assertTransition(from, to, role) {
 module.exports = {
   STATES,
   ROLES,
+  FULFILMENT_ROLE_MODEL_RESOLVED,
   TERMINAL,
   TRANSITIONS,
   RESCUE_ELIGIBLE_STATES,

@@ -85,12 +85,24 @@ services:
 
       # --- deployment state ----------------------------------------------
       #
-      # NOT public_launch, and deliberately not left unset either — an unset
-      # value defaults to private_beta, and stating it is better than relying on
-      # a default nobody can see. public_launch would fail startup validation
-      # today anyway: both policies are drafts with no effective date.
+      # `pre_launch`: publicly reachable, and deliberately NOT operating.
+      #
+      # The site shows its design, its premium-prize concept and its
+      # informational pages. Signup, campaign submission, publication, entry,
+      # the draw and starting a claim all answer 503 NOT_OPEN_YET. Nothing a
+      # visitor does creates an account, an entry or a campaign.
+      #
+      # This is not merely a label: server/lib/config.js `operationsAllowed()`
+      # reads it, and the routes refuse. An unset or misspelled value ALSO
+      # resolves to pre_launch in production, so a missing variable cannot start
+      # operations by omission.
+      #
+      # Moving to private_beta or public_launch is a deliberate edit to this
+      # file, and both remain refused while any launch blocker stands — today
+      # that includes both policies being drafts and the unresolved fulfilment
+      # role model.
       - key: DEPLOYMENT_STATE
-        value: private_beta
+        value: pre_launch
 
       # --- secrets: prompted once, stored by Render, never in git ---------
       #

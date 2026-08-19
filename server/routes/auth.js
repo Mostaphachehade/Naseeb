@@ -10,6 +10,7 @@ const sessions = require('../lib/sessions');
 const eligibility = require('../lib/eligibility');
 const emailDelivery = require('../lib/emailDelivery');
 const { tokenForFamily } = require('../lib/csrf');
+const appConfig = require('../lib/config');
 
 const router = express.Router();
 
@@ -78,9 +79,16 @@ async function sendVerificationEmail(user, token) {
 
 router.post('/signup', authLimiter, async (req, res) => {
   try {
-    // Before anything is written. An account that cannot be sent its
-    // verification email is an account nobody can finish creating — and one the
-    // person cannot create again, because the address is now taken.
+    // Before anything is written, and before the email check, because the
+    // strongest refusal should be the first one: while the deployment is
+    // pre-launch there is no account to create at all. The policies a person
+    // would be registering against are drafts with no effective date, so an
+    // account created now would be an account created against nothing.
+    if (appConfig.refuseIfPreLaunch(res, { action: 'signup' })) return;
+
+    // An account that cannot be sent its verification email is an account
+    // nobody can finish creating — and one the person cannot create again,
+    // because the address is now taken.
     if (emailDelivery.refuseIfUndeliverable(res, { action: 'signup' })) return;
 
     const { name, email, password, age_confirmed: ageConfirmed } = req.body;

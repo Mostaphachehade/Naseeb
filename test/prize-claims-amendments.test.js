@@ -670,7 +670,13 @@ test('reissuing invalidates every previous unused token, including concurrently'
     admin.post(`/api/claims/${claim.id}/admin/reissue`).set('X-Forwarded-For', nextIp()).send({}),
     admin.post(`/api/claims/${claim.id}/admin/reissue`).set('X-Forwarded-For', nextIp()).send({}),
   ]);
-  assert.ok(reissues.every((r) => r.status === 200));
+  // The status AND the body, because a bare `.every(...)` is what made this
+  // failure unexplained the first time it fired: it said "false is not true" and
+  // nothing about which request failed or why.
+  assert.ok(
+    reissues.every((r) => r.status === 200),
+    `concurrent reissue statuses ${JSON.stringify(reissues.map((r) => r.status))}, bodies ${JSON.stringify(reissues.map((r) => r.body))}`
+  );
 
   // Whatever the interleaving, exactly one token is live and it is the newest.
   const stored = await pool.query('SELECT token_hash FROM prize_claims WHERE id = $1', [claim.id]);

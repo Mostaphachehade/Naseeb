@@ -246,6 +246,19 @@ const JOBS = {
       const limit = batchLimit(options.limit);
       const counts = { closed: 0, drawn: 0, no_winner: 0, postponed: 0, skipped: 0 };
 
+      // Fail closed. A pre-launch deployment has no published campaigns, so this
+      // job would find nothing anyway — but "would find nothing" is a statement
+      // about the data, and the gate is a statement about the deployment. An
+      // unattended worker that could commit a winner is exactly the thing that
+      // must not be one row away from running.
+      //
+      // Required lazily: config pulls in most of the library, and this module is
+      // loaded by the scheduler that the routes load.
+      // eslint-disable-next-line global-require
+      if (require('./config').isPreLaunch()) {
+        return { ...counts, skipped_reason: 'pre_launch' };
+      }
+
       // Two passes rather than one query: a campaign that closes in this run
       // must also be eligible to draw in it, and a campaign that was already
       // closed on a previous run — or is waiting on an integrity review that

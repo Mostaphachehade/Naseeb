@@ -423,6 +423,7 @@ async function renderDeploymentBanner(config) {
     if (!header || document.querySelector('.deployment-banner')) return;
 
     const LABELS = {
+      pre_launch: 'Not open yet',
       private_beta: 'Private beta',
       staging: 'Staging',
       development: 'Development',
@@ -441,6 +442,22 @@ async function renderDeploymentBanner(config) {
       ]),
     ]);
     header.insertAdjacentElement('afterend', banner);
+
+    // The pre-launch notice, when the platform is not accepting operations at
+    // all. Separate from the deployment disclosure above because it says a
+    // different thing: not "this is a beta" but "nothing you do here creates an
+    // account, an entry or a campaign". A visitor is entitled to know that
+    // before filling anything in.
+    if (config.accepting_operations === false && config.pre_launch_notice) {
+      const notice = el('div', { class: 'deployment-banner' }, [
+        el('div', { class: 'wrap' }, [
+          el('strong', { text: 'Launching soon' }),
+          ' — ',
+          el('span', { text: config.pre_launch_notice }),
+        ]),
+      ]);
+      banner.insertAdjacentElement('afterend', notice);
+    }
 
     // A truthful, temporary message when email cannot be delivered, so nobody
     // fills in a signup or reset form that is going to 503.

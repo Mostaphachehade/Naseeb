@@ -19,6 +19,7 @@ const giveawayOutbox = require('../lib/giveawayOutbox');
 // other. See docs/SESSIONS.md.
 const ACCOUNT_STATUSES = ['active', 'suspended', 'deactivated'];
 const { PRICE_FORMAT } = require('../lib/adPricing');
+const appConfig = require('../lib/config');
 
 const router = express.Router();
 
@@ -1467,6 +1468,12 @@ router.get('/giveaway-submissions', requireAdmin, async (req, res) => {
 
 // Approve and publish. The 30-day window starts here.
 router.post('/giveaways/:id/approve', requireAdmin, async (req, res) => {
+  // Approval is publication. An administrator is trusted to review a prize; no
+  // administrator is trusted to start real operations by hand while the
+  // policies are drafts and fulfilment is unresolved, so the gate applies here
+  // too rather than exempting the one role that could bypass it.
+  if (appConfig.refuseIfPreLaunch(res, { action: 'publish_giveaway' })) return;
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

@@ -235,9 +235,13 @@ test('op4. public launch cannot activate while the policies are drafts', () => {
   assert.equal(result.ok, false, 'public_launch fails validation');
   assert.ok(result.problems.some((p) => p.variable === 'DEPLOYMENT_STATE'));
 
-  // Unset never means public launch — in production it means private beta.
+  // Unset never means public launch, and no longer means private beta either.
+  // A private beta accepts real registrations, campaigns and entries, so a
+  // missing or misspelled variable would have opened the platform for business
+  // by omission. The production default is the most restrictive state.
   withEnv({ DEPLOYMENT_STATE: undefined, NODE_ENV: 'production' }, () => {
-    assert.equal(config.deploymentState(), 'private_beta');
+    assert.equal(config.deploymentState(), 'pre_launch');
+    assert.equal(config.isPreLaunch(), true, 'and it refuses operations');
     assert.equal(config.isPublicLaunch(), false);
   });
   withEnv({ DEPLOYMENT_STATE: undefined, NODE_ENV: undefined }, () => {

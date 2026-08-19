@@ -15,6 +15,7 @@ const eligibility = require('../lib/eligibility');
 const lifecycle = require('../lib/giveawayLifecycle');
 const prizeStandard = require('../lib/prizeStandard');
 const giveawayOutbox = require('../lib/giveawayOutbox');
+const appConfig = require('../lib/config');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
@@ -263,6 +264,11 @@ router.get('/:id', optionalAuth, async (req, res) => {
 // is ever added, administrators must stay exempt — see test/host-access.test.js.
 router.post('/', requireAuth, requireHostAccess, async (req, res) => {
   try {
+    // No real campaign may be submitted while the deployment is pre-launch. A
+    // submission is the first step of a campaign, and a campaign cannot be
+    // fulfilled while the fulfilment role model is unresolved.
+    if (appConfig.refuseIfPreLaunch(res, { action: 'submit_giveaway' })) return;
+
     const me = await pool.query(
       'SELECT age_attestation_status, age_attestation_version FROM users WHERE id = $1',
       [req.userId]
@@ -480,6 +486,10 @@ router.post('/', requireAuth, requireHostAccess, async (req, res) => {
 // number — the second request blocks until the first commits, then sees
 // the incremented count.
 router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
+  // Before the connection is even taken. An entry is the thing a real person
+  // does, and it is exactly what a pre-launch deployment must not accept.
+  if (appConfig.refuseIfPreLaunch(res, { action: 'enter_giveaway' })) return;
+
   const client = await pool.connect();
   try {
     const userRes = await client.query(
@@ -683,6 +693,10 @@ async function runDraw(client, giveaway, { actorUserId = null, actorRole = 'syst
 }
 
 router.post('/:id/draw', requireAuth, requireHostAccess, async (req, res) => {
+  // A draw commits a winner, a claim and a delivery workflow. None of that may
+  // happen while the deployment is pre-launch.
+  if (appConfig.refuseIfPreLaunch(res, { action: 'draw_winner' })) return;
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

@@ -154,15 +154,103 @@ const BY_NAME = new Map(VARIABLES.map((v) => [v.name, v]));
 // `public_launch` is the only state that asserts the legal work is done, and it
 // is deliberately unreachable today: the policy blockers alone refuse it. It is
 // never set in a committed file.
-const DEPLOYMENT_STATES = ['development', 'staging', 'private_beta', 'public_launch'];
+const DEPLOYMENT_STATES = [
+  'development',
+  'staging',
+  // Publicly reachable, and deliberately NOT operating. The site shows its
+  // design, its premium-prize concept and its informational pages, and refuses
+  // every action that would create real operational state. This is what ships
+  // while the policies are drafts and the fulfilment role model is unresolved.
+  'pre_launch',
+  'private_beta',
+  'public_launch',
+];
 
 function deploymentState() {
   const raw = String(process.env.DEPLOYMENT_STATE || '').trim().toLowerCase();
   if (DEPLOYMENT_STATES.includes(raw)) return raw;
-  // No inference from NODE_ENV. A production process with no declared state is
-  // a private beta, which is the truthful default for this platform today —
-  // never a public launch by omission.
-  return process.env.NODE_ENV === 'production' ? 'private_beta' : 'development';
+  // No inference from NODE_ENV, and the production default is the most
+  // restrictive state rather than a plausible one.
+  //
+  // It used to be `private_beta`, which reads as cautious and is not: a private
+  // beta accepts real registrations, real campaigns and real entries. A missing
+  // or misspelled DEPLOYMENT_STATE would therefore have opened the platform for
+  // business by omission. `pre_launch` fails closed — an environment variable
+  // nobody set cannot start operations.
+  return process.env.NODE_ENV === 'production' ? 'pre_launch' : 'development';
+}
+
+// ---------------------------------------------------------------------------
+// The pre-launch gate
+// ---------------------------------------------------------------------------
+//
+// Before this, `DEPLOYMENT_STATE` was purely informational: it chose an
+// `X-Robots-Tag`, a banner and a line in `/readyz`. It gated no behaviour at
+// all, so a deployment could describe itself as a private beta while accepting
+// registrations, publishing campaigns, taking entries and running draws.
+//
+// It is now the gate. One predicate, derived from the state that already
+// exists, rather than a second flag that could disagree with it.
+//
+//   development / staging  operations allowed. Fabricated data, not public.
+//   pre_launch             REFUSED. Publicly reachable, not operating.
+//   private_beta           real activity — but still refused while any launch
+//                          blocker stands, which today includes both policies
+//                          being drafts and the unresolved fulfilment model.
+//   public_launch          real activity, and already impossible to configure
+//                          while those blockers stand.
+//
+// So there is no configuration reachable tonight in which a real person can
+// register, a real campaign can publish, a real entry can be accepted or a real
+// draw can run.
+const OPERATIONAL_STATES = new Set(['development', 'staging', 'private_beta', 'public_launch']);
+
+// States that carry real people rather than fabricated fixtures, and therefore
+// require the outstanding legal and fulfilment work to be finished first.
+const REAL_ACTIVITY_STATES = new Set(['private_beta', 'public_launch']);
+
+// Returns { ok, reason, state }. `reason` is a category, never a blocker list:
+// the blockers name outstanding legal work and missing provider configuration,
+// and this answer reaches an unauthenticated response.
+function operationsAllowed() {
+  const state = deploymentState();
+  if (!OPERATIONAL_STATES.has(state)) {
+    return { ok: false, reason: 'pre_launch', state };
+  }
+  if (REAL_ACTIVITY_STATES.has(state) && launchBlockers().length > 0) {
+    return { ok: false, reason: 'launch_blockers_outstanding', state };
+  }
+  return { ok: true, reason: null, state };
+}
+
+function isPreLaunch() {
+  return !operationsAllowed().ok;
+}
+
+// What a visitor is told. Truthful about what the site is and is not, and it
+// does not promise a date nobody has committed to.
+const PRE_LAUNCH_COPY =
+  'Naseeb is not open yet. You are looking at the platform while it is being built: the design, how campaigns will work and what kind of prizes we will publish. Nothing here accepts real accounts, entries or prizes today, and nothing you do on this page creates an account or an entry.';
+
+// Express-friendly. Returns true when the caller must stop.
+//
+// 503 rather than 403: this is a temporary state of the deployment, not a
+// judgement about the person asking.
+function refuseIfPreLaunch(res, { action } = {}) {
+  const verdict = operationsAllowed();
+  if (verdict.ok) return false;
+
+  res.set('Retry-After', '86400');
+  res.set('Cache-Control', 'no-store');
+  res.status(503).json({
+    error: PRE_LAUNCH_COPY,
+    code: 'NOT_OPEN_YET',
+    // The coarse state and a category. Never the blocker list.
+    deployment_state: verdict.state,
+    reason: verdict.reason,
+    action: action || null,
+  });
+  return true;
 }
 
 function isPublicLaunch() {
@@ -428,6 +516,19 @@ function launchBlockers() {
     blockers.push('cannot be public_launch: claims are enabled but claim encryption is unavailable.');
   }
 
+  // The fulfilment role model. Read from the claim state machine rather than
+  // asserted here, so the blocker disappears when the work is actually done and
+  // not a moment before.
+  //
+  // Required lazily: claimStateMachine is a leaf, but requiring it at module
+  // load would add another edge to a graph this file is already careful about.
+  // eslint-disable-next-line global-require
+  if (!require('./claimStateMachine').FULFILMENT_ROLE_MODEL_RESOLVED) {
+    blockers.push(
+      'cannot accept a real campaign: the winner-fulfilment role model is unresolved. The claim workflow is still host-operated, while the approved model makes Naseeb the fulfilment coordinator and the winner-facing contact.'
+    );
+  }
+
   // A public launch with no working email is a platform where nobody can verify
   // an address or recover an account.
   if (!emailDelivery.isProviderConfigured()) {
@@ -489,8 +590,14 @@ module.exports = {
   VARIABLES,
   BY_NAME,
   DEPLOYMENT_STATES,
+  OPERATIONAL_STATES,
+  REAL_ACTIVITY_STATES,
+  PRE_LAUNCH_COPY,
   deploymentState,
   isPublicLaunch,
+  operationsAllowed,
+  isPreLaunch,
+  refuseIfPreLaunch,
   stateDisclosure,
   launchBlockers,
   looksLikePlaceholder,

@@ -51,6 +51,13 @@ router.get('/', async (req, res) => {
       // somebody fill in a signup form that will 503. A boolean and nothing
       // else — no provider name, no reason detail, no configuration.
       email_delivery_available: emailDelivery.canDeliver(),
+
+      // Whether the platform is accepting real operational activity at all, and
+      // the truthful sentence to show when it is not. A boolean and a fixed
+      // sentence — never the launch blockers, which name outstanding legal work
+      // and missing provider configuration.
+      accepting_operations: !appConfig.isPreLaunch(),
+      pre_launch_notice: appConfig.isPreLaunch() ? appConfig.PRE_LAUNCH_COPY : null,
     });
   } catch (err) {
     console.error(err);

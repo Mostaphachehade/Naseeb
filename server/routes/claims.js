@@ -18,6 +18,7 @@ const notifications = require('../lib/claimNotifications');
 const integrity = require('../lib/entryIntegrity');
 const { runMaintenanceOnce } = require('../lib/claimScheduler');
 const emailDelivery = require('../lib/emailDelivery');
+const appConfig = require('../lib/config');
 
 const router = express.Router();
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
@@ -160,6 +161,11 @@ router.get('/lookup', claimTokenLimiter, (req, res) => {
 // is told nothing. The delivery details are encrypted before they reach the
 // database.
 router.post('/redeem', claimTokenLimiter, async (req, res) => {
+  // Starting a claim is where a real person is asked for a delivery address.
+  // Nothing pre-launch may reach that point — and by construction nothing can,
+  // because no draw can have produced a claim; this is the belt to that braces.
+  if (appConfig.refuseIfPreLaunch(res, { action: 'start_claim' })) return;
+
   const client = await pool.connect();
   try {
     const { token, consent, consent_version, delivery } = req.body || {};
@@ -330,7 +336,9 @@ router.post('/:id/transition', claimActionLimiter, requireAuth, async (req, res)
 
     await client.query('BEGIN');
 
-    const existing = await claims.getClaimById(client, req.params.id);
+    // Locked, not merely read. Everything below this line is a decision made
+    // from what it says, and two concurrent reissues must not both make it.
+    const existing = await claims.lockClaimById(client, req.params.id);
     if (!existing) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'This claim does not exist.' });

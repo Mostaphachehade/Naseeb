@@ -75,6 +75,25 @@ async function getClaimById(client, claimId) {
   return result.rows[0] || null;
 }
 
+// The same read, with the row locked for the rest of the caller's transaction.
+//
+// `getClaimById` is a plain read, which is right for the many callers that only
+// display a claim. It is wrong for a caller that then DECIDES something from
+// what it read: two concurrent administrators reissuing the same claim both read
+// the same state, both conclude the same thing, and the second one acts on a
+// picture that stopped being true while it waited.
+//
+// The reissue route did exactly that. It read the claim without a lock,
+// invalidated every token, requeued the notification and cleared
+// `invitation_sent_at` — taking its first lock several statements in, by which
+// time its decision was already made. Locking the claim first makes the two
+// requests serial from the start, so the second reads the first one's result
+// rather than racing it.
+async function lockClaimById(client, claimId) {
+  const result = await client.query('SELECT * FROM prize_claims WHERE id = $1 FOR UPDATE', [claimId]);
+  return result.rows[0] || null;
+}
+
 // Created the moment a winner is drawn, along with the token that lets them
 // claim without signing in.
 async function createClaimForDraw(client, { giveawayId, winnerUserId, entryId }) {
@@ -417,6 +436,7 @@ module.exports = {
   resolveRole,
   getClaimByGiveaway,
   getClaimById,
+  lockClaimById,
   createClaimForDraw,
   recordEvent,
   transition,

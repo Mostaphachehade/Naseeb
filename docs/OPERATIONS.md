@@ -190,6 +190,40 @@ optional** — see below. The consequences, stated so nobody discovers them:
 
 ## 3. Deployment state versus public launch
 
+### The state is a GATE, not a label
+
+`DEPLOYMENT_STATE` used to be informational: it chose an `X-Robots-Tag`, a
+banner and a line in `/readyz`, and gated no behaviour at all. A deployment could
+describe itself as a private beta while accepting registrations, publishing
+campaigns, taking entries and running draws. It is now the gate.
+
+| State | Operations | Meaning |
+| --- | --- | --- |
+| `development` | allowed | Local, and the test suite |
+| `staging` | allowed | Fabricated data, not public |
+| `pre_launch` | **REFUSED** | Publicly reachable, deliberately not operating |
+| `private_beta` | refused while any launch blocker stands | Real activity |
+| `public_launch` | refused while any launch blocker stands | Real activity |
+
+`server/lib/config.js` `operationsAllowed()` is the single predicate;
+`refuseIfPreLaunch()` is what the routes call. Registration, campaign
+submission, publication, entry, the draw, starting a claim and the unattended
+lifecycle worker all refuse with **503 `NOT_OPEN_YET`** and write nothing.
+
+**Production defaults to `pre_launch` when the variable is unset or
+misspelled.** It used to default to `private_beta`, which reads as cautious and
+is not — a private beta accepts real registrations and real entries, so a
+missing environment variable would have opened the platform by omission.
+
+There is deliberately **no administrator bypass**: approval and publication are
+refused for administrators too. An exemption for the one role that could use it
+is the hole the gate exists to close. Exercise the workflow locally, or in a
+deployment explicitly set to `staging`.
+
+See `docs/RELEASE_CANDIDATE.md` for the deployment checklist this produces.
+
+
+
 Technical deployment and public launch are different decisions.
 `DEPLOYMENT_STATE` is one of `development`, `staging`, `private_beta`,
 `public_launch`. Unset means `development` locally and **`private_beta`** in
