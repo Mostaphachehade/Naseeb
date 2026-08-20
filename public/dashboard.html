@@ -9,6 +9,7 @@
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -24,9 +25,10 @@
   <div class="wrap">
     <div class="section-head">
       <div><h2>Giveaways you're hosting</h2><p>Manage your listings and draw winners once entries close.</p></div>
-      <a href="/create.html" class="btn primary">Host a giveaway</a>
+      <span id="host-action"></span>
     </div>
-    <div class="grid" id="hosted-grid" style="margin-bottom:56px;"><p>Loading…</p></div>
+    <div id="host-status-note"></div>
+    <div class="grid u-1e0e3812" id="hosted-grid"><p>Loading…</p></div>
 
     <div class="section-head">
       <div><h2>Giveaways you've entered</h2><p>Your live tickets, all in one place.</p></div>
@@ -37,36 +39,9 @@
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  if (!getToken()) window.location.href = '/login.html';
-
-  document.getElementById('hosted-grid').innerHTML = skeletonCards(3);
-  document.getElementById('entered-grid').innerHTML = skeletonCards(3);
-
-  async function load() {
-    const hostedGrid = document.getElementById('hosted-grid');
-    const enteredGrid = document.getElementById('entered-grid');
-    try {
-      const hosted = await api('/giveaways/mine/hosted');
-      hostedGrid.innerHTML = hosted.length
-        ? hosted.map(giveawayCard).join('')
-        : `<div class="empty" style="grid-column:1/-1;">You haven't hosted a giveaway yet. <a href="/create.html">Start one</a>.</div>`;
-    } catch (err) {
-      hostedGrid.innerHTML = `<p class="form-error show">${err.message}</p>`;
-    }
-
-    try {
-      const entered = await api('/giveaways/mine/entered');
-      enteredGrid.innerHTML = entered.length
-        ? entered.map(giveawayCard).join('')
-        : `<div class="empty" style="grid-column:1/-1;">You haven't entered anything yet. <a href="/index.html">Browse open giveaways</a>.</div>`;
-    } catch (err) {
-      enteredGrid.innerHTML = `<p class="form-error show">${err.message}</p>`;
-    }
-  }
-  load();
-</script>
+<script src="/js/pages/dashboard.js"></script>
 </body>
 </html>

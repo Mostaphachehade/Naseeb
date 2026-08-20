@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Claim your prize — Naseeb</title>
+<meta name="description" content="Confirm your prize claim and tell the host where to send it." />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="theme-color" content="#0B3B36" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to content</a>
+
+<header class="site">
+  <div class="wrap">
+    <a href="/index.html" class="brand">Naseeb<span class="dot">.</span></a>
+    <nav class="site-nav" id="site-nav"></nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap u-c04fdcc9">
+
+    <div id="loading-panel" class="card narrow u-dac4fe6c">
+      <p class="u-30c077fe">Checking your claim link…</p>
+    </div>
+
+    <div id="invalid-panel" class="card narrow u-c8be1ccb is-hidden">
+      <h2 class="u-291b7bbb">This claim link doesn't work</h2>
+      <p class="u-a2aae0fb" id="invalid-message">It may have expired, already been used, or been mistyped.</p>
+      <p class="hint">If you believe you won and can't claim, sign in and open the giveaway — or get in touch and we'll look into it. Nothing is lost: an unclaimed prize is reviewed by a person, never quietly cancelled or given to somebody else.</p>
+      <a href="/index.html" class="btn ghost u-88b9d5c6">Back to Naseeb</a>
+    </div>
+
+    <div id="done-panel" class="card narrow u-287a5cfe is-hidden">
+      <h2 class="u-291b7bbb">Your claim is in.</h2>
+      <p class="u-a2aae0fb" id="done-message"></p>
+      <a href="/dashboard.html" class="btn primary u-88b9d5c6">See your giveaways</a>
+    </div>
+
+    <div id="claim-panel" class="u-c8be1ccb is-hidden">
+      <div class="section-head">
+        <div>
+          <h2>You won.</h2>
+          <p id="prize-line"></p>
+        </div>
+      </div>
+
+      <div class="card narrow u-d331e6e2">
+        <h3 class="u-291b7bbb" id="giveaway-title"></h3>
+        <p class="u-a2aae0fb" id="prize-description"></p>
+        <p class="hint" id="host-line"></p>
+      </div>
+
+      <form class="card narrow u-a685987e" id="claim-form">
+        <p class="u-284e681e">Tell us where to send it. We ask for the least we can — enough for the host to get the prize to you, and nothing else.</p>
+
+        <label for="recipient_name">Name for delivery</label>
+        <input id="recipient_name" maxlength="120" required />
+
+        <label for="phone">Phone number</label>
+        <input id="phone" maxlength="32" required />
+        <p class="hint">Couriers usually call before arriving.</p>
+
+        <label for="address_line1">Address</label>
+        <input id="address_line1" maxlength="200" required />
+
+        <label for="address_line2">Address line 2 (optional)</label>
+        <input id="address_line2" maxlength="200" />
+
+        <label for="city">City</label>
+        <input id="city" maxlength="100" required />
+
+        <label for="emirate">Emirate</label>
+        <input id="emirate" maxlength="100" required />
+
+        <label for="notes">Delivery notes (optional)</label>
+        <textarea id="notes" maxlength="500" placeholder="e.g. building name, best time to deliver"></textarea>
+
+        <div class="compliance-box">
+          <label class="u-f464438f">
+            <input type="checkbox" id="consent" class="u-bdf1d453" required />
+            <span id="consent-text">
+              I agree that Naseeb may share the delivery details above with <strong id="consent-host"></strong>, the host of this giveaway, so they can send me my prize. They will not receive my email address or account details. I understand I can raise a problem through Naseeb if the prize doesn't arrive, and that these delivery details are deleted after the prize is confirmed delivered.
+            </span>
+          </label>
+        </div>
+
+        <button class="btn primary" type="submit" id="submit-btn">Confirm claim and share details</button>
+        <p class="form-error" id="error"></p>
+      </form>
+
+      <p class="hint u-88b9d5c6">Your details are encrypted before they're stored, and only this giveaway's host can see them.</p>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="/js/pages/claim-1.js"></script>
+<script src="/js/dom.js"></script>
+<script src="/js/i18n.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/pages/claim-2.js"></script>
+</body>
+</html>

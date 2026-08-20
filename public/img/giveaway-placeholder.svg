@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="No image supplied">
+  <rect width="1200" height="675" fill="#DCEEE7"/>
+  <circle cx="600" cy="300" r="86" fill="#0B3B36" opacity="0.08"/>
+  <path d="M540 330 l40-46 34 38 30-34 56 66z" fill="#0B3B36" opacity="0.18"/>
+  <text x="600" y="470" text-anchor="middle" font-family="Inter, sans-serif" font-size="34" fill="#0B3B36" opacity="0.45">No image supplied</text>
+</svg>

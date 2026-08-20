@@ -1,5 +1,17 @@
 node_modules/
 .env
+# Local test configuration (TEST_DATABASE_URL). Never contains production
+# credentials — but it is still local-only, and never shipped or shared.
+.env.test
+# Throwaway PostgreSQL cluster created by scripts/test-db.sh
+.tmp-testdb/
 npm-debug.log*
 .DS_Store
 .claude/settings.local.json
+.browser-security/
+
+# Database dumps produced by scripts/backup-verify.js run in a temp directory
+# and are removed on exit — this is a second line for a dump written by hand.
+*.dump
+*.sql.gz
+pgdump-*/

@@ -1,0 +1,43 @@
+/* Page-specific rules, moved out of inline <style> blocks.
+ *
+ * These were always plain class rules; they were simply written inside the
+ * documents that used them, which meant style-src needed 'unsafe-inline'.
+ * Moved verbatim, so the rendered design is unchanged.
+ */
+
+/* --- from host-apply.html --- */
+  .status-panel { border-left:4px solid var(--gold); background:#fff; border-radius:10px; padding:20px 22px; margin-bottom:26px; }
+  .status-panel h3 { margin:0 0 8px; font-size:1.05rem; }
+  .status-panel p { color:var(--text-soft); margin:0 0 6px; font-size:0.94rem; }
+  .status-panel .reason { font-style:italic; }
+
+/* --- from partners.html --- */
+  .compare-grid { display:grid; grid-template-columns: 1fr 1fr; gap:22px; margin-top:28px; }
+  @media (max-width: 760px) { .compare-grid { grid-template-columns: 1fr; } }
+  .compare-card { border-radius: var(--radius); padding: 26px 28px; }
+  .compare-card.dim { background: var(--paper); border: 1px solid rgba(11,59,54,0.14); }
+  .compare-card.bright { background: var(--ink); color: var(--paper); }
+  .compare-card h3 { margin-top: 0; font-size: 1.05rem; }
+  .compare-card.bright h3 { color: var(--gold-bright); }
+  .compare-card ul { list-style: none; padding: 0; margin: 16px 0 0; }
+  .compare-card li { padding: 8px 0; font-size: 0.92rem; border-bottom: 1px dashed rgba(11,59,54,0.14); }
+  .compare-card.bright li { border-bottom-color: rgba(247,243,234,0.16); color: var(--mint); }
+  .compare-card li:last-child { border-bottom: none; }
+  .why-now { display:grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 28px; }
+  @media (max-width: 760px) { .why-now { grid-template-columns: 1fr; } }
+  .why-now .card { background: var(--paper); border: 1px solid rgba(11,59,54,0.12); border-radius: var(--radius); padding: 24px 26px; }
+
+/* --- from pricing.html --- */
+  .cost-list { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap:22px; margin-top:32px; }
+  .cost { background:#fff; border:1px solid rgba(11,59,54,0.12); border-radius:var(--radius); padding:28px; display:flex; flex-direction:column; }
+  .cost h3 { margin-top:0; }
+  .cost .amount { font-family:'Fraunces',serif; font-size:1.9rem; color:var(--ink-deep); margin:6px 0 10px; }
+  .cost p { color:var(--text-soft); font-size:0.92rem; }
+  .cost ul { list-style:none; padding:0; margin:14px 0 22px; flex:1; }
+  .cost li { padding:8px 0; border-bottom:1px dashed rgba(11,59,54,0.15); font-size:0.92rem; color:var(--text-soft); }
+  .cost li:last-child { border-bottom:none; }
+  .faq { max-width:720px; margin:64px auto 0; }
+  .faq details { background:#fff; border:1px solid rgba(11,59,54,0.12); border-radius:10px; padding:16px 20px; margin-bottom:12px; }
+  .faq summary { font-weight:600; cursor:pointer; color:var(--ink-deep); }
+  .faq p { color:var(--text-soft); margin-top:10px; margin-bottom:0; }
+

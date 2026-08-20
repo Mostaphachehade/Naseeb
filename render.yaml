@@ -1,30 +1,280 @@
+# Render blueprint.
+#
+# Nothing in this file is a credential. Every secret is `sync: false`, which
+# means Render prompts for it once and stores it — it is never in git, never in
+# a build log, and never in a diff.
+#
+# ---------------------------------------------------------------------------
+# What this blueprint does NOT do, and why
+# ---------------------------------------------------------------------------
+#
+# Render's blueprint schema supports cron jobs, but a `cron` service on the free
+# plan is not available, and the paid one is a commercial decision the owner has
+# to make rather than something this file should quietly commit them to. The
+# maintenance schedule below is therefore written out as a specification: the
+# exact commands, the exact schedules, and the manual dashboard steps to create
+# them. See docs/OPERATIONS.md §"Maintenance schedule".
+#
+# Rather than inventing blueprint syntax that may not deploy, the cron
+# definitions are commented. Uncommenting them is a deliberate act by somebody
+# who has checked their plan supports it.
+#
+# **No Render service is created or modified by this repository.** This file is
+# a description; applying it is an owner action in the dashboard.
+
 services:
   - type: web
     name: naseeb
     runtime: node
     plan: free
-    buildCommand: npm install
+
+    # `npm ci`, not `npm install`.
+    #
+    # `npm install` may resolve a dependency to a version the lockfile does not
+    # name — which means the artefact that was tested and the artefact that
+    # deploys can differ, silently, on a transitive patch release. `npm ci`
+    # installs exactly the lockfile or fails. CI already uses it; this file did
+    # not, which meant CI and production were not building the same tree.
+    buildCommand: npm ci
     startCommand: npm start
+
+    # ---------------------------------------------------------------------
+    # There is deliberately NO preDeployCommand that migrates
+    # ---------------------------------------------------------------------
+    #
+    # Render offers `preDeployCommand`, and putting `node scripts/migrate.js up`
+    # in it would be the obvious thing to do. It is not done, on purpose.
+    #
+    # A schema change that runs automatically on deploy is a schema change
+    # nobody read before it happened — and sooner or later it runs against a
+    # database somebody did not expect: a restored copy, a rolled-back deploy, a
+    # staging URL pasted into the wrong environment group. Worse, the first
+    # version of this ledger would have ADOPTED such a database, recording
+    # "already migrated" because a `users` table existed, after which nothing
+    # ever checked again.
+    #
+    # So the schema is changed by a person, before the deploy, having read what
+    # the command is about to do:
+    #
+    #     node scripts/migrate.js status
+    #     node scripts/migrate.js verify
+    #     node scripts/migrate.js up        # or: adopt --dry-run, then adopt
+    #
+    # The web process verifies and fails readiness. A deploy against a database
+    # whose schema is not ready comes up and answers 503 on /readyz — which is
+    # the intended behaviour, and is what `healthCheckPath` below acts on.
+    #
+    # See docs/OPERATIONS.md §6 and runbook §9.2.
+
+    # Render polls this and takes an instance out of rotation when it fails.
+    # `/readyz` rather than `/healthz` on purpose: readiness knows about the
+    # database, the schema and the configuration, and returns 503 while any of
+    # them is wrong. `/healthz` deliberately does not — see server/routes/health.js.
+    healthCheckPath: /readyz
+
     envVars:
+      # --- runtime -------------------------------------------------------
+      - key: NODE_VERSION
+        # Pinned. The engines field in package.json declares the same version;
+        # the two must agree, and a test asserts it.
+        value: 22
+      - key: NODE_ENV
+        value: production
       - key: PORT
         value: 3000
-      - key: JWT_SECRET
+
+      # --- deployment state ----------------------------------------------
+      #
+      # `pre_launch`: publicly reachable, and deliberately NOT operating.
+      #
+      # The site shows its design, its premium-prize concept and its
+      # informational pages. Signup, campaign submission, publication, entry,
+      # the draw and starting a claim all answer 503 NOT_OPEN_YET. Nothing a
+      # visitor does creates an account, an entry or a campaign.
+      #
+      # This is not merely a label: server/lib/config.js `operationsAllowed()`
+      # reads it, and the routes refuse. An unset or misspelled value ALSO
+      # resolves to pre_launch in production, so a missing variable cannot start
+      # operations by omission.
+      #
+      # Moving to private_beta or public_launch is a deliberate edit to this
+      # file, and both remain refused while any launch blocker stands — today
+      # that includes both policies being drafts and the unresolved fulfilment
+      # role model.
+      - key: DEPLOYMENT_STATE
+        value: pre_launch
+
+      # --- secrets: prompted once, stored by Render, never in git ---------
+      #
+      # Signs session CSRF tokens; sessions themselves are opaque random tokens
+      # hashed in the database. Production refuses to boot on a missing, short,
+      # placeholder, low-entropy or borrowed value.
+      #   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      - key: SESSION_SECRET
         sync: false
       - key: DATABASE_URL
         sync: false
       - key: APP_URL
         sync: false
+      # Email is REQUIRED in production, whatever the deployment state — a
+      # private beta with real accounts in it is a deployment where somebody
+      # will need to recover a password. The process refuses to start without
+      # a provider key, and EMAIL_FROM is shape-validated: the provider's
+      # shared onboarding domain (resend.dev) and the reserved example domains
+      # are refused, because a From the provider rejects makes every send fail.
+      # No provider call is made at startup.
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
         sync: false
+
+      # Deliberately NOT set. Setting it to false is a temporary maintenance
+      # mode for a planned provider migration, during which signup, password
+      # reset, email change, the winner draw and claim reissue return 503
+      # before creating state that could never be completed. It defaults on,
+      # and it is refused at public launch. Set it in the dashboard for the
+      # duration of a migration and remove it afterwards.
+      # - key: EMAIL_DELIVERY_ENABLED
+      #   value: false
       - key: ADMIN_NOTIFY_EMAIL
         sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_UPLOAD_PRESET
         sync: false
+
+      # Self-serve ad checkout. Pinned to false here rather than left to the
+      # dashboard so a redeploy can't silently inherit a stale "true" — the
+      # value has to be changed deliberately, in this file, to turn payment on.
+      - key: ADS_CHECKOUT_ENABLED
+        value: false
+      # Required whenever ADS_CHECKOUT_ENABLED is true; the app refuses to boot
+      # without them. STRIPE_WEBHOOK_SECRET is the signing secret for
+      # /api/webhooks/stripe, not the API key, and differs per environment.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
+      # Winner delivery details are encrypted with this. The app refuses to
+      # start in production without it while claims are enabled. Back it up
+      # SEPARATELY from the database: losing it makes every stored delivery
+      # detail permanently unreadable, and a database backup does not contain
+      # it. See docs/OPERATIONS.md §"Encryption keys".
+      - key: CLAIM_ENCRYPTION_KEY
+        sync: false
+      - key: CLAIM_ENCRYPTION_KEYS_PREVIOUS
+        sync: false
+      - key: CLAIM_TOKEN_TTL_HOURS
+        sync: false
+      - key: CLAIM_DELIVERY_RETENTION_DAYS
+        sync: false
+      - key: CLAIM_MAINTENANCE_INTERVAL_MINUTES
+        sync: false
+
+      # Render terminates TLS and proxies every request, appending the real
+      # client address to X-Forwarded-For. One hop, pinned here rather than left
+      # to a default: too high and every rate limit becomes spoofable.
+      - key: TRUSTED_PROXY_HOPS
+        value: 1
+
+      # Keys the network hashes in the entry-integrity tables. No raw IP address
+      # is ever stored. Production refuses to boot without it.
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      - key: INTEGRITY_SIGNAL_SECRET
+        sync: false
+      - key: INTEGRITY_SIGNAL_RETENTION_DAYS
+        sync: false
+
       - key: GA_MEASUREMENT_ID
         sync: false
       - key: SENTRY_DSN
         sync: false
+
+      # How long a graceful shutdown may take before the process exits
+      # non-zero. Must be comfortably under Render's own SIGKILL grace period.
+      - key: SHUTDOWN_TIMEOUT_MS
+        value: 20000
+
+# ---------------------------------------------------------------------------
+# Maintenance schedule — specification, not yet applied
+# ---------------------------------------------------------------------------
+#
+# Every job below is idempotent, bounded, and holds a Postgres advisory lock, so
+# overlapping runs are safe by construction. **The advisory lock is the
+# correctness boundary, not the schedule** — two crons firing at the same
+# instant produce one worker and one "skipped", never duplicated work. The
+# staggering below is for load, not for correctness.
+#
+# Times are UTC, with Dubai (UTC+4, no DST) alongside.
+#
+#   job                   cron (UTC)     UTC        Dubai      why this cadence
+#   ------------------------------------------------------------------------
+#   all                   */15 * * * *   every 15m  every 15m  outboxes: a
+#                                                              verification
+#                                                              email should not
+#                                                              wait an hour
+#   giveaway_lifecycle    7 * * * *      hourly     hourly     redundancy: a
+#   + giveaway_outbox                                          campaign whose
+#                                                              deadline passed
+#                                                              must close and
+#                                                              draw even if the
+#                                                              15-minute job is
+#                                                              failing
+#   claims                17 * * * *     hourly     hourly     retention erasure
+#                                                              and claim expiry
+#   sessions              23 3 * * *     03:23      07:23      housekeeping,
+#                                                              off-peak
+#   risk_signals          31 3 * * *     03:31      07:31      retention purge,
+#                                                              off-peak
+#
+# `all` covers every job including the two above, so the dedicated entries are
+# belt-and-braces for the case where the frequent job is failing and nobody has
+# noticed: a daily run of the retention jobs on its own schedule means retention
+# does not stop just because the outbox is broken.
+#
+# The web service on a free plan sleeps. That is precisely why these are
+# platform crons rather than the in-process timer — a timer in a sleeping
+# process does not fire, and the in-process scheduler is now a safety net rather
+# than the schedule.
+#
+# Failure is observable: each job exits non-zero on failure and prints one JSON
+# line with counts. Render surfaces a non-zero cron exit as a failed run.
+#
+# MANUAL DASHBOARD STEPS (nothing here creates them):
+#   1. Confirm the plan includes cron jobs.
+#   2. New + → Cron Job, same repo and branch, build command `npm ci`.
+#   3. Command: `node scripts/maintenance.js all`
+#   4. Schedule: `*/15 * * * *`
+#   5. Environment: link the same environment group as the web service so
+#      DATABASE_URL and the secrets are shared. Do NOT paste values.
+#   6. Repeat for the per-job schedules above if wanted.
+#
+# jobs:
+#   - type: cron
+#     name: naseeb-maintenance
+#     runtime: node
+#     plan: starter
+#     buildCommand: npm ci
+#     schedule: "*/15 * * * *"
+#     startCommand: node scripts/maintenance.js all
+#     envVars:
+#       - fromGroup: naseeb-shared
+#   - type: cron
+#     name: naseeb-giveaway-lifecycle
+#     runtime: node
+#     plan: starter
+#     buildCommand: npm ci
+#     schedule: "7 * * * *"
+#     startCommand: node scripts/maintenance.js giveaway_lifecycle giveaway_outbox
+#     envVars:
+#       - fromGroup: naseeb-shared
+#   - type: cron
+#     name: naseeb-retention-daily
+#     runtime: node
+#     plan: starter
+#     buildCommand: npm ci
+#     schedule: "23 3 * * *"
+#     startCommand: node scripts/maintenance.js sessions risk_signals claims
+#     envVars:
+#       - fromGroup: naseeb-shared

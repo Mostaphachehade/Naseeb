@@ -14,10 +14,11 @@ const TRANSLATIONS = {
     'nav.winners': 'Winners',
     'nav.about': 'About',
     'nav.myGiveaways': 'My giveaways',
-    'nav.pricing': 'Pricing',
+    'nav.pricing': 'What things cost',
     'nav.admin': 'Admin',
     'nav.owner': 'Owner',
     'nav.hostGiveaway': 'Host a giveaway',
+    'nav.applyToHost': 'Apply to host',
     'nav.signOut': 'Sign out',
     'nav.signIn': 'Sign in',
     'nav.joinFree': 'Join free',
@@ -36,7 +37,11 @@ const TRANSLATIONS = {
     'footer.bottom': '© {year} Naseeb. Every ticket is free.',
 
     'hero.eyebrow': 'No purchase necessary',
-    'hero.headline': 'Every ticket is free.<br>Every draw is real.',
+    // Two lines rather than one string with a <br>: the dictionary holds text,
+    // and the line break is an element the page builds. Nothing here is markup,
+    // so nothing here needs an innerHTML to render it.
+    'hero.headlineLine1': 'Every ticket is free.',
+    'hero.headlineLine2': 'Every draw is real.',
     'hero.lede': "Naseeb hosts giveaways funded by the people running them, not by entry fees. Enter with one tap, no card required, and see exactly how the winner is picked.",
     'hero.browseBtn': 'Browse giveaways',
     'hero.hostBtn': 'Host your own',
@@ -46,12 +51,12 @@ const TRANSLATIONS = {
     'howItWorks.step1Title': 'Browse for free',
     'howItWorks.step1Body': "Every giveaway on Naseeb discloses who's funding the prize. No entry fee exists anywhere in the flow.",
     'howItWorks.step2Title': 'Enter with one tap',
-    'howItWorks.step2Body': "Sign in and enter — one ticket per person, so nobody can pay or game their way to better odds.",
+    'howItWorks.step2Body': 'Sign in and enter — one ticket per verified account, so nobody can pay their way to better odds.',
     'howItWorks.step3Title': 'Winner drawn at random',
     'howItWorks.step3Body': "After the deadline passes, a winner is drawn uniformly at random from every eligible entry.",
 
     'listings.title': 'Open giveaways',
-    'listings.sub': 'Free to enter. One entry per person, so every ticket carries the same odds.',
+    'listings.sub': 'Free to enter. One entry per verified account, so every ticket carries the same odds.',
     'loadMore': 'Load more',
 
     'empty.launchEyebrow': 'Launching soon',
@@ -64,7 +69,11 @@ const TRANSLATIONS = {
     'winners.lede': "Every giveaway here is drawn the same way — uniformly at random, after the deadline, from everyone who entered. Here's who's won so far.",
     'winners.wonBy': 'Won by {name}',
     'winners.by': 'by {name}',
-    'winners.emptyBody': "No winners drawn yet — check back once the first giveaway closes, or <a href=\"/index.html\">browse what's open now</a>.",
+    // Split around the link for the same reason: the anchor is created, not
+    // parsed out of a translated string.
+    'winners.emptyBefore': 'No winners drawn yet — check back once the first giveaway closes, or ',
+    'winners.emptyLink': "browse what's open now",
+    'winners.emptyAfter': '.',
 
     'detail.status': 'Status',
     'detail.entriesSoFar': 'Entries so far',
@@ -77,7 +86,7 @@ const TRANSLATIONS = {
     'detail.enterFree': 'Enter for free',
     'detail.drawWinner': 'Draw winner now',
     'detail.confirmDelivery': 'Confirm prize delivered',
-    'detail.hint': 'No payment is ever requested to enter or to improve your odds. One entry per person.',
+    'detail.hint': 'No payment is ever requested to enter or to improve your odds. One entry per verified account.',
     'detail.hostedBy': 'Hosted by {name}',
     'detail.open': 'Open',
     'detail.winnerDrawn': 'Winner drawn',
@@ -104,6 +113,7 @@ const TRANSLATIONS = {
     'nav.admin': 'الإدارة',
     'nav.owner': 'المالك',
     'nav.hostGiveaway': 'استضف مسابقة',
+    'nav.applyToHost': 'قدّم طلب استضافة',
     'nav.signOut': 'تسجيل الخروج',
     'nav.signIn': 'تسجيل الدخول',
     'nav.joinFree': 'انضم مجانًا',
@@ -122,7 +132,8 @@ const TRANSLATIONS = {
     'footer.bottom': '© {year} نصيب. كل تذكرة مجانية.',
 
     'hero.eyebrow': 'لا يُشترط الشراء',
-    'hero.headline': 'كل تذكرة مجانية.<br>كل سحب حقيقي.',
+    'hero.headlineLine1': 'كل تذكرة مجانية.',
+    'hero.headlineLine2': 'كل سحب حقيقي.',
     'hero.lede': 'تستضيف نصيب مسابقات يموّلها القائمون عليها، وليس رسوم المشاركة. شارك بضغطة واحدة، بلا بطاقة دفع، وشاهد بنفسك كيف يُختار الفائز.',
     'hero.browseBtn': 'تصفح المسابقات',
     'hero.hostBtn': 'استضف مسابقتك',
@@ -132,12 +143,12 @@ const TRANSLATIONS = {
     'howItWorks.step1Title': 'تصفح مجانًا',
     'howItWorks.step1Body': 'كل مسابقة على نصيب تكشف عن الجهة المموِّلة للجائزة. لا توجد رسوم مشاركة في أي خطوة.',
     'howItWorks.step2Title': 'شارك بضغطة واحدة',
-    'howItWorks.step2Body': 'سجّل دخولك وشارك — تذكرة واحدة لكل شخص، فلا يمكن لأحد الدفع أو التلاعب لتحسين فرصه.',
+    'howItWorks.step2Body': 'سجّل دخولك وشارك — تذكرة واحدة لكل حساب موثّق، فلا يمكن لأحد الدفع لتحسين فرصه.',
     'howItWorks.step3Title': 'يُسحب الفائز عشوائيًا',
     'howItWorks.step3Body': 'بعد انتهاء الموعد النهائي، يُختار الفائز عشوائيًا من بين جميع المشاركين المؤهلين.',
 
     'listings.title': 'مسابقات مفتوحة',
-    'listings.sub': 'المشاركة مجانية. تذكرة واحدة لكل شخص، فلكل تذكرة نفس الفرصة.',
+    'listings.sub': 'المشاركة مجانية. تذكرة واحدة لكل حساب موثّق، فلكل تذكرة نفس الفرصة.',
     'loadMore': 'عرض المزيد',
 
     'empty.launchEyebrow': 'قريبًا',
@@ -150,7 +161,9 @@ const TRANSLATIONS = {
     'winners.lede': 'كل مسابقة هنا تُسحب بنفس الطريقة — عشوائيًا بالكامل، بعد الموعد النهائي، من بين كل من شارك. إليك من فاز حتى الآن.',
     'winners.wonBy': 'فاز بها {name}',
     'winners.by': 'بواسطة {name}',
-    'winners.emptyBody': 'لم يُسحب أي فائز بعد — تابعنا بعد إغلاق أول مسابقة، أو <a href="/index.html">تصفح ما هو مفتوح الآن</a>.',
+    'winners.emptyBefore': 'لم يُسحب أي فائز بعد — تابعنا بعد إغلاق أول مسابقة، أو ',
+    'winners.emptyLink': 'تصفح ما هو مفتوح الآن',
+    'winners.emptyAfter': '.',
 
     'detail.status': 'الحالة',
     'detail.entriesSoFar': 'المشاركات حتى الآن',
@@ -163,7 +176,7 @@ const TRANSLATIONS = {
     'detail.enterFree': 'شارك مجانًا',
     'detail.drawWinner': 'اسحب الفائز الآن',
     'detail.confirmDelivery': 'تأكيد تسليم الجائزة',
-    'detail.hint': 'لا يُطلب أي دفع مطلقًا للمشاركة أو لتحسين فرصك. تذكرة واحدة لكل شخص.',
+    'detail.hint': 'لا يُطلب أي دفع مطلقًا للمشاركة أو لتحسين فرصك. تذكرة واحدة لكل حساب موثّق.',
     'detail.hostedBy': 'استضافة {name}',
     'detail.open': 'مفتوحة',
     'detail.winnerDrawn': 'تم سحب الفائز',
@@ -202,11 +215,19 @@ function applyI18n() {
   const lang = getLang();
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-  document.querySelectorAll('[data-i18n]').forEach((el) => {
-    el.textContent = t(el.getAttribute('data-i18n'));
+  document.querySelectorAll('[data-i18n]').forEach((node) => {
+    node.textContent = t(node.getAttribute('data-i18n'));
   });
-  document.querySelectorAll('[data-i18n-html]').forEach((el) => {
-    el.innerHTML = t(el.getAttribute('data-i18n-html'));
+  // data-i18n-html is gone. It read a key out of an attribute and assigned the
+  // dictionary entry with innerHTML — the two entries that needed it are now
+  // split into text parts, and the two elements that used it declare their
+  // structure instead.
+  document.querySelectorAll('[data-i18n-lines]').forEach((node) => {
+    const key = node.getAttribute('data-i18n-lines');
+    while (node.firstChild) node.removeChild(node.firstChild);
+    node.appendChild(document.createTextNode(t(key + 'Line1')));
+    node.appendChild(document.createElement('br'));
+    node.appendChild(document.createTextNode(t(key + 'Line2')));
   });
 }
 

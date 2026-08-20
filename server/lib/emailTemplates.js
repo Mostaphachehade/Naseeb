@@ -215,4 +215,175 @@ function entryEmailHtml({ entrantName, giveawayTitle, prizeDescription, imageUrl
 </html>`;
 }
 
-module.exports = { winnerEmailHtml, entryEmailHtml };
+// ---------------------------------------------------------------------------
+// Prize claim emails
+//
+// None of these carries a delivery address, a phone number, or any of the
+// details a winner submits. Both parties are told what changed and asked to
+// sign in — an inbox, and whatever a mail provider retains, is not somewhere
+// a home address belongs.
+// ---------------------------------------------------------------------------
+
+// The one email that contains a claim link. Sent to the winner only, and marked
+// sensitive so its body is never logged.
+function claimInvitationHtml({ winnerName, giveawayTitle, claimUrl, expiresAt }) {
+  const expiry = new Date(expiresAt).toUTCString();
+  return `<!DOCTYPE html>
+<html><body style="margin:0; padding:24px; background:#F7F4EE; font-family:Arial,Helvetica,sans-serif; color:#1F2421;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; margin:0 auto; background:#FFFFFF; border-radius:12px;">
+    <tr><td style="padding:28px;">
+      <p style="margin:0 0 14px; font-size:16px;">Hi ${escapeHtmlForEmail(winnerName)},</p>
+      <p style="margin:0 0 14px; font-size:16px;">You won <strong>${escapeHtmlForEmail(giveawayTitle)}</strong>. To receive your prize, confirm your claim and tell us where to send it.</p>
+      <p style="margin:0 0 20px;">
+        <a href="${claimUrl}" style="display:inline-block; background:#0B3B36; color:#FFFFFF; text-decoration:none; padding:12px 22px; border-radius:100px; font-weight:bold;">Claim your prize</a>
+      </p>
+      <p style="margin:0 0 10px; font-size:14px; color:#5B6660;">This link works once and expires on ${expiry}. Don&rsquo;t forward it &mdash; anyone with the link could claim in your place.</p>
+      <p style="margin:0; font-size:14px; color:#5B6660;">Your delivery details are only shared with the host after you agree to it, and only what&rsquo;s needed to get the prize to you.</p>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+// Sent to the host when a winner claims. Says that it happened and nothing more.
+function hostClaimNotificationHtml({ hostName, giveawayTitle, winnerName, dashboardUrl }) {
+  return `<!DOCTYPE html>
+<html><body style="margin:0; padding:24px; background:#F7F4EE; font-family:Arial,Helvetica,sans-serif; color:#1F2421;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; margin:0 auto; background:#FFFFFF; border-radius:12px;">
+    <tr><td style="padding:28px;">
+      <p style="margin:0 0 14px; font-size:16px;">Hi ${escapeHtmlForEmail(hostName)},</p>
+      <p style="margin:0 0 14px; font-size:16px;"><strong>${escapeHtmlForEmail(winnerName)}</strong> has claimed the prize for <strong>${escapeHtmlForEmail(giveawayTitle)}</strong> and agreed to share delivery details with you.</p>
+      <p style="margin:0 0 20px;">
+        <a href="${dashboardUrl}" style="display:inline-block; background:#0B3B36; color:#FFFFFF; text-decoration:none; padding:12px 22px; border-radius:100px; font-weight:bold;">Sign in to arrange delivery</a>
+      </p>
+      <p style="margin:0; font-size:14px; color:#5B6660;">The delivery address isn&rsquo;t in this email on purpose. Sign in to see it, and mark the prize sent once it&rsquo;s on its way.</p>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+const CLAIM_STATUS_WORDING = {
+  claimed: 'The claim is confirmed.',
+  preparing_delivery: 'The host is preparing the prize for delivery.',
+  shipped_or_arranged: 'The host has sent or arranged the prize.',
+  delivered_pending_confirmation: 'The host says the prize has arrived. Please confirm you received it.',
+  delivered: 'Delivery is confirmed. All done.',
+  disputed: 'A problem has been raised and an administrator is reviewing it.',
+  expired: 'The claim window closed and an administrator is reviewing it.',
+  cancelled: 'This claim has been closed.',
+};
+
+function claimStatusHtml({ recipientName, giveawayTitle, status, message, giveawayUrl }) {
+  const wording = CLAIM_STATUS_WORDING[status] || 'The status of this prize has changed.';
+  return `<!DOCTYPE html>
+<html><body style="margin:0; padding:24px; background:#F7F4EE; font-family:Arial,Helvetica,sans-serif; color:#1F2421;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; margin:0 auto; background:#FFFFFF; border-radius:12px;">
+    <tr><td style="padding:28px;">
+      <p style="margin:0 0 14px; font-size:16px;">Hi ${escapeHtmlForEmail(recipientName)},</p>
+      <p style="margin:0 0 14px; font-size:16px;">${escapeHtmlForEmail(wording)}</p>
+      <p style="margin:0 0 14px; font-size:16px;">Giveaway: <strong>${escapeHtmlForEmail(giveawayTitle)}</strong></p>
+      <p style="margin:0 0 20px;">
+        <a href="${giveawayUrl}" style="display:inline-block; background:#0B3B36; color:#FFFFFF; text-decoration:none; padding:12px 22px; border-radius:100px; font-weight:bold;">Open the giveaway</a>
+      </p>
+      <p style="margin:0; font-size:14px; color:#5B6660;">${escapeHtmlForEmail(message || '')}</p>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+// The address on an account is about to change, and this goes to the OLD one.
+//
+// Deliberately carries no token and no link that completes anything: if this
+// message is the first the account holder hears of it, the correct action is to
+// secure the account, not to click something in an email they did not expect.
+// Goes to the OLD address, after the change has completed.
+//
+// Carries no token, no completing link and no signed-in link of any kind: the
+// person reading it may be the account holder whose account was just taken, and
+// handing them a live session URL in an email is the opposite of help. The new
+// address is masked, so the message is useful without telling a thief who may
+// also read this inbox exactly where the account went.
+//
+// The recovery instruction is a password reset, which is a route that exists,
+// and a plain "contact us" — with no support address, phone number or hours
+// invented, because none has been approved. See docs/UAE_COUNSEL_REVIEW.md A5/A6.
+function emailChangeNoticeHtml({ name, newEmailMasked, appUrl, completed = false }) {
+  if (!completed) {
+    return `
+      <p>Hello ${escapeHtmlForEmail(name || 'there')},</p>
+      <p>Someone asked to change the email address on your Naseeb account to
+         <strong>${escapeHtmlForEmail(newEmailMasked)}</strong>.</p>
+      <p>The change is not done yet. It only takes effect once the new address is
+         confirmed. This message contains no link to confirm it — that link went to
+         the new address only.</p>
+      <p><strong>If this was not you</strong>, change your password now at
+         ${escapeHtmlForEmail(appUrl)}/forgot-password.html and the pending change
+         will not complete.</p>
+      <p>If it was you, nothing more to do here.</p>
+    `;
+  }
+  return `
+    <p>Hello ${escapeHtmlForEmail(name || 'there')},</p>
+    <p>The email address on your Naseeb account has been changed to
+       <strong>${escapeHtmlForEmail(newEmailMasked)}</strong>. This address will no
+       longer receive account email.</p>
+    <p>Everyone signed in to the account has been signed out, including on the
+       device that made the change.</p>
+    <p><strong>If this was not you</strong>, act now: someone else may control the
+       account. Reset your password at
+       ${escapeHtmlForEmail(appUrl)}/forgot-password.html — a reset now goes to the
+       new address, so if you cannot complete it, contact us through the site
+       straight away and say that your address was changed without your knowledge.</p>
+    <p>This message contains no link that changes anything and no way to sign in.
+       We will never ask you for your password.</p>
+  `;
+}
+
+// Goes to the NEW address, and is the only place the token ever appears.
+function emailChangeConfirmHtml({ name, confirmUrl, expiresAt }) {
+  return `
+    <p>Hello ${escapeHtmlForEmail(name || 'there')},</p>
+    <p>Confirm this address to finish changing the email on your Naseeb account:</p>
+    <p><a href="${escapeHtmlForEmail(confirmUrl)}">Confirm this email address</a></p>
+    <p>The link works once and expires ${escapeHtmlForEmail(new Date(expiresAt).toUTCString())}.</p>
+    <p>You will be signed out everywhere once it is done, and will need to sign in
+       again with the new address.</p>
+    <p>If you did not ask for this, you can ignore this message — nothing changes
+       until the link is used.</p>
+  `;
+}
+
+// A giveaway somebody entered has been cancelled.
+//
+// The explanation is the fixed sentence `giveawayLifecycle` chose from the
+// cancellation ground — never an administrator's written reason, which can name
+// a sponsor, an allegation or a legal instruction. Nothing here accuses the
+// recipient of anything, and nothing here pretends a draw happened.
+//
+// Deliberately no support address: the approved ones are not live yet, and
+// inventing a contact people would write to is worse than telling them the
+// campaign page is where the record is.
+function giveawayCancelledHtml({ entrantName, giveawayTitle, explanation, giveawayUrl }) {
+  return `
+    <p>Hello ${escapeHtmlForEmail(entrantName || 'there')},</p>
+    <p>A giveaway you entered on Naseeb — <strong>${escapeHtmlForEmail(giveawayTitle)}</strong> —
+       has been cancelled, and no draw took place.</p>
+    <p>${escapeHtmlForEmail(explanation || 'This giveaway has been cancelled.')}</p>
+    <p>Your entry has not been deleted. The campaign page keeps the full record of
+       what was offered and what happened to it:</p>
+    <p><a href="${escapeHtmlForEmail(giveawayUrl)}">${escapeHtmlForEmail(giveawayUrl)}</a></p>
+    <p>We are sorry to send this. Cancelling a campaign people have entered is
+       something Naseeb does only when the prize genuinely cannot be provided or
+       continuing would not be lawful.</p>
+  `;
+}
+
+module.exports = {
+  emailChangeNoticeHtml,
+  emailChangeConfirmHtml,
+  winnerEmailHtml,
+  entryEmailHtml,
+  claimInvitationHtml,
+  hostClaimNotificationHtml,
+  claimStatusHtml,
+  giveawayCancelledHtml,
+};

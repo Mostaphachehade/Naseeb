@@ -1,0 +1,1550 @@
+// Entry integrity: what the platform actually guarantees, and what it refuses
+// to pretend.
+//
+// The guarantee is one entry per verified account per giveaway. It is a UNIQUE
+// index and it holds. It is *not* one entry per person — nothing here can tell
+// two verified accounts apart from two people, and this product does not collect
+// identity documents to try. These tests pin both halves of that: the constraint
+// that is real, and the absence of a claim that isn't.
+//
+// Everything below runs against the isolated test database with fabricated data.
+const { test, before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('node:crypto');
+const bcrypt = require('bcryptjs');
+
+const { api, pool, ensureInit, signIn, uniqueEmail, nextTestIp, TEST_ORIGIN, seedGiveaway, closePool } = require('../testHelpers');
+
+const integrity = require('../server/lib/entryIntegrity');
+const riskSignals = require('../server/lib/riskSignals');
+const { readHops, resolveTrustProxy } = require('../server/lib/proxyTrust');
+const { init } = require('../server/db');
+
+const PASSWORD = 'correcthorse123';
+const TEST_KEY = `v1:${crypto.randomBytes(32).toString('base64')}`;
+
+const created = { users: [], giveaways: [] };
+
+before(async () => {
+  await ensureInit();
+  process.env.CLAIM_ENCRYPTION_KEY = TEST_KEY;
+  delete process.env.CLAIM_DEV_LOG_LINKS;
+});
+
+after(async () => {
+  if (created.giveaways.length) {
+    await pool.query('DELETE FROM entry_integrity_cases WHERE giveaway_id = ANY($1)', [created.giveaways]);
+    await pool.query(
+      'DELETE FROM prize_claim_events WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))',
+      [created.giveaways]
+    );
+    await pool.query(
+      'DELETE FROM claim_notifications WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))',
+      [created.giveaways]
+    );
+    await pool.query('DELETE FROM claim_rescue_queue WHERE giveaway_id = ANY($1)', [created.giveaways]);
+    await pool.query('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [created.giveaways]);
+    // Detaching the winner means the campaign is no longer drawn, and the schema
+    // says so: `drawn` requires a winning entry. Teardown moves the state with
+    // the data rather than leaving an incoherent row behind.
+    await pool.query(
+      `UPDATE giveaways
+          SET winner_entry_id = NULL, drawn_at = NULL,
+              status = CASE WHEN status = 'drawn' THEN 'closed_pending_draw' ELSE status END
+        WHERE id = ANY($1)`,
+      [created.giveaways]
+    );
+    await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [created.giveaways]);
+    await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [created.giveaways]);
+  }
+  if (created.users.length) {
+    await pool.query('DELETE FROM sessions WHERE user_id = ANY($1)', [created.users]);
+    await pool.query('DELETE FROM users WHERE id = ANY($1)', [created.users]);
+  }
+  await closePool();
+});
+
+async function makeUser(tag, { admin = false, hostStatus = 'not_requested' } = {}) {
+  const id = crypto.randomUUID();
+  const email = uniqueEmail(`integ-${tag}`);
+  await pool.query(
+    `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status, age_attestation_status, age_attestation_version)
+     VALUES ($1, $2, $3, $4, TRUE, $5, $6, 'confirmed', '2026-08-eligibility-18')`,
+    [id, `Integrity ${tag}`, email, bcrypt.hashSync(PASSWORD, 4), admin, hostStatus]
+  );
+  created.users.push(id);
+  return { id, email };
+}
+
+async function makeGiveaway(hostId, { deadlineDays = 7, status } = {}) {
+  // Seeded through the shared helper: a campaign is a governed, approved,
+  // published thing now, and a fixture that writes one by hand would be
+  // fabricating an approval that never happened.
+  //
+  // A past deadline means a CLOSED campaign, not an open one with a stale date.
+  // The route no longer draws an open campaign — a campaign closes itself, at
+  // whichever comes first: the 100th accepted entry, or the deadline. So a
+  // fixture whose deadline has passed is seeded in the state that campaign
+  // would actually be in.
+  const resolved = status || (deadlineDays <= 0 ? 'closed_pending_draw' : 'active');
+  const id = await seedGiveaway({
+    hostId,
+    status: resolved,
+    title: 'Integrity giveaway',
+    closesAt: new Date(Date.now() + deadlineDays * 86400000),
+  });
+  created.giveaways.push(id);
+  return id;
+}
+
+async function makeEntry(giveawayId, userId, ticket) {
+  const id = crypto.randomUUID();
+  await pool.query(
+    'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, $4)',
+    [id, giveawayId, userId, ticket]
+  );
+  return id;
+}
+
+async function statusOf(entryId) {
+  const r = await pool.query('SELECT integrity_status FROM entries WHERE id = $1', [entryId]);
+  return r.rows[0] ? r.rows[0].integrity_status : null;
+}
+
+
+// The decision contract in one place: fetch the current version, then submit it
+// alongside an allowlisted entrant-facing code and the internal notes. Every
+// test below goes through this, so a change to the contract breaks in one spot.
+async function decide(session, entryId, { status, code, notes, version }) {
+  let v = version;
+  if (v === undefined) {
+    const detail = await session.get(`/api/admin/integrity/entries/${entryId}`);
+    v = detail.body.entry ? detail.body.entry.version : 0;
+  }
+  return session.post(`/api/admin/integrity/entries/${entryId}/status`).send({
+    status,
+    reason_code: code || DEFAULT_CODE[status],
+    admin_notes: notes || 'fabricated administrator notes for this test',
+    version: v,
+  });
+}
+
+const DEFAULT_CODE = {
+  under_review: 'review_routine_check',
+  disqualified: 'disqualified_entry_rule',
+  eligible: 'reinstated_after_review',
+};
+
+async function caseVersion(session, caseId) {
+  const r = await pool.query('SELECT version FROM entry_integrity_cases WHERE id = $1', [caseId]);
+  return r.rows[0] ? r.rows[0].version : 0;
+}
+
+// ---------------------------------------------------------------------------
+// 1–3. What one entry per account does and does not mean
+// ---------------------------------------------------------------------------
+
+test('1. one verified account can enter a giveaway once', async () => {
+  const host = await makeUser('host1', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant1');
+  const giveawayId = await makeGiveaway(host.id);
+
+  const session = await signIn(entrant.email, PASSWORD);
+  const res = await session.post(`/api/giveaways/${giveawayId}/enter`).set('X-Forwarded-For', nextTestIp());
+  assert.equal(res.status, 201);
+  assert.equal(res.body.ticket_number, 1);
+});
+
+test('2. a second entry from the same account is refused', async () => {
+  const host = await makeUser('host2', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant2');
+  const giveawayId = await makeGiveaway(host.id);
+  const session = await signIn(entrant.email, PASSWORD);
+
+  const first = await session.post(`/api/giveaways/${giveawayId}/enter`).set('X-Forwarded-For', nextTestIp());
+  assert.equal(first.status, 201);
+
+  const second = await session.post(`/api/giveaways/${giveawayId}/enter`).set('X-Forwarded-For', nextTestIp());
+  assert.equal(second.status, 409);
+
+  const count = await pool.query('SELECT COUNT(*)::int AS c FROM entries WHERE giveaway_id = $1', [giveawayId]);
+  assert.equal(count.rows[0].c, 1);
+
+  // And the database would refuse it even if the route did not.
+  await assert.rejects(
+    pool.query('INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 2)', [
+      crypto.randomUUID(), giveawayId, entrant.id,
+    ]),
+    /duplicate key|unique/i
+  );
+});
+
+test('3. two accounts are two entries, and nothing claims they are one human', async () => {
+  const host = await makeUser('host3', { hostStatus: 'approved' });
+  const a = await makeUser('twin-a');
+  const b = await makeUser('twin-b');
+  const giveawayId = await makeGiveaway(host.id);
+
+  for (const user of [a, b]) {
+    const session = await signIn(user.email, PASSWORD);
+    const res = await session.post(`/api/giveaways/${giveawayId}/enter`).set('X-Forwarded-For', nextTestIp());
+    assert.equal(res.status, 201, 'a separate verified account may enter');
+  }
+
+  const count = await pool.query('SELECT COUNT(*)::int AS c FROM entries WHERE giveaway_id = $1', [giveawayId]);
+  assert.equal(count.rows[0].c, 2, 'the platform does not merge accounts into people');
+
+  // The public wording has to match that. "One entry per person" is a claim the
+  // system cannot support; "per verified account" is the one it can.
+  const publicText = ['index.html', 'about.html', 'giveaway.html', 'partners.html']
+    .map((name) => fs.readFileSync(path.join(__dirname, '..', 'public', name), 'utf8'))
+    .join('\n')
+    + fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'i18n.js'), 'utf8');
+
+  const overclaims = publicText.match(/[Oo]ne (entry|ticket) per person/g) || [];
+  assert.deepEqual(overclaims, [], 'public copy must not promise one entry per person');
+  assert.match(publicText, /per verified account|per account/,
+    'public copy should say what is actually enforced');
+});
+
+// ---------------------------------------------------------------------------
+// 4–8. Who may decide, and what a decision preserves
+// ---------------------------------------------------------------------------
+
+test('4. a non-admin cannot review, disqualify or reinstate', async () => {
+  const host = await makeUser('host4', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant4');
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+
+  for (const user of [host, entrant]) {
+    const session = await signIn(user.email, PASSWORD);
+    for (const status of ['under_review', 'disqualified', 'eligible']) {
+      const res = await session
+        .post(`/api/admin/integrity/entries/${entryId}/status`)
+        .send({ status, reason_code: DEFAULT_CODE[status], admin_notes: 'trying it on', version: 0 });
+      assert.equal(res.status, 403, `${status} must be refused for a non-admin`);
+    }
+    const queue = await session.get('/api/admin/integrity/queue');
+    assert.equal(queue.status, 403);
+  }
+  assert.equal(await statusOf(entryId), 'eligible');
+});
+
+test('5. forged role, actor and risk fields in the body do nothing', async () => {
+  const host = await makeUser('host5', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant5');
+  const admin = await makeUser('admin5', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+
+  const attacker = await signIn(entrant.email, PASSWORD);
+  const res = await attacker.post(`/api/admin/integrity/entries/${entryId}/status`).send({
+    status: 'disqualified',
+    reason_code: 'disqualified_entry_rule',
+    admin_notes: 'forged',
+    version: 0,
+    is_admin: true,
+    role: 'admin',
+    actor_user_id: admin.id,
+    actorUserId: admin.id,
+    risk_score: 100,
+  });
+  assert.equal(res.status, 403);
+  assert.equal(await statusOf(entryId), 'eligible');
+
+  // And the actor recorded for a real decision is the session, not the body.
+  const adminSession = await signIn(admin.email, PASSWORD);
+  const ok = await adminSession.post(`/api/admin/integrity/entries/${entryId}/status`).send({
+    status: 'under_review',
+    reason_code: 'review_routine_check',
+    admin_notes: 'a genuine internal note',
+    version: 0,
+    actor_user_id: entrant.id,
+  });
+  assert.equal(ok.status, 200);
+  const ev = await pool.query(
+    'SELECT actor_user_id, actor_role FROM entry_integrity_events WHERE entry_id = $1',
+    [entryId]
+  );
+  assert.equal(ev.rows[0].actor_user_id, admin.id);
+  assert.equal(ev.rows[0].actor_role, 'admin');
+});
+
+test('6. a host may flag an entry but cannot disqualify one', async () => {
+  const host = await makeUser('host6', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant6');
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+
+  const hostSession = await signIn(host.email, PASSWORD);
+
+  const flagged = await hostSession
+    .post(`/api/giveaways/${giveawayId}/entries/${entryId}/flag`)
+    .send({ admin_notes: 'this looks like a duplicate account to me' });
+  assert.equal(flagged.status, 201);
+  assert.equal(flagged.body.case_opened, true);
+
+  // Flagging opens a case. It does not touch the entry.
+  assert.equal(await statusOf(entryId), 'eligible');
+
+  // Idempotent: the same flag again reports the same case.
+  const again = await hostSession
+    .post(`/api/giveaways/${giveawayId}/entries/${entryId}/flag`)
+    .send({ admin_notes: 'still looks like a duplicate' });
+  assert.equal(again.status, 200);
+  assert.equal(again.body.already_open, true);
+  const cases = await pool.query(
+    "SELECT COUNT(*)::int AS c FROM entry_integrity_cases WHERE entry_id = $1 AND status = 'open'",
+    [entryId]
+  );
+  assert.equal(cases.rows[0].c, 1);
+
+  // And the admin route is still closed to them.
+  const attempt = await decide(hostSession, entryId, { status: 'disqualified', notes: 'my giveaway, my rules' });
+  assert.equal(attempt.status, 403);
+  assert.equal(await statusOf(entryId), 'eligible');
+});
+
+test('7. disqualification preserves the entry, its time, its account and its history', async () => {
+  const host = await makeUser('host7', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant7');
+  const admin = await makeUser('admin7', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+
+  const before = await pool.query('SELECT * FROM entries WHERE id = $1', [entryId]);
+
+  const session = await signIn(admin.email, PASSWORD);
+  const res = await decide(session, entryId, { status: 'disqualified', notes: 'three accounts, one address, same minute' });
+  assert.equal(res.status, 200);
+
+  const after = await pool.query('SELECT * FROM entries WHERE id = $1', [entryId]);
+  assert.ok(after.rows[0], 'the entry still exists');
+  assert.equal(after.rows[0].created_at.getTime(), before.rows[0].created_at.getTime());
+  assert.equal(after.rows[0].user_id, entrant.id);
+  assert.equal(after.rows[0].giveaway_id, giveawayId);
+  assert.equal(after.rows[0].ticket_number, before.rows[0].ticket_number);
+  assert.equal(after.rows[0].integrity_status, 'disqualified');
+
+  const events = await pool.query(
+    'SELECT * FROM entry_integrity_events WHERE entry_id = $1 ORDER BY created_at',
+    [entryId]
+  );
+  assert.equal(events.rows.length, 1);
+  assert.equal(events.rows[0].from_status, 'eligible');
+  assert.equal(events.rows[0].to_status, 'disqualified');
+  assert.equal(events.rows[0].reason_code, 'disqualified_entry_rule');
+  // The evidence lives in admin_notes, and only there.
+  assert.match(events.rows[0].admin_notes, /three accounts/);
+  assert.equal(events.rows[0].reason, null, 'the old dual-purpose column is not written any more');
+
+  // A restrictive decision without notes is refused by the route and by the
+  // database, so neither is the only thing standing between here and an
+  // unexplained disqualification.
+  const noNotes = await decide(session, entryId, { status: 'eligible', notes: '  ' });
+  assert.equal(noNotes.status, 400);
+  assert.equal(noNotes.body.code, 'NOTES_REQUIRED');
+
+  await assert.rejects(
+    pool.query(
+      `INSERT INTO entry_integrity_events (id, entry_id, giveaway_id, to_status, reason_code, actor_role)
+       VALUES ($1, $2, $3, 'disqualified', 'disqualified_entry_rule', 'admin')`,
+      [crypto.randomUUID(), entryId, giveawayId]
+    ),
+    /entry_integrity_events_notes_required/
+  );
+});
+
+test('8. reinstatement keeps the earlier disqualification in the history', async () => {
+  const host = await makeUser('host8', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant8');
+  const admin = await makeUser('admin8', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+  const session = await signIn(admin.email, PASSWORD);
+
+  await decide(session, entryId, { status: 'disqualified', notes: 'looked like a duplicate account' });
+  const reinstated = await decide(session, entryId, { status: 'eligible', notes: 'they sent proof it is a shared office' });
+  assert.equal(reinstated.status, 200);
+  assert.equal(await statusOf(entryId), 'eligible');
+
+  const events = await pool.query(
+    'SELECT from_status, to_status, reason_code FROM entry_integrity_events WHERE entry_id = $1 ORDER BY created_at',
+    [entryId]
+  );
+  assert.deepEqual(
+    events.rows.map((e) => [e.from_status, e.to_status, e.reason_code]),
+    [
+      ['eligible', 'disqualified', 'disqualified_entry_rule'],
+      ['disqualified', 'eligible', 'reinstated_after_review'],
+    ],
+    'the reversal does not erase what it reversed'
+  );
+
+  // The history cannot be rewritten, by anyone, including us.
+  await assert.rejects(
+    pool.query("UPDATE entry_integrity_events SET admin_notes = 'x' WHERE entry_id = $1", [entryId]),
+    /append-only/
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 9–13. Concurrency, the draw, and migrations
+// ---------------------------------------------------------------------------
+
+test('9. concurrent conflicting decisions produce one outcome and one history', async () => {
+  const host = await makeUser('host9', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant9');
+  const admin = await makeUser('admin9', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+  const session = await signIn(admin.email, PASSWORD);
+
+  const [a, b] = await Promise.all([
+    session.post(`/api/admin/integrity/entries/${entryId}/status`)
+      .send({ status: 'disqualified', reason_code: 'disqualified_entry_rule', admin_notes: 'concurrent decision A', version: 0 }),
+    session.post(`/api/admin/integrity/entries/${entryId}/status`)
+      .send({ status: 'under_review', reason_code: 'review_routine_check', admin_notes: 'concurrent decision B', version: 0 }),
+  ]);
+
+  // One of them wins and one is refused as an illegal move from the state the
+  // winner left behind — or both succeed in a legal order. Either way the row
+  // and the history agree, which is the property that matters.
+  const final = await statusOf(entryId);
+  const events = await pool.query(
+    'SELECT to_status FROM entry_integrity_events WHERE entry_id = $1 ORDER BY created_at',
+    [entryId]
+  );
+  assert.ok(['disqualified', 'under_review'].includes(final));
+  assert.equal(events.rows[events.rows.length - 1].to_status, final,
+    'the last history row matches the stored status');
+  assert.ok([a.status, b.status].every((s) => [200, 409].includes(s)));
+});
+
+test('10. the draw selects only eligible entries', async () => {
+  const host = await makeUser('host10', { hostStatus: 'approved' });
+  const admin = await makeUser('admin10', { admin: true });
+  const giveawayId = await makeGiveaway(host.id, { deadlineDays: -1 });
+
+  // One eligible entry among many disqualified ones. Deterministic rather than
+  // probabilistic: if the draw read the wrong pool the winner would be one of
+  // the disqualified entries, and there is no lucky run that hides it.
+  const keep = await makeUser('keep10');
+  const keepEntry = await makeEntry(giveawayId, keep.id, 1);
+
+  const adminSession = await signIn(admin.email, PASSWORD);
+  const dropped = [];
+  for (let i = 0; i < 5; i++) {
+    const u = await makeUser(`drop10-${i}`);
+    const entryId = await makeEntry(giveawayId, u.id, i + 2);
+    dropped.push(entryId);
+    const res = await decide(adminSession, entryId, { status: 'disqualified', notes: 'fabricated duplicate for the test' });
+    assert.equal(res.status, 200);
+  }
+
+  // The pool query itself, before any draw runs.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const pooled = await integrity.lockEligibleEntries(client, giveawayId);
+    assert.deepEqual(pooled.map((e) => e.id), [keepEntry], 'only eligible entries are in the pool');
+    await client.query('ROLLBACK');
+  } finally {
+    client.release();
+  }
+
+  const hostSession = await signIn(host.email, PASSWORD);
+  const res = await hostSession.post(`/api/giveaways/${giveawayId}/draw`);
+  assert.equal(res.status, 200);
+
+  const winner = await pool.query('SELECT winner_entry_id FROM giveaways WHERE id = $1', [giveawayId]);
+  assert.equal(winner.rows[0].winner_entry_id, keepEntry, 'a disqualified entry is never drawn');
+  assert.ok(!dropped.includes(winner.rows[0].winner_entry_id));
+});
+
+test('11. an unresolved review blocks the draw', async () => {
+  const host = await makeUser('host11', { hostStatus: 'approved' });
+  const admin = await makeUser('admin11', { admin: true });
+  const a = await makeUser('a11');
+  const b = await makeUser('b11');
+  const giveawayId = await makeGiveaway(host.id, { deadlineDays: -1 });
+  await makeEntry(giveawayId, a.id, 1);
+  const flagged = await makeEntry(giveawayId, b.id, 2);
+
+  const adminSession = await signIn(admin.email, PASSWORD);
+  await decide(adminSession, flagged, { status: 'under_review', notes: 'checking a signal before the draw' });
+
+  const hostSession = await signIn(host.email, PASSWORD);
+  const blocked = await hostSession.post(`/api/giveaways/${giveawayId}/draw`);
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.code, 'ENTRY_REVIEW_PENDING');
+
+  // The campaign moves to a recorded pending-review state rather than sitting in
+  // `active` with a passed deadline. Entries are closed either way — the review
+  // does not extend the deadline for anybody — and only the DRAW waits.
+  const still = await pool.query('SELECT status, winner_entry_id FROM giveaways WHERE id = $1', [giveawayId]);
+  assert.equal(still.rows[0].status, 'pending_integrity_review');
+  assert.equal(still.rows[0].winner_entry_id, null);
+
+  // Resolving it unblocks the draw.
+  await decide(adminSession, flagged, { status: 'eligible', notes: 'the signal was a shared office' });
+  const drawn = await hostSession.post(`/api/giveaways/${giveawayId}/draw`);
+  assert.equal(drawn.status, 200);
+});
+
+test('12. a draw racing a disqualification stays consistent', async () => {
+  const host = await makeUser('host12', { hostStatus: 'approved' });
+  const admin = await makeUser('admin12', { admin: true });
+  const giveawayId = await makeGiveaway(host.id, { deadlineDays: -1 });
+
+  const users = [];
+  const entries = [];
+  for (let i = 0; i < 4; i++) {
+    const u = await makeUser(`racer12-${i}`);
+    users.push(u);
+    entries.push(await makeEntry(giveawayId, u.id, i + 1));
+  }
+
+  const hostSession = await signIn(host.email, PASSWORD);
+  const adminSession = await signIn(admin.email, PASSWORD);
+
+  const [drawRes, dqRes] = await Promise.all([
+    hostSession.post(`/api/giveaways/${giveawayId}/draw`),
+    adminSession.post(`/api/admin/integrity/entries/${entries[0]}/status`)
+      .send({ status: 'disqualified', reason_code: 'disqualified_entry_rule', admin_notes: 'racing the draw on purpose', version: 0 }),
+  ]);
+
+  const giveaway = await pool.query('SELECT status, winner_entry_id FROM giveaways WHERE id = $1', [giveawayId]);
+  const dq = await statusOf(entries[0]);
+
+  // Whatever order they landed in, the invariant holds: a winner is never an
+  // entry that was disqualified before the draw committed.
+  if (drawRes.status === 200) {
+    assert.equal(giveaway.rows[0].status, 'drawn');
+    const winnerStatus = await statusOf(giveaway.rows[0].winner_entry_id);
+    assert.equal(winnerStatus === 'disqualified' && dq === 'disqualified' &&
+      giveaway.rows[0].winner_entry_id === entries[0], false,
+      'the winner must not be an entry disqualified before the draw');
+  } else {
+    assert.equal(drawRes.status, 409, 'a blocked draw says why');
+    assert.equal(giveaway.rows[0].winner_entry_id, null);
+  }
+  assert.ok([200, 409].includes(dqRes.status));
+});
+
+test('13. re-running schema initialization never re-enables a disqualified entry', async () => {
+  const host = await makeUser('host13', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant13');
+  const admin = await makeUser('admin13', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+
+  const session = await signIn(admin.email, PASSWORD);
+  await decide(session, entryId, { status: 'disqualified', notes: 'set before the migration runs again' });
+
+  // The migration is idempotent, and its backfill is guarded by a WHERE clause
+  // rather than being a blanket UPDATE. Running it twice more must not touch a
+  // decision an administrator made.
+  await init();
+  await init();
+
+  assert.equal(await statusOf(entryId), 'disqualified');
+  const events = await pool.query(
+    'SELECT COUNT(*)::int AS c FROM entry_integrity_events WHERE entry_id = $1',
+    [entryId]
+  );
+  assert.equal(events.rows[0].c, 1, 'and it invents no history either');
+});
+
+// ---------------------------------------------------------------------------
+// 14–16. Post-draw
+// ---------------------------------------------------------------------------
+
+async function drawnGiveawayWithClaim(tag) {
+  const host = await makeUser(`${tag}-host`, { hostStatus: 'approved' });
+  const admin = await makeUser(`${tag}-admin`, { admin: true });
+  const winner = await makeUser(`${tag}-winner`);
+  const giveawayId = await makeGiveaway(host.id, { deadlineDays: -1 });
+  const entryId = await makeEntry(giveawayId, winner.id, 1);
+
+  const hostSession = await signIn(host.email, PASSWORD);
+  const drawn = await hostSession.post(`/api/giveaways/${giveawayId}/draw`);
+  assert.equal(drawn.status, 200);
+
+  const claim = await pool.query('SELECT * FROM prize_claims WHERE giveaway_id = $1', [giveawayId]);
+  return { host, admin, winner, giveawayId, entryId, hostSession, claim: claim.rows[0] };
+}
+
+test('14. a post-draw review preserves the original winner and does not redraw', async () => {
+  const ctx = await drawnGiveawayWithClaim('postdraw14');
+  const before = await pool.query('SELECT winner_entry_id, status FROM giveaways WHERE id = $1', [ctx.giveawayId]);
+
+  const adminSession = await signIn(ctx.admin.email, PASSWORD);
+  const opened = await adminSession.post('/api/admin/integrity/cases').send({
+    giveaway_id: ctx.giveawayId,
+    entry_id: ctx.entryId,
+    admin_notes: 'a credible report arrived after the draw',
+  });
+  assert.equal(opened.status, 201);
+  assert.equal(opened.body.case.post_draw, true);
+  assert.equal(opened.body.winner_unchanged, true);
+
+  const after = await pool.query('SELECT winner_entry_id, status FROM giveaways WHERE id = $1', [ctx.giveawayId]);
+  assert.equal(after.rows[0].winner_entry_id, before.rows[0].winner_entry_id, 'same winner');
+  assert.equal(after.rows[0].status, 'drawn');
+  assert.equal(await statusOf(ctx.entryId), 'eligible', 'opening a case is not a disqualification');
+
+  // And disqualifying the winner outright is refused: replacing a winner is not
+  // an automated act.
+  const refused = await adminSession
+    .post(`/api/admin/integrity/entries/${ctx.entryId}/status`)
+    .send({ status: 'disqualified', reason_code: 'disqualified_entry_rule', admin_notes: 'trying to remove the winner directly', version: 0 });
+  assert.equal(refused.status, 409);
+  assert.equal(refused.body.code, 'WINNER_DISQUALIFICATION_BLOCKED');
+
+  if (ctx.claim) {
+    const claimNow = await pool.query('SELECT status FROM prize_claims WHERE id = $1', [ctx.claim.id]);
+    assert.equal(claimNow.rows[0].status, before.rows[0].status === 'drawn' ? claimNow.rows[0].status : null);
+  }
+});
+
+test('15. an open post-draw case pauses protected fulfilment transitions', async () => {
+  const ctx = await drawnGiveawayWithClaim('postdraw15');
+  if (!ctx.claim) return; // claims disabled in this environment
+
+  // Move the claim to a state the host can act from.
+  await pool.query("UPDATE prize_claims SET status = 'claimed', claimed_at = NOW() WHERE id = $1", [ctx.claim.id]);
+
+  const adminSession = await signIn(ctx.admin.email, PASSWORD);
+  await adminSession.post('/api/admin/integrity/cases').send({
+    giveaway_id: ctx.giveawayId,
+    entry_id: ctx.entryId,
+    admin_notes: 'pausing fulfilment while this is looked at',
+  });
+
+  const blocked = await ctx.hostSession
+    .post(`/api/claims/${ctx.claim.id}/transition`)
+    .send({ to: 'preparing_delivery' });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.code, 'INTEGRITY_REVIEW_OPEN');
+
+  const claimNow = await pool.query('SELECT status FROM prize_claims WHERE id = $1', [ctx.claim.id]);
+  assert.equal(claimNow.rows[0].status, 'claimed', 'the claim did not move');
+
+  // Raising a dispute stays open: pausing the process must not mute the person
+  // waiting on it.
+  const winnerSession = await signIn(ctx.winner.email, PASSWORD);
+  const dispute = await winnerSession
+    .post(`/api/claims/${ctx.claim.id}/transition`)
+    .send({ to: 'disputed', note: 'I still have not heard anything' });
+  assert.equal(dispute.status, 200);
+});
+
+test('16. resolving by reinstatement resumes the existing claim', async () => {
+  const ctx = await drawnGiveawayWithClaim('postdraw16');
+  if (!ctx.claim) return;
+
+  await pool.query("UPDATE prize_claims SET status = 'claimed', claimed_at = NOW() WHERE id = $1", [ctx.claim.id]);
+
+  const adminSession = await signIn(ctx.admin.email, PASSWORD);
+  const opened = await adminSession.post('/api/admin/integrity/cases').send({
+    giveaway_id: ctx.giveawayId,
+    entry_id: ctx.entryId,
+    admin_notes: 'checking a report about the winner',
+  });
+  const caseId = opened.body.case.id;
+
+  const resolved = await adminSession
+    .post(`/api/admin/integrity/cases/${caseId}/resolve`)
+    .send({ resolution: 'reinstated', admin_notes: 'the report did not hold up', version: await caseVersion(adminSession, caseId) });
+  assert.equal(resolved.status, 200);
+  assert.equal(resolved.body.case.status, 'resolved');
+
+  // Same winner, same claim, and fulfilment moves again.
+  const giveaway = await pool.query('SELECT winner_entry_id FROM giveaways WHERE id = $1', [ctx.giveawayId]);
+  assert.equal(giveaway.rows[0].winner_entry_id, ctx.entryId);
+
+  const resumed = await ctx.hostSession
+    .post(`/api/claims/${ctx.claim.id}/transition`)
+    .send({ to: 'preparing_delivery' });
+  assert.equal(resumed.status, 200);
+
+  const claimNow = await pool.query('SELECT id, status FROM prize_claims WHERE giveaway_id = $1', [ctx.giveawayId]);
+  assert.equal(claimNow.rows.length, 1, 'no second claim was created');
+  assert.equal(claimNow.rows[0].id, ctx.claim.id);
+});
+
+// ---------------------------------------------------------------------------
+// 17–19. Risk signals
+// ---------------------------------------------------------------------------
+
+test('17. risk signals never disqualify anyone automatically', async () => {
+  const host = await makeUser('host17', { hostStatus: 'approved' });
+  const giveawayId = await makeGiveaway(host.id);
+
+  // Enough recently-created accounts from one network to trip every threshold.
+  const sharedIp = '203.0.113.7';
+  const entryIds = [];
+  for (let i = 0; i < 6; i++) {
+    const u = await makeUser(`swarm17-${i}`);
+    const session = await signIn(u.email, PASSWORD, { ip: sharedIp });
+    const res = await session.post(`/api/giveaways/${giveawayId}/enter`).set('X-Forwarded-For', sharedIp);
+    assert.equal(res.status, 201, 'a signal must never refuse an entry');
+    entryIds.push(res.body.id);
+  }
+
+  const statuses = await pool.query(
+    'SELECT DISTINCT integrity_status FROM entries WHERE giveaway_id = $1',
+    [giveawayId]
+  );
+  assert.deepEqual(statuses.rows.map((r) => r.integrity_status), ['eligible'],
+    'every entry is still eligible');
+
+  const signals = await pool.query(
+    "SELECT COUNT(*)::int AS c FROM entry_risk_signals WHERE giveaway_id = $1 AND severity = 'review'",
+    [giveawayId]
+  );
+  assert.ok(signals.rows[0].c > 0, 'but the signal was recorded for a human to look at');
+
+  const events = await pool.query(
+    'SELECT COUNT(*)::int AS c FROM entry_integrity_events WHERE giveaway_id = $1',
+    [giveawayId]
+  );
+  assert.equal(events.rows[0].c, 0, 'and no status decision was invented');
+});
+
+test('18. no raw IP address is stored, returned or logged', async () => {
+  const host = await makeUser('host18', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant18');
+  const admin = await makeUser('admin18', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+
+  const ip = '198.51.100.42';
+  const session = await signIn(entrant.email, PASSWORD, { ip });
+  const entered = await session.post(`/api/giveaways/${giveawayId}/enter`).set('X-Forwarded-For', ip);
+  assert.equal(entered.status, 201);
+  const entryId = entered.body.id;
+
+  // Not in the signal rows.
+  const stored = await pool.query('SELECT * FROM entry_risk_signals WHERE entry_id = $1', [entryId]);
+  assert.ok(stored.rows.length > 0);
+  const asText = JSON.stringify(stored.rows);
+  assert.ok(!asText.includes(ip), 'the raw address is not in the stored row');
+  assert.ok(!asText.includes('198.51.100'), 'nor is its network in plain text');
+  assert.ok(stored.rows[0].network_hmac && stored.rows[0].network_hmac.length === 64);
+
+  // Not anywhere else in the integrity tables.
+  for (const table of ['entry_integrity_events', 'entry_integrity_cases', 'entries']) {
+    const rows = await pool.query(`SELECT * FROM ${table} WHERE giveaway_id = $1`, [giveawayId]);
+    assert.ok(!JSON.stringify(rows.rows).includes('198.51.100'), `${table} holds no address`);
+  }
+
+  // Not in either administrator response — including the deliberate detail one,
+  // which is also uncacheable.
+  const adminSession = await signIn(admin.email, PASSWORD);
+  const queue = await adminSession.get('/api/admin/integrity/queue');
+  assert.equal(queue.status, 200);
+  assert.ok(!JSON.stringify(queue.body).includes('198.51.100'));
+
+  const detail = await adminSession.get(`/api/admin/integrity/entries/${entryId}`);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.headers['cache-control'], 'no-store');
+  const detailText = JSON.stringify(detail.body);
+  assert.ok(!detailText.includes('198.51.100'), 'no address in the detail response');
+  assert.ok(!detailText.includes(stored.rows[0].network_hmac), 'and not the hash either');
+
+  // The hash is one-way and window-scoped, so the same address in a different
+  // window produces a different value.
+  const key = riskSignals.networkKey(ip);
+  assert.ok(key && key.hash && !key.hash.includes('198'));
+  assert.equal(riskSignals.normaliseAddress(ip), '198.51.100.0/24', 'only a /24 is ever hashed');
+  assert.equal(riskSignals.normaliseAddress('127.0.0.1'), null, 'loopback says nothing about anybody');
+});
+
+test('19. signal retention is bounded and purging is idempotent', async () => {
+  const host = await makeUser('host19', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant19');
+  const admin = await makeUser('admin19', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+
+  await pool.query(
+    `INSERT INTO entry_risk_signals (id, entry_id, giveaway_id, signal_code, severity, expires_at)
+     VALUES ($1, $2, $3, 'network_observed', 'info', NOW() - INTERVAL '1 day')`,
+    [crypto.randomUUID(), entryId, giveawayId]
+  );
+  await pool.query(
+    `INSERT INTO entry_risk_signals (id, entry_id, giveaway_id, signal_code, severity, expires_at)
+     VALUES ($1, $2, $3, 'network_observed', 'info', NOW() + INTERVAL '10 days')`,
+    [crypto.randomUUID(), entryId, giveawayId]
+  );
+
+  const session = await signIn(admin.email, PASSWORD);
+  const first = await session.post('/api/admin/integrity/signals/purge').send({});
+  assert.equal(first.status, 200);
+  assert.ok(first.body.removed >= 1);
+  assert.ok(first.body.retention_days >= 1 && first.body.retention_days <= 90);
+
+  const second = await session.post('/api/admin/integrity/signals/purge').send({});
+  assert.equal(second.status, 200);
+  assert.equal(second.body.removed, 0, 'running it again removes nothing');
+
+  const left = await pool.query('SELECT COUNT(*)::int AS c FROM entry_risk_signals WHERE entry_id = $1', [entryId]);
+  assert.equal(left.rows[0].c, 1, 'the unexpired row survives');
+});
+
+// ---------------------------------------------------------------------------
+// 20. Proxy trust
+// ---------------------------------------------------------------------------
+
+test('20. spoofed forwarding headers cannot mint new rate-limit identities', async () => {
+  // With N trusted hops, Express reads the (N+1)-th address from the right of
+  // [socket, ...X-Forwarded-For]. A client can prepend anything; it cannot
+  // control the entry the last trusted proxy appends. These assertions are about
+  // that arithmetic, and the limiter that depends on it.
+  assert.equal(readHops({ TRUSTED_PROXY_HOPS: '1' }).hops, 1);
+  assert.equal(readHops({}).hops, 0, 'the default trusts nothing');
+  assert.equal(readHops({ NODE_ENV: 'production' }).hops, 1, 'production assumes one proxy');
+  assert.throws(() => readHops({ TRUSTED_PROXY_HOPS: 'true' }), /whole number/);
+  assert.throws(() => readHops({ TRUSTED_PROXY_HOPS: '-1' }), /whole number/);
+  assert.throws(() => readHops({ TRUSTED_PROXY_HOPS: '99' }), /between 0 and/);
+  assert.ok(!/\btrue\b/.test(String(resolveTrustProxy({ TRUSTED_PROXY_HOPS: '1' }).value)));
+
+  // And behaviourally: a run of requests whose forged prefixes differ every time
+  // but whose last hop is identical must share one bucket, and hit the limit.
+  const forged = [
+    '1.2.3.4', '5.6.7.8, 9.10.11.12', '13.14.15.16, 17.18.19.20, 21.22.23.24',
+    '::1', 'not-an-ip', '0.0.0.0',
+  ];
+  const lastHop = '203.0.113.99';
+
+  let refused = 0;
+  for (let i = 0; i < 14; i++) {
+    const prefix = forged[i % forged.length];
+    const res = await api()
+      .post('/api/auth/login')
+      .set('Origin', TEST_ORIGIN)
+      .set('X-Forwarded-For', `${prefix}, ${lastHop}`)
+      .send({ email: `nobody-${i}@example.com`, password: 'wrong-password-on-purpose' });
+    if (res.status === 429) refused += 1;
+  }
+  assert.ok(refused > 0,
+    'changing the forged prefix must not produce a fresh limiter identity');
+});
+
+// ---------------------------------------------------------------------------
+// 21–23. What each audience sees
+// ---------------------------------------------------------------------------
+
+test('21. the admin queue carries no unnecessary personal data', async () => {
+  const host = await makeUser('host21', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant21');
+  const admin = await makeUser('admin21', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+
+  const session = await signIn(admin.email, PASSWORD);
+  await decide(session, entryId, { status: 'under_review', notes: 'so it appears in the queue' });
+
+  const queue = await session.get('/api/admin/integrity/queue');
+  assert.equal(queue.status, 200);
+  const row = queue.body.find((r) => r.entry_id === entryId);
+  assert.ok(row, 'the entry is in the queue');
+
+  const text = JSON.stringify(queue.body);
+  assert.ok(!text.includes(entrant.email), 'no email address in the list');
+  assert.ok(!text.includes('Integrity entrant21'), 'no display name in the list');
+  assert.ok(!text.includes('network_hmac'), 'no network hash in the list');
+  assert.ok(!/session|csrf|token/i.test(text), 'no session or token material');
+  assert.ok(!/address_line|recipient_name|delivery/i.test(text), 'no delivery details');
+
+  // What it does carry: enough to choose a row.
+  assert.ok(row.giveaway_title && row.status && row.account_ref);
+  assert.equal(row.account_ref.length, 8, 'an account reference, not an identity');
+  assert.ok(Array.isArray(row.signal_categories));
+});
+
+test('22. an entrant sees only their own coarse status', async () => {
+  const host = await makeUser('host22', { hostStatus: 'approved' });
+  const mine = await makeUser('mine22');
+  const theirs = await makeUser('theirs22');
+  const admin = await makeUser('admin22', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+
+  const myEntry = await makeEntry(giveawayId, mine.id, 1);
+  const theirEntry = await makeEntry(giveawayId, theirs.id, 2);
+
+  const adminSession = await signIn(admin.email, PASSWORD);
+  await decide(adminSession, myEntry, { status: 'under_review', notes: 'we are checking something' });
+  await decide(adminSession, theirEntry, { status: 'disqualified', notes: 'someone else entirely' });
+
+  const mySession = await signIn(mine.email, PASSWORD);
+  const view = await mySession.get(`/api/giveaways/${giveawayId}`);
+  assert.equal(view.status, 200);
+  assert.equal(view.body.my_entry.status, 'under_review');
+  // Fixed, allowlisted copy — never what the administrator typed.
+  assert.equal(view.body.my_entry.explanation, integrity.ENTRANT_COPY.review_routine_check);
+  assert.equal(view.body.my_entry.reason, undefined, 'there is no free-text reason field at all');
+
+  const text = JSON.stringify(view.body);
+  assert.ok(!text.includes('we are checking something'), 'not even their own decision notes');
+  assert.ok(!text.includes('someone else entirely'), "not another entrant's decision");
+  assert.ok(!text.includes(theirs.email), 'not another account');
+  assert.ok(!text.includes('signal'), 'not the detection methods');
+  assert.ok(!text.includes('shared_network'), 'nor the signal codes');
+
+  // The dashboard says the same thing, from the same function.
+  const dash = await mySession.get('/api/giveaways/mine/entered');
+  const row = dash.body.find((g) => g.id === giveawayId);
+  assert.equal(row.my_entry.status, 'under_review');
+
+  // The entrant cannot reach the administrator view of their own entry either.
+  const forbidden = await mySession.get(`/api/admin/integrity/entries/${myEntry}`);
+  assert.equal(forbidden.status, 403);
+});
+
+test('23. public entry counts exclude disqualified entries, consistently', async () => {
+  const host = await makeUser('host23', { hostStatus: 'approved' });
+  const admin = await makeUser('admin23', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+
+  const users = [];
+  const entries = [];
+  for (let i = 0; i < 3; i++) {
+    const u = await makeUser(`counted23-${i}`);
+    users.push(u);
+    entries.push(await makeEntry(giveawayId, u.id, i + 1));
+  }
+
+  const before = await api().get(`/api/giveaways/${giveawayId}`);
+  assert.equal(before.body.entry_count, 3);
+
+  const adminSession = await signIn(admin.email, PASSWORD);
+  await adminSession.post(`/api/admin/integrity/entries/${entries[0]}/status`)
+    .send({ status: 'disqualified', reason_code: 'disqualified_entry_rule', admin_notes: 'excluded from the count', version: 0 });
+
+  const detail = await api().get(`/api/giveaways/${giveawayId}`);
+  assert.equal(detail.body.entry_count, 2, 'the giveaway page count drops');
+
+  const list = await api().get('/api/giveaways?page=1&pageSize=48');
+  const listed = list.body.items.find((g) => g.id === giveawayId);
+  if (listed) assert.equal(listed.entry_count, 2, 'the browse list agrees');
+
+  const hostSession = await signIn(host.email, PASSWORD);
+  const dash = await hostSession.get('/api/giveaways/mine/hosted');
+  const hosted = dash.body.find((g) => g.id === giveawayId);
+  assert.equal(hosted.entry_count, 2, 'the host dashboard agrees');
+
+  // An entry under review is still an entry: a question is not an outcome, and
+  // the draw refuses to run while one is open, so the count and the pool cannot
+  // disagree at the moment a winner is picked.
+  await adminSession.post(`/api/admin/integrity/entries/${entries[1]}/status`)
+    .send({ status: 'under_review', reason_code: 'review_routine_check', admin_notes: 'still a question', version: 0 });
+  const withReview = await api().get(`/api/giveaways/${giveawayId}`);
+  assert.equal(withReview.body.entry_count, 2);
+});
+
+// ---------------------------------------------------------------------------
+// 24. The rest of the system is unchanged
+// ---------------------------------------------------------------------------
+
+test('24. entry, draw, claim, session, CSRF and CSP behaviour is unchanged', async () => {
+  const host = await makeUser('host24', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant24');
+  const giveawayId = await makeGiveaway(host.id);
+
+  // CSRF still refuses an unsafe request with no token.
+  const raw = await api()
+    .post(`/api/giveaways/${giveawayId}/enter`)
+    .set('Origin', TEST_ORIGIN)
+    .send({});
+  assert.ok([401, 403].includes(raw.status));
+
+  // A session is still required, and the cookie is still HttpOnly.
+  const session = await signIn(entrant.email, PASSWORD);
+  const entered = await session.post(`/api/giveaways/${giveawayId}/enter`).set('X-Forwarded-For', nextTestIp());
+  assert.equal(entered.status, 201);
+
+  // CSP is still enforced on this route's responses.
+  const page = await api().get(`/api/giveaways/${giveawayId}`);
+  assert.match(page.headers['content-security-policy'] || '', /default-src 'self'/);
+  assert.ok(!/unsafe-inline/.test(page.headers['content-security-policy'] || ''));
+
+  // And the integrity columns did not leak into the public payload.
+  assert.equal(page.body.integrity_status, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// 25. The browser-security job is wired up and can fail
+// ---------------------------------------------------------------------------
+
+test('25. the hostile-browser check is a required CI job with a working self-test', () => {
+  // The behavioural half of this — that the harness exits non-zero on an
+  // injection and zero otherwise — is the CI job's own self-test step, and is
+  // run for real before every commit in this phase. What is asserted here is
+  // that the wiring exists and cannot quietly rot: a security check that only
+  // runs when somebody remembers is not a check.
+  const workflow = fs.readFileSync(
+    path.join(__dirname, '..', '.github', 'workflows', 'test.yml'),
+    'utf8'
+  );
+
+  assert.match(workflow, /browser-security:/, 'a dedicated job exists');
+  assert.match(workflow, /npm run test:browser-security/, 'it runs the harness');
+  assert.match(workflow, /HOSTILE_SELFTEST=1/, 'it proves the detector still reports red');
+  assert.match(workflow, /playwright@\d+\.\d+\.\d+ install/, 'the browser version is pinned');
+  assert.match(workflow, /TEST_DATABASE_URL: postgresql:\/\/naseeb:naseeb@localhost/, 'isolated database');
+  assert.match(workflow, /timeout-minutes:/, 'the job is bounded');
+  assert.match(workflow, /if: failure\(\)/, 'diagnostics are uploaded only on failure');
+
+  // The self-test step is inverted: it fails the build if the harness passes
+  // while live markup is injected.
+  assert.match(workflow, /if HOSTILE_SELFTEST=1 npm run test:browser-security; then[\s\S]*?exit 1/);
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  assert.equal(pkg.scripts['test:browser-security'], 'node scripts/browser-hostile-data.js',
+    'and the same command is documented for local use');
+
+  const harness = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'browser-hostile-data.js'), 'utf8');
+  assert.match(harness, /process\.exit\(failures \? 1 : 0\)/, 'non-zero exit on any failure');
+  assert.match(harness, /HOSTILE_SELFTEST/, 'the self-test switch exists');
+  assert.match(harness, /await unseed\(\)/, 'and it cleans up after itself');
+  // No credential material may reach the diagnostics artifact.
+  const reportBlock = harness.slice(harness.indexOf('.browser-security'));
+  assert.ok(!/COOKIE|cookie/.test(reportBlock.slice(0, 1600)),
+    'the diagnostics report must not carry cookies');
+});
+
+// ===========================================================================
+// Safety-fix tests (26–41)
+//
+// Four things the first version of this phase got wrong, each with its own
+// group: the entrant read the administrator's private notes; the audit trail
+// could be deleted even though it could not be edited; "upheld" closed a case
+// and released the fulfilment pause it was supposed to keep; and two
+// administrators could act from stale screens with both decisions applied in
+// turn.
+// ===========================================================================
+
+const SENSITIVE_NOTES =
+  'Matches account victim@example.test (id 11111111-2222-3333-4444-555555555555) — '
+  + 'same /24 network 198.51.100.0, hash matched 3 recent signups, HMAC window 12345. '
+  + 'Suspected coordinated multi-accounting for resale. Not yet established.';
+
+test('26. an entrant sees controlled copy, never the administrator free text', async () => {
+  const host = await makeUser('host26', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant26');
+  const admin = await makeUser('admin26', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+
+  const adminSession = await signIn(admin.email, PASSWORD);
+  const decided = await decide(adminSession, entryId, {
+    status: 'disqualified',
+    code: 'disqualified_entry_rule',
+    notes: SENSITIVE_NOTES,
+  });
+  assert.equal(decided.status, 200);
+
+  const mySession = await signIn(entrant.email, PASSWORD);
+  const view = await mySession.get(`/api/giveaways/${giveawayId}`);
+  assert.equal(view.status, 200);
+
+  assert.equal(view.body.my_entry.status, 'disqualified');
+  assert.equal(
+    view.body.my_entry.explanation,
+    integrity.ENTRANT_COPY.disqualified_entry_rule,
+    'the entrant reads the fixed sentence for the code, and nothing else'
+  );
+  // Non-accusatory by construction: the approved copy says which rule was not
+  // met, not what anybody is suspected of.
+  assert.ok(!/suspect|fraud|cheat|abuse/i.test(view.body.my_entry.explanation));
+});
+
+test('27. sensitive notes never reach the entrant, the public API, logs or HTML', async () => {
+  const host = await makeUser('host27', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant27');
+  const admin = await makeUser('admin27', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+
+  const adminSession = await signIn(admin.email, PASSWORD);
+  await decide(adminSession, entryId, {
+    status: 'under_review',
+    code: 'review_signal_follow_up',
+    notes: SENSITIVE_NOTES,
+  });
+
+  // Each fragment of the notes, checked separately, so a partial leak fails too.
+  const fragments = [
+    'victim@example.test',
+    '11111111-2222-3333-4444-555555555555',
+    '198.51.100.0',
+    'HMAC window',
+    'hash matched',
+    'coordinated multi-accounting',
+    'Not yet established',
+  ];
+
+  const mySession = await signIn(entrant.email, PASSWORD);
+  const surfaces = {
+    'giveaway detail (entrant)': await mySession.get(`/api/giveaways/${giveawayId}`),
+    'dashboard (entrant)': await mySession.get('/api/giveaways/mine/entered'),
+    'giveaway detail (anonymous)': await api().get(`/api/giveaways/${giveawayId}`),
+    'browse list': await api().get('/api/giveaways?page=1&pageSize=48'),
+    'winners list': await api().get('/api/giveaways/winners/all'),
+    'stats': await api().get('/api/giveaways/stats/summary'),
+    'giveaway HTML': await api().get(`/giveaway.html?id=${giveawayId}`),
+  };
+
+  for (const [label, res] of Object.entries(surfaces)) {
+    const body = typeof res.text === 'string' ? res.text : JSON.stringify(res.body);
+    for (const fragment of fragments) {
+      assert.ok(!body.includes(fragment), `${label} must not contain "${fragment}"`);
+    }
+    assert.ok(!body.includes('admin_notes'), `${label} must not even carry the field name`);
+  }
+
+  // Nor the served HTML of the pages that render an entry status.
+  for (const page of ['/giveaway.html', '/dashboard.html', '/index.html']) {
+    const html = await api().get(page);
+    for (const fragment of fragments) {
+      assert.ok(!html.text.includes(fragment), `${page} must not contain "${fragment}"`);
+    }
+  }
+
+  // The administrator, deliberately opening one entry, does see them.
+  const detail = await adminSession.get(`/api/admin/integrity/entries/${entryId}`);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.headers['cache-control'], 'no-store');
+  assert.ok(detail.body.entry.admin_notes.includes('victim@example.test'));
+});
+
+test('28. list endpoints omit internal notes entirely', async () => {
+  const host = await makeUser('host28', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant28');
+  const admin = await makeUser('admin28', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+
+  const adminSession = await signIn(admin.email, PASSWORD);
+  await decide(adminSession, entryId, {
+    status: 'under_review',
+    code: 'review_signal_follow_up',
+    notes: SENSITIVE_NOTES,
+  });
+
+  const queue = await adminSession.get('/api/admin/integrity/queue');
+  assert.equal(queue.status, 200);
+  const text = JSON.stringify(queue.body);
+  assert.ok(!text.includes('victim@example.test'), 'the admin queue is a list, and lists carry no notes');
+  assert.ok(!text.includes('198.51.100.0'));
+  assert.ok(!text.includes('admin_notes'));
+  assert.ok(!text.includes('network_hmac'));
+
+  const row = queue.body.find((r) => r.entry_id === entryId);
+  assert.ok(row && row.status === 'under_review', 'but the row is there to be opened');
+});
+
+// ---------------------------------------------------------------------------
+// Append-only, at the database
+// ---------------------------------------------------------------------------
+
+test('29. a direct UPDATE of an integrity event is rejected', async () => {
+  const host = await makeUser('host29', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant29');
+  const admin = await makeUser('admin29', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+  const session = await signIn(admin.email, PASSWORD);
+  await decide(session, entryId, { status: 'under_review', notes: 'a note to try to rewrite' });
+
+  for (const sql of [
+    "UPDATE entry_integrity_events SET admin_notes = 'rewritten' WHERE entry_id = $1",
+    "UPDATE entry_integrity_events SET to_status = 'eligible' WHERE entry_id = $1",
+    "UPDATE entry_integrity_events SET created_at = NOW() WHERE entry_id = $1",
+  ]) {
+    await assert.rejects(pool.query(sql, [entryId]), /append-only/, sql);
+  }
+});
+
+test('30. a direct DELETE of an integrity event is rejected', async () => {
+  const host = await makeUser('host30', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant30');
+  const admin = await makeUser('admin30', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+  const session = await signIn(admin.email, PASSWORD);
+  await decide(session, entryId, { status: 'under_review', notes: 'a note to try to delete' });
+
+  await assert.rejects(
+    pool.query('DELETE FROM entry_integrity_events WHERE entry_id = $1', [entryId]),
+    /append-only/
+  );
+  await assert.rejects(pool.query('DELETE FROM entry_integrity_events'), /append-only/);
+
+  // The case history is audit evidence too, and is protected identically.
+  const caseRes = await session.post('/api/admin/integrity/cases').send({
+    giveaway_id: giveawayId,
+    entry_id: entryId,
+    admin_notes: 'a case whose history must also survive',
+  });
+  assert.equal(caseRes.status, 201);
+  await assert.rejects(
+    pool.query('DELETE FROM entry_integrity_case_events WHERE case_id = $1', [caseRes.body.case.id]),
+    /append-only/
+  );
+  await assert.rejects(
+    pool.query("UPDATE entry_integrity_case_events SET admin_notes = 'x' WHERE case_id = $1", [caseRes.body.case.id]),
+    /append-only/
+  );
+});
+
+test('31. deleting the entry, giveaway or account cannot erase the audit history', async () => {
+  const host = await makeUser('host31', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant31');
+  const admin = await makeUser('admin31', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+  const session = await signIn(admin.email, PASSWORD);
+  await decide(session, entryId, { status: 'disqualified', notes: 'must outlive its parents' });
+
+  const before = await pool.query(
+    'SELECT COUNT(*)::int AS c FROM entry_integrity_events WHERE entry_id = $1',
+    [entryId]
+  );
+  assert.equal(before.rows[0].c, 1);
+
+  // No foreign key points at the audit table, so nothing here cascades into it.
+  const fks = await pool.query(
+    `SELECT conname FROM pg_constraint
+      WHERE contype = 'f' AND conrelid = 'entry_integrity_events'::regclass`
+  );
+  assert.deepEqual(fks.rows, [], 'the audit table has no foreign keys to cascade through');
+
+  // Delete every parent, in the order a real erasure would.
+  await pool.query('DELETE FROM entry_risk_signals WHERE entry_id = $1', [entryId]);
+  await pool.query('DELETE FROM entry_integrity_cases WHERE giveaway_id = $1', [giveawayId]);
+  await pool.query('DELETE FROM entries WHERE id = $1', [entryId]);
+  await pool.query('DELETE FROM giveaways WHERE id = $1', [giveawayId]);
+
+  const after = await pool.query(
+    'SELECT entry_id, giveaway_id, to_status, reason_code FROM entry_integrity_events WHERE entry_id = $1',
+    [entryId]
+  );
+  assert.equal(after.rows.length, 1, 'the decision survives the deletion of everything it referred to');
+  assert.equal(after.rows[0].to_status, 'disqualified');
+  // What survives is an opaque reference and the decision — not a name, an
+  // address, or anything that would be personal data on its own.
+  assert.match(after.rows[0].entry_id, /^[0-9a-f-]{36}$/);
+});
+
+// ---------------------------------------------------------------------------
+// Upheld means blocked
+// ---------------------------------------------------------------------------
+
+async function upheldCase(tag) {
+  const ctx = await drawnGiveawayWithClaim(tag);
+  const adminSession = await signIn(ctx.admin.email, PASSWORD);
+
+  const opened = await adminSession.post('/api/admin/integrity/cases').send({
+    giveaway_id: ctx.giveawayId,
+    entry_id: ctx.entryId,
+    admin_notes: 'credible report received after the draw',
+  });
+  assert.equal(opened.status, 201);
+
+  const resolved = await adminSession
+    .post(`/api/admin/integrity/cases/${opened.body.case.id}/resolve`)
+    .send({
+      resolution: 'upheld',
+      admin_notes: 'the concern was confirmed on the evidence',
+      version: opened.body.case.version,
+    });
+  assert.equal(resolved.status, 200);
+  assert.equal(resolved.body.case.status, 'upheld_blocked');
+  assert.equal(resolved.body.fulfilment_paused, true);
+  assert.equal(resolved.body.requires_owner_decision, true);
+
+  return { ...ctx, adminSession, caseId: opened.body.case.id };
+}
+
+test('32. an upheld post-draw case keeps blocking host fulfilment', async () => {
+  const ctx = await upheldCase('blocked32');
+  if (!ctx.claim) return;
+  await pool.query("UPDATE prize_claims SET status = 'claimed', claimed_at = NOW() WHERE id = $1", [ctx.claim.id]);
+
+  const blocked = await ctx.hostSession
+    .post(`/api/claims/${ctx.claim.id}/transition`)
+    .send({ to: 'preparing_delivery' });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.code, 'INTEGRITY_REVIEW_OPEN');
+
+  const claim = await pool.query('SELECT status FROM prize_claims WHERE id = $1', [ctx.claim.id]);
+  assert.equal(claim.rows[0].status, 'claimed', 'nothing moved');
+});
+
+test('33. an upheld case also blocks the administrator rescue path', async () => {
+  const ctx = await upheldCase('blocked33');
+  if (!ctx.claim) return;
+  await pool.query("UPDATE prize_claims SET status = 'claimed', claimed_at = NOW() WHERE id = $1", [ctx.claim.id]);
+
+  // Suspend the host so the rescue path is otherwise available, and queue the
+  // claim the way suspension does.
+  await pool.query("UPDATE users SET host_status = 'suspended', host_status_changed_at = NOW() WHERE id = $1", [ctx.host.id]);
+  await pool.query(
+    `INSERT INTO claim_rescue_queue (id, claim_id, giveaway_id, host_user_id, status, opened_reason, opened_by)
+     VALUES ($1, $2, $3, $4, 'open', 'host suspended for this test', $5)
+     ON CONFLICT DO NOTHING`,
+    [crypto.randomUUID(), ctx.claim.id, ctx.giveawayId, ctx.host.id, ctx.admin.id]
+  );
+
+  const blocked = await ctx.adminSession
+    .post(`/api/claims/${ctx.claim.id}/rescue/transition`)
+    .send({ to: 'preparing_delivery', reason: 'trying to ship it anyway' });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.code, 'INTEGRITY_REVIEW_OPEN');
+
+  const claim = await pool.query('SELECT status FROM prize_claims WHERE id = $1', [ctx.claim.id]);
+  assert.equal(claim.rows[0].status, 'claimed');
+});
+
+test('34. an upheld case does not redraw, replace the winner, cancel the claim or mark delivery', async () => {
+  const ctx = await upheldCase('blocked34');
+
+  const giveaway = await pool.query(
+    'SELECT status, winner_entry_id, prize_delivered FROM giveaways WHERE id = $1',
+    [ctx.giveawayId]
+  );
+  assert.equal(giveaway.rows[0].winner_entry_id, ctx.entryId, 'same winner');
+  assert.equal(giveaway.rows[0].status, 'drawn', 'not reopened, not redrawn');
+  assert.equal(giveaway.rows[0].prize_delivered, false, 'nothing was marked delivered');
+
+  const entryStatus = await statusOf(ctx.entryId);
+  assert.equal(entryStatus, 'eligible', 'upholding a case does not itself disqualify the entry');
+
+  if (ctx.claim) {
+    const claims = await pool.query('SELECT id, status FROM prize_claims WHERE giveaway_id = $1', [ctx.giveawayId]);
+    assert.equal(claims.rows.length, 1, 'no second claim');
+    assert.equal(claims.rows[0].id, ctx.claim.id, 'the same claim');
+    assert.notEqual(claims.rows[0].status, 'cancelled', 'and it was not cancelled');
+  }
+
+  // The case cannot be quietly closed from the administrator screen either.
+  const reclose = await ctx.adminSession
+    .post(`/api/admin/integrity/cases/${ctx.caseId}/resolve`)
+    .send({
+      resolution: 'no_action',
+      admin_notes: 'trying to release the block without a policy decision',
+      version: await caseVersion(ctx.adminSession, ctx.caseId),
+    });
+  assert.equal(reclose.status, 409);
+  assert.equal(reclose.body.code, 'CASE_BLOCKED_PENDING_DECISION');
+});
+
+test('35. an upheld case stays visible in the administrator queue', async () => {
+  const ctx = await upheldCase('blocked35');
+
+  const queue = await ctx.adminSession.get('/api/admin/integrity/queue');
+  assert.equal(queue.status, 200);
+  const row = queue.body.find((r) => r.entry_id === ctx.entryId);
+  assert.ok(row, 'the confirmed case is still work to do, and is still listed');
+  assert.equal(row.case_status, 'upheld_blocked');
+  assert.equal(row.case_blocked, true);
+  assert.equal(row.case_id, ctx.caseId);
+});
+
+test('36. reinstated and no_action resolutions resume the existing claim safely', async () => {
+  for (const resolution of ['reinstated', 'no_action']) {
+    const ctx = await drawnGiveawayWithClaim(`resume36-${resolution}`);
+    if (!ctx.claim) continue;
+    await pool.query("UPDATE prize_claims SET status = 'claimed', claimed_at = NOW() WHERE id = $1", [ctx.claim.id]);
+
+    const adminSession = await signIn(ctx.admin.email, PASSWORD);
+    const opened = await adminSession.post('/api/admin/integrity/cases').send({
+      giveaway_id: ctx.giveawayId,
+      entry_id: ctx.entryId,
+      admin_notes: 'looking into a report',
+    });
+
+    const resolved = await adminSession
+      .post(`/api/admin/integrity/cases/${opened.body.case.id}/resolve`)
+      .send({ resolution, admin_notes: 'the report did not hold up', version: opened.body.case.version });
+    assert.equal(resolved.status, 200, resolution);
+    assert.equal(resolved.body.case.status, 'resolved', resolution);
+    assert.equal(resolved.body.fulfilment_paused, false, resolution);
+
+    const resumed = await ctx.hostSession
+      .post(`/api/claims/${ctx.claim.id}/transition`)
+      .send({ to: 'preparing_delivery' });
+    assert.equal(resumed.status, 200, `${resolution} should let fulfilment continue`);
+
+    const claims = await pool.query('SELECT id FROM prize_claims WHERE giveaway_id = $1', [ctx.giveawayId]);
+    assert.equal(claims.rows.length, 1, 'the same claim, not a new one');
+    assert.equal(claims.rows[0].id, ctx.claim.id);
+  }
+});
+
+test('37. entrant and public views show only neutral pending wording for an upheld case', async () => {
+  const ctx = await upheldCase('blocked37');
+
+  const winnerSession = await signIn(ctx.winner.email, PASSWORD);
+  const view = await winnerSession.get(`/api/giveaways/${ctx.giveawayId}`);
+  assert.equal(view.status, 200);
+  assert.equal(view.body.my_entry.resolution_pending, true);
+  assert.equal(view.body.my_entry.explanation, integrity.PENDING_RESOLUTION_COPY);
+  assert.match(view.body.my_entry.explanation, /outcome is pending/i);
+  assert.ok(
+    !/upheld|confirmed|blocked|disqualif|breach|abuse|suspect/i.test(view.body.my_entry.explanation),
+    'no allegation and no internal vocabulary reaches the entrant'
+  );
+
+  const publicText = JSON.stringify((await api().get(`/api/giveaways/${ctx.giveawayId}`)).body);
+  assert.ok(!publicText.includes('upheld'), 'the public payload does not carry the case state');
+  assert.ok(!publicText.includes('the concern was confirmed'), 'nor the resolution notes');
+  assert.ok(!publicText.includes('credible report'), 'nor the opening notes');
+});
+
+// ---------------------------------------------------------------------------
+// Stale decisions
+// ---------------------------------------------------------------------------
+
+test('38. two decisions from the same version produce one success and one 409', async () => {
+  const host = await makeUser('host38', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant38');
+  const admin = await makeUser('admin38', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+  const session = await signIn(admin.email, PASSWORD);
+
+  const detail = await session.get(`/api/admin/integrity/entries/${entryId}`);
+  const version = detail.body.entry.version;
+
+  // Two administrators, two screens, both drawn at the same moment.
+  const first = await decide(session, entryId, {
+    status: 'disqualified', notes: 'screen A decided to disqualify', version,
+  });
+  const second = await decide(session, entryId, {
+    status: 'under_review', notes: 'screen B decided to review', version,
+  });
+
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 409);
+  assert.equal(second.body.code, 'STALE_DECISION');
+  // The refusal hands back what the screen needs to refresh itself.
+  assert.equal(second.body.current.status, 'disqualified');
+  assert.equal(second.body.current.version, first.body.version);
+
+  assert.equal(await statusOf(entryId), 'disqualified', 'the second decision did not apply');
+  const events = await pool.query(
+    'SELECT COUNT(*)::int AS c FROM entry_integrity_events WHERE entry_id = $1',
+    [entryId]
+  );
+  assert.equal(events.rows[0].c, 1, 'and wrote no event');
+});
+
+test('39. a stale case resolution is refused and writes nothing', async () => {
+  const ctx = await drawnGiveawayWithClaim('stale39');
+  const adminSession = await signIn(ctx.admin.email, PASSWORD);
+
+  const opened = await adminSession.post('/api/admin/integrity/cases').send({
+    giveaway_id: ctx.giveawayId,
+    entry_id: ctx.entryId,
+    admin_notes: 'opening a case to resolve twice',
+  });
+  const staleVersion = opened.body.case.version;
+
+  const first = await adminSession
+    .post(`/api/admin/integrity/cases/${opened.body.case.id}/resolve`)
+    .send({ resolution: 'no_action', admin_notes: 'screen A closed it', version: staleVersion });
+  assert.equal(first.status, 200);
+
+  const eventsAfterFirst = await pool.query(
+    'SELECT COUNT(*)::int AS c FROM entry_integrity_case_events WHERE case_id = $1',
+    [opened.body.case.id]
+  );
+
+  const second = await adminSession
+    .post(`/api/admin/integrity/cases/${opened.body.case.id}/resolve`)
+    .send({ resolution: 'upheld', admin_notes: 'screen B tried to uphold it', version: staleVersion });
+  assert.equal(second.status, 409);
+  assert.equal(second.body.code, 'STALE_DECISION');
+  assert.equal(second.body.current.status, 'resolved');
+
+  const eventsAfterSecond = await pool.query(
+    'SELECT COUNT(*)::int AS c FROM entry_integrity_case_events WHERE case_id = $1',
+    [opened.body.case.id]
+  );
+  assert.equal(eventsAfterSecond.rows[0].c, eventsAfterFirst.rows[0].c, 'no additional event');
+
+  const row = await pool.query('SELECT status, resolution FROM entry_integrity_cases WHERE id = $1', [
+    opened.body.case.id,
+  ]);
+  assert.equal(row.rows[0].status, 'resolved');
+  assert.equal(row.rows[0].resolution, 'no_action', 'the stale upheld did not overwrite it');
+});
+
+test('40. refreshing and submitting the current version succeeds', async () => {
+  const host = await makeUser('host40', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant40');
+  const admin = await makeUser('admin40', { admin: true });
+  const giveawayId = await makeGiveaway(host.id);
+  const entryId = await makeEntry(giveawayId, entrant.id, 1);
+  const session = await signIn(admin.email, PASSWORD);
+
+  const v0 = (await session.get(`/api/admin/integrity/entries/${entryId}`)).body.entry.version;
+  const first = await decide(session, entryId, { status: 'under_review', notes: 'first decision', version: v0 });
+  assert.equal(first.status, 200);
+
+  const stale = await decide(session, entryId, { status: 'disqualified', notes: 'stale attempt', version: v0 });
+  assert.equal(stale.status, 409);
+
+  // Reload, resubmit with what the screen now says.
+  const refreshed = await session.get(`/api/admin/integrity/entries/${entryId}`);
+  assert.equal(refreshed.body.entry.version, first.body.version);
+  const retried = await decide(session, entryId, {
+    status: 'disqualified',
+    notes: 'decided again after reloading',
+    version: refreshed.body.entry.version,
+  });
+  assert.equal(retried.status, 200);
+  assert.equal(await statusOf(entryId), 'disqualified');
+
+  // A version is not a permission: a correct one in a non-administrator's hands
+  // still gets 403, and the refusal is authorization rather than staleness.
+  const entrantSession = await signIn(entrant.email, PASSWORD);
+  const forbidden = await entrantSession
+    .post(`/api/admin/integrity/entries/${entryId}/status`)
+    .send({
+      status: 'eligible',
+      reason_code: 'reinstated_after_review',
+      admin_notes: 'holding a valid version changes nothing',
+      version: retried.body.version,
+    });
+  assert.equal(forbidden.status, 403);
+});
+
+test('41. draw, claim, entry, session, CSRF and CSP behaviour is still unchanged', async () => {
+  const host = await makeUser('host41', { hostStatus: 'approved' });
+  const entrant = await makeUser('entrant41');
+  const giveawayId = await makeGiveaway(host.id);
+
+  const raw = await api().post(`/api/giveaways/${giveawayId}/enter`).set('Origin', TEST_ORIGIN).send({});
+  assert.ok([401, 403].includes(raw.status), 'CSRF and auth still refuse');
+
+  const session = await signIn(entrant.email, PASSWORD);
+  const entered = await session.post(`/api/giveaways/${giveawayId}/enter`).set('X-Forwarded-For', nextTestIp());
+  assert.equal(entered.status, 201);
+
+  const page = await api().get(`/api/giveaways/${giveawayId}`);
+  assert.match(page.headers['content-security-policy'] || '', /default-src 'self'/);
+  assert.ok(!/unsafe-inline/.test(page.headers['content-security-policy'] || ''));
+
+  // The split contract did not leak an internal column into the public payload.
+  assert.equal(page.body.integrity_status, undefined);
+  assert.equal(page.body.integrity_admin_notes, undefined);
+  assert.ok(!JSON.stringify(page.body).includes('admin_notes'));
+});

@@ -7,8 +7,16 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test",
-    "db:init": "node -e \"require('./server/db').init().then(() => process.exit(0))\""
+    "test": "node scripts/reset-test-db.js && node --test --test-concurrency=1",
+    "test:db:start": "scripts/test-db.sh start",
+    "test:db:stop": "scripts/test-db.sh stop",
+    "test:db:destroy": "scripts/test-db.sh destroy",
+    "db:init": "node -e \"require('./server/db').init().then(() => process.exit(0))\"",
+    "test:browser-security": "node scripts/browser-hostile-data.js",
+    "maintenance": "node scripts/maintenance.js",
+    "migrate": "node scripts/migrate.js",
+    "backup:verify": "node scripts/backup-verify.js",
+    "schema:snapshot": "node scripts/schema-snapshot.js"
   },
   "dependencies": {
     "@sentry/node": "^10.68.0",
@@ -19,11 +27,22 @@
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.3.0",
-    "jsonwebtoken": "^9.0.2",
     "pg": "^8.11.5",
+    "stripe": "^22.5.0",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
     "supertest": "^7.2.2"
-  }
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "files": [
+    "server/",
+    "public/",
+    "scripts/",
+    "docs/",
+    "README.md",
+    "render.yaml"
+  ]
 }

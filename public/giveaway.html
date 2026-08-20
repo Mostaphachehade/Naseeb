@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -22,7 +23,7 @@
 <section class="detail-hero">
   <div class="wrap">
     <span class="eyebrow mono" id="status-eyebrow">LOADING…</span>
-    <h1 id="title" style="color:var(--paper);">Loading…</h1>
+    <h1 id="title" class="u-ad7e3130">Loading…</h1>
     <p class="lede" id="hosted-by"></p>
   </div>
 </section>
@@ -32,10 +33,10 @@
     <div class="detail-grid">
       <div>
         <img class="detail-img" id="image" alt="" />
-        <h3 style="margin-top:28px;" data-i18n="detail.aboutGiveaway">About this giveaway</h3>
-        <p id="description" style="color:var(--text-soft);"></p>
-        <h3 style="margin-top:24px;" data-i18n="detail.thePrize">The prize</h3>
-        <p id="prize" style="color:var(--text-soft);"></p>
+        <h3 class="u-f0778f9d" data-i18n="detail.aboutGiveaway">About this giveaway</h3>
+        <p id="description" class="u-a2aae0fb"></p>
+        <h3 class="u-3343fd64" data-i18n="detail.thePrize">The prize</h3>
+        <p id="prize" class="u-a2aae0fb"></p>
       </div>
 
       <div>
@@ -46,17 +47,43 @@
           <div class="row"><span data-i18n="detail.entryDeadline">Entry deadline</span><span id="row-deadline">—</span></div>
           <div class="row"><span data-i18n="detail.fundedBy">Funded by</span><span id="row-funded">—</span></div>
 
-          <div id="winner-box" style="display:none; margin-top:18px; background:var(--mint); border-radius:10px; padding:14px 16px;">
+          <div id="winner-box" class="u-a0e7dd78 is-hidden">
             <strong data-i18n="detail.winnerLabel">Winner:</strong> <span id="winner-text"></span>
-            <div id="delivery-status" style="margin-top:8px;"></div>
+            <div id="delivery-status" class="u-b1ecc496"></div>
           </div>
 
-          <button class="btn primary" id="enter-btn" data-i18n="detail.enterFree" style="width:100%; margin-top:22px; justify-content:center;">Enter for free</button>
-          <button class="btn ghost" id="draw-btn" data-i18n="detail.drawWinner" style="width:100%; margin-top:12px; justify-content:center; display:none;">Draw winner now</button>
-          <button class="btn primary" id="confirm-delivery-btn" data-i18n="detail.confirmDelivery" style="width:100%; margin-top:12px; justify-content:center; display:none;">Confirm prize delivered</button>
+          <button class="btn primary u-82da9eef" id="enter-btn" data-i18n="detail.enterFree">Enter for free</button>
+          <button class="btn ghost u-8753b035 is-hidden" id="draw-btn" data-i18n="detail.drawWinner">Draw winner now</button>
+          <!-- Fulfilment. Rendered from the claim's current state, so only the
+               actions that are actually valid right now are shown, to the one
+               person entitled to take them. Hidden entirely when the claim
+               workflow is switched off — a dead button is worse than none. -->
+          <div id="claim-panel" class="u-680b5a65 is-hidden">
+            <div class="u-39a6b632">
+              <strong id="claim-state-label">Prize delivery</strong>
+              <span class="pill-badge" id="claim-state-pill"></span>
+            </div>
+            <p class="hint u-2fd7789b" id="claim-state-help"></p>
+
+            <!-- Delivery details, fetched only for the host and only after the
+                 winner consented. Never written to localStorage, a URL, or an
+                 analytics event. -->
+            <div id="claim-delivery" class="u-1825864a is-hidden"></div>
+
+            <div id="claim-actions" class="u-b7e103a1"></div>
+
+            <div id="claim-dispute-box" class="u-674ae4aa is-hidden">
+              <label for="claim-dispute-reason" class="u-6646d472">What went wrong?</label>
+              <textarea id="claim-dispute-reason" maxlength="500" placeholder="A short description — an administrator will read this."></textarea>
+              <button class="btn ghost u-b1ecc496" id="claim-dispute-submit">Send to review</button>
+            </div>
+
+            <p class="form-error" id="claim-error"></p>
+          </div>
+          <p class="js-mint-box is-hidden" id="entry-status"></p>
           <p class="form-error" id="action-error"></p>
           <p class="form-success" id="action-success"></p>
-          <p class="hint" style="margin-top:14px;" data-i18n="detail.hint">No payment is ever requested to enter or to improve your odds. One entry per person.</p>
+          <p class="hint u-88b9d5c6" data-i18n="detail.hint">No payment is ever requested to enter or to improve your odds. One entry per verified account.</p>
         </div>
       </div>
     </div>
@@ -65,137 +92,9 @@
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  const id = new URLSearchParams(window.location.search).get('id');
-  const user = getUser();
-  let currentGiveaway = null;
-
-  async function load() {
-    try {
-      const g = await api(`/giveaways/${id}`);
-      currentGiveaway = g;
-
-      document.title = `${g.title} — Naseeb`;
-      document.getElementById('title').textContent = g.title;
-      document.getElementById('hosted-by').innerHTML = t('detail.hostedBy', { name: escapeHtml(g.host_name) }) + (g.host_verified ? verifiedBadge() : '');
-      document.getElementById('description').textContent = g.description;
-      document.getElementById('prize').textContent = g.prize_description;
-      document.getElementById('image').src = g.image_url || 'https://images.unsplash.com/photo-1513151233558-d860c5398176?w=1200&q=60';
-
-      document.getElementById('row-status').textContent = g.status === 'drawn' ? t('detail.winnerDrawn') : t('detail.open');
-      document.getElementById('row-entries').textContent = g.entry_count;
-      document.getElementById('row-value').textContent = g.estimated_value_aed ? `AED ${g.estimated_value_aed.toLocaleString()}` : t('detail.notDisclosed');
-      document.getElementById('row-deadline').textContent = new Date(g.entry_deadline).toLocaleString();
-      document.getElementById('row-funded').textContent = g.funded_by;
-
-      const eyebrow = document.getElementById('status-eyebrow');
-      eyebrow.textContent = g.status === 'drawn' ? t('detail.winnerDrawn').toUpperCase() : timeLeft(g.entry_deadline).toUpperCase();
-
-      const enterBtn = document.getElementById('enter-btn');
-      const drawBtn = document.getElementById('draw-btn');
-      const isHost = user && user.id === g.host_id;
-      const deadlinePassed = new Date(g.entry_deadline) <= new Date();
-
-      if (g.winner) {
-        document.getElementById('winner-box').style.display = 'block';
-        document.getElementById('winner-text').textContent = `${g.winner.name} (ticket #${g.winner.ticket_number})`;
-        document.getElementById('delivery-status').innerHTML = deliveryPill(g);
-
-        const celebratedKey = `naseeb_celebrated_${id}`;
-        if (!sessionStorage.getItem(celebratedKey)) {
-          celebrate();
-          sessionStorage.setItem(celebratedKey, '1');
-        }
-      }
-
-      if (g.status === 'drawn') {
-        enterBtn.style.display = 'none';
-      } else if (!user) {
-        enterBtn.textContent = t('detail.signInToEnter');
-        enterBtn.onclick = () => (window.location.href = '/login.html');
-      } else if (g.already_entered) {
-        enterBtn.textContent = t('detail.alreadyEntered');
-        enterBtn.disabled = true;
-      } else if (deadlinePassed) {
-        enterBtn.textContent = t('detail.entriesClosed');
-        enterBtn.disabled = true;
-      } else {
-        enterBtn.onclick = enterGiveaway;
-      }
-
-      if (isHost && g.status === 'active') {
-        drawBtn.style.display = 'block';
-        drawBtn.disabled = !deadlinePassed;
-        drawBtn.textContent = deadlinePassed ? t('detail.drawWinner') : t('detail.drawAvailable');
-        drawBtn.onclick = drawWinner;
-      }
-
-      const confirmBtn = document.getElementById('confirm-delivery-btn');
-      if (isHost && g.status === 'drawn' && !g.prize_delivered) {
-        confirmBtn.style.display = 'block';
-        confirmBtn.disabled = false;
-        confirmBtn.onclick = confirmDelivery;
-      } else {
-        confirmBtn.style.display = 'none';
-      }
-    } catch (err) {
-      document.getElementById('title').textContent = t('detail.notFound');
-      document.getElementById('description').textContent = err.message;
-    }
-  }
-
-  async function enterGiveaway() {
-    const errorEl = document.getElementById('action-error');
-    const successEl = document.getElementById('action-success');
-    const enterBtn = document.getElementById('enter-btn');
-    errorEl.classList.remove('show');
-    successEl.classList.remove('show');
-    enterBtn.disabled = true;
-    try {
-      const { ticket_number } = await api(`/giveaways/${id}/enter`, { method: 'POST' });
-      successEl.textContent = t('detail.enteredSuccess', { n: ticket_number });
-      successEl.classList.add('show');
-      load();
-    } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.classList.add('show');
-      enterBtn.disabled = false;
-    }
-  }
-
-  async function drawWinner() {
-    const errorEl = document.getElementById('action-error');
-    const drawBtn = document.getElementById('draw-btn');
-    errorEl.classList.remove('show');
-    drawBtn.disabled = true;
-    try {
-      await api(`/giveaways/${id}/draw`, { method: 'POST' });
-      load();
-    } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.classList.add('show');
-      drawBtn.disabled = false;
-    }
-  }
-
-  async function confirmDelivery() {
-    const errorEl = document.getElementById('action-error');
-    const confirmBtn = document.getElementById('confirm-delivery-btn');
-    errorEl.classList.remove('show');
-    confirmBtn.disabled = true;
-    try {
-      await api(`/giveaways/${id}/confirm-delivery`, { method: 'POST' });
-      load();
-    } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.classList.add('show');
-      confirmBtn.disabled = false;
-    }
-  }
-
-  load();
-</script>
+<script src="/js/pages/giveaway.js"></script>
 </body>
 </html>

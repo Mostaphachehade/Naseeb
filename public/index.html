@@ -11,6 +11,7 @@
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -43,11 +44,12 @@
 <section class="hero" id="hero">
   <div class="wrap">
     <span class="eyebrow" data-i18n="hero.eyebrow">No purchase necessary</span>
-    <h1 data-i18n-html="hero.headline">Every ticket is free.<br>Every draw is real.</h1>
-    <p class="lede" data-i18n="hero.lede">Naseeb hosts giveaways funded by the people running them, not by entry fees. Enter with one tap, no card required, and see exactly how the winner is picked.</p>
+    <h1 data-i18n-lines="hero.headline">Every ticket is free.<br>Every draw is real.</h1>
+    <p class="lede" data-i18n="hero.lede">Naseeb features carefully selected premium prizes intended to create genuine excitement, happiness, and memorable experiences. Every prize is reviewed and approved by Naseeb before publication. Entry is free — no card, no purchase, ever — and every campaign closes at 100 eligible entries or 30 days, whichever comes first.</p>
+    <p class="lede u-a2aae0fb">Entering will need an active, verified Naseeb membership. Naseeb will coordinate delivery with the winner and be their point of contact.</p>
     <div class="hero-actions">
       <a href="#listings" class="btn primary" data-i18n="hero.browseBtn">Browse giveaways</a>
-      <a href="/create.html" class="btn ghost" data-i18n="hero.hostBtn">Host your own</a>
+      <a href="/host-apply.html" class="btn ghost" data-i18n="hero.hostBtn">Host your own</a>
     </div>
   </div>
   <div class="hero-promo-frame" id="promo-frame">
@@ -63,7 +65,7 @@
     <div class="promo-scene" data-pscene="2">
       <span class="promo-eyebrow">This week's giveaway</span>
       <div class="promo-ticket">
-        <div class="promo-ticket-art" id="promo-ticket-img" style="background-size:cover; background-position:center;"></div>
+        <div class="promo-ticket-art u-703ebe53" id="promo-ticket-img"></div>
         <div class="promo-notch l"></div>
         <div class="promo-notch r"></div>
         <div class="promo-perf"></div>
@@ -84,7 +86,7 @@
         <span class="promo-countdown-num" id="promo-countdown-num"></span>
       </div>
       <p class="promo-countdown-caption">Days left to enter</p>
-      <p class="promo-s3-fine">One entry per person. Winner picked at random.</p>
+      <p class="promo-s3-fine">One entry per account. Winner picked at random.</p>
     </div>
 
     <div class="promo-scene" data-pscene="4">
@@ -120,7 +122,7 @@
       <div class="step">
         <div class="step-num">2</div>
         <h3 data-i18n="howItWorks.step2Title">Enter with one tap</h3>
-        <p data-i18n="howItWorks.step2Body">Sign in and enter — one ticket per person, so nobody can pay or game their way to better odds.</p>
+        <p data-i18n="howItWorks.step2Body">Sign in and enter — one ticket per verified account, so nobody can pay their way to better odds.</p>
       </div>
       <div class="step">
         <div class="step-num">3</div>
@@ -134,181 +136,21 @@
     <div class="section-head" id="listings">
       <div>
         <h2 data-i18n="listings.title">Open giveaways</h2>
-        <p data-i18n="listings.sub">Free to enter. One entry per person, so every ticket carries the same odds.</p>
+        <p data-i18n="listings.sub">Free to enter. One entry per verified account, so every ticket carries the same odds.</p>
       </div>
     </div>
     <div class="grid" id="grid"></div>
-    <div style="text-align:center;">
-      <button class="btn ghost" id="load-more-btn" data-i18n="loadMore" style="display:none; border-color:var(--ink); color:var(--ink); margin-top:28px;">Load more</button>
+    <div class="u-dac4fe6c">
+      <button class="btn ghost u-27c6008a is-hidden" id="load-more-btn" data-i18n="loadMore">Load more</button>
     </div>
   </div>
 </main>
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  document.getElementById('grid').innerHTML = skeletonCards(6);
-  const PAGE_SIZE = 12;
-  let currentPage = 1;
-
-  // Fills the empty ticket-stub outline in the hero with a real, animated
-  // spotlight on the top live giveaway (hook, prize, countdown, CTA) —
-  // falls back to the plain dashed outline (default CSS) if there's no
-  // active giveaway to show yet.
-  async function loadHeroPromo() {
-    try {
-      const { items } = await api('/giveaways?page=1&pageSize=1');
-      const g = items[0];
-      if (!g || g.status !== 'active') return;
-
-      document.getElementById('promo-cta-inner').href = `/giveaway.html?id=${g.id}`;
-      if (g.image_url) {
-        document.getElementById('promo-ticket-img').style.backgroundImage = `url('${escapeAttr(g.image_url)}')`;
-      }
-      document.getElementById('promo-ticket-label').textContent = `${g.entry_count} entered · open now`;
-      document.getElementById('promo-ticket-title').textContent = g.title;
-      if (g.estimated_value_aed) {
-        document.getElementById('promo-ticket-value').textContent = `AED ${Number(g.estimated_value_aed).toLocaleString()} value`;
-      } else {
-        document.getElementById('promo-ticket-value').style.display = 'none';
-      }
-
-      const deadline = new Date(g.entry_deadline).getTime();
-      const days = Math.max(1, Math.ceil((deadline - Date.now()) / 86400000));
-      document.getElementById('promo-countdown-num').textContent = days;
-
-      document.getElementById('hero').classList.add('has-featured');
-      runPromoLoop();
-    } catch (err) {
-      // Non-critical — the hero's decorative dashed outline stays as-is.
-    }
-  }
-
-  function runPromoLoop() {
-    const scenes = Array.from(document.querySelectorAll('.promo-scene'));
-    const confetti = document.getElementById('promo-confetti');
-    const colors = ['#C9A15A', '#E4C078', '#DCEEE7'];
-    const SEQUENCE = [
-      { n: 1, hold: 3600 },
-      { n: 2, hold: 4000 },
-      { n: 3, hold: 4000 },
-      { n: 4, hold: 4400 },
-    ];
-
-    function spawnConfetti() {
-      confetti.innerHTML = '';
-      for (let i = 0; i < 8; i++) {
-        const s = document.createElement('span');
-        s.className = 'promo-speck';
-        s.style.left = (6 + Math.random() * 88) + '%';
-        s.style.background = colors[i % colors.length];
-        s.style.animationDelay = (Math.random() * 1.6) + 's';
-        confetti.appendChild(s);
-      }
-      confetti.classList.add('is-on');
-    }
-
-    function showScene(n) {
-      scenes.forEach((s) => {
-        const active = Number(s.dataset.pscene) === n;
-        s.classList.toggle('is-exiting', s.classList.contains('is-active') && !active);
-        s.classList.toggle('is-active', active);
-      });
-    }
-
-    (async () => {
-      // Pauses when scrolled out of view so it isn't burning CPU/battery
-      // off-screen — resumes the loop next time it's visible.
-      const frame = document.getElementById('promo-frame');
-      let visible = true;
-      new IntersectionObserver((entries) => {
-        visible = entries[0].isIntersecting;
-      }, { threshold: 0.15 }).observe(frame);
-
-      while (true) {
-        for (const step of SEQUENCE) {
-          if (visible) {
-            showScene(step.n);
-            if (step.n === 4) spawnConfetti();
-            if (step.n === 1) confetti.classList.remove('is-on');
-          }
-          await new Promise((r) => setTimeout(r, step.hold));
-        }
-      }
-    })();
-  }
-
-  async function load(page = 1) {
-    const grid = document.getElementById('grid');
-    const loadMoreBtn = document.getElementById('load-more-btn');
-    try {
-      const { items, total } = await api(`/giveaways?page=${page}&pageSize=${PAGE_SIZE}`);
-      if (page === 1 && items.length === 0) {
-        grid.innerHTML = `
-          <div class="empty launch" style="grid-column:1/-1;">
-            <span class="mono eyebrow">${t('empty.launchEyebrow')}</span>
-            <h3>${t('empty.launchTitle')}</h3>
-            <p>${t('empty.launchBody')}</p>
-            <a class="btn primary" href="/create.html">${t('empty.launchCta')}</a>
-          </div>`;
-        loadMoreBtn.style.display = 'none';
-        return;
-      }
-      if (page === 1) grid.innerHTML = '';
-      grid.insertAdjacentHTML('beforeend', items.map(giveawayCard).join(''));
-      currentPage = page;
-      loadMoreBtn.style.display = page * PAGE_SIZE < total ? 'inline-flex' : 'none';
-    } catch (err) {
-      grid.innerHTML = `<p class="form-error show">${err.message}</p>`;
-      loadMoreBtn.style.display = 'none';
-    }
-  }
-
-  document.getElementById('load-more-btn').addEventListener('click', () => load(currentPage + 1));
-
-  async function loadStats() {
-    try {
-      const stats = await api('/giveaways/stats/summary');
-      // A trust bar reading "0 / 0 / 0" undermines the exact trust it's meant
-      // to build, so it only appears once there's a real number to show.
-      if (!stats.giveaways_hosted) {
-        document.querySelector('.stats-bar').style.display = 'none';
-        return;
-      }
-      document.getElementById('stat-giveaways').textContent = stats.giveaways_hosted.toLocaleString();
-      document.getElementById('stat-entries').textContent = stats.entries_submitted.toLocaleString();
-      document.getElementById('stat-value').textContent = stats.value_listed_aed.toLocaleString();
-    } catch (err) {
-      // Non-critical — leave the placeholders rather than showing an error for a stats bar.
-    }
-  }
-
-  async function loadAdBanner() {
-    try {
-      const ad = await api('/ads/active');
-      if (!ad) return;
-      const media = ad.media_type === 'video'
-        ? `<video src="${escapeHtml(ad.image_url)}" autoplay muted loop playsinline></video>`
-        : `<img src="${escapeHtml(ad.image_url)}" alt="${escapeHtml(ad.business_name)}" />`;
-      document.getElementById('ad-banner-slot').innerHTML = `
-        <div class="ad-banner-wrap">
-          <span class="ad-banner-label">Advertisement</span>
-          <a class="ad-banner" href="/api/ads/${ad.id}/click" target="_blank" rel="noopener sponsored">
-            ${media}
-          </a>
-        </div>
-      `;
-    } catch (err) {
-      // Non-critical — just don't show a banner if this fails.
-    }
-  }
-
-  load();
-  loadStats();
-  loadAdBanner();
-  loadHeroPromo();
-</script>
+<script src="/js/pages/index.js"></script>
 </body>
 </html>

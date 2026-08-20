@@ -1,0 +1,18 @@
+# Nothing here is published to a registry today, but `npm pack` is also how a
+# deploy artefact gets built by hand, and an artefact carrying a .env or a
+# database dump is the accident this file exists to prevent.
+node_modules/
+.env
+.env.test
+.env.*
+.tmp-testdb/
+.browser-security/
+*.dump
+*.sql
+*.sql.gz
+test/
+.github/
+.git/
+scripts/test-db.sh
+scripts/browser-hostile-data.js
+scripts/demo-*.js

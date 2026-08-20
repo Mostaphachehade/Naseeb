@@ -4,10 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Host a giveaway — Naseeb</title>
-<meta name="description" content="Host a free-entry giveaway on Naseeb. You cover the prize as a marketing cost — entrants never pay anything." />
+<meta name="description" content="Submit a premium prize to Naseeb. Every prize is reviewed and approved before publication, and entry is always free." />
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -20,15 +21,76 @@
 </header>
 
 <main id="main">
-  <div class="wrap" style="max-width:640px;">
-    <div class="section-head"><div><h2>Host a giveaway</h2><p>Free to enter, always. You cover the prize as a marketing cost — participants never pay anything.</p></div></div>
+  <div class="wrap u-de0aa912">
+    <div class="section-head"><div><h2>Submit a prize</h2><p>Naseeb features carefully selected premium prizes intended to create genuine excitement, happiness, and memorable experiences. Every prize is reviewed and approved by Naseeb before publication. Entry is free, always — participants never pay anything.</p></div></div>
 
-    <form class="card narrow" id="create-form" style="max-width:none;">
+    <div class="card narrow u-34caecf2">
+      <h3>How a campaign runs</h3>
+      <ul>
+        <li>You submit the prize. <strong>Nothing publishes automatically</strong> — Naseeb reviews every submission first.</li>
+        <li>Once approved, the campaign is published and runs for <strong>exactly 30 days</strong> from that moment.</li>
+        <li>It closes at whichever comes first: the <strong>100th eligible entry</strong>, or the <strong>30-day deadline</strong>.</li>
+        <li>If the deadline arrives with fewer than 100 entries, the draw still runs, from all eligible entries received.</li>
+        <li>The draw runs on its own. Nobody has to press anything, and the deadline is never extended.</li>
+        <li>Entry requires an active, verified Naseeb membership.</li>
+        <li><strong>Naseeb will be the winner-facing contact</strong> and will coordinate delivery or fulfilment. If a winner has a problem, they will come to us. This workflow is not yet operating, and no campaign can be published until it is.</li>
+        <li>Once published, a prize cannot be withdrawn. A campaign is cancelled only where fulfilment becomes genuinely impossible or continuing would be unlawful.</li>
+      </ul>
+      <p class="hint">Naseeb is under development. It is not a licensed, VAT-registered or commercially operating business, and nothing here has been reviewed by qualified counsel.</p>
+    </div>
+
+    <div id="host-access-panel"></div>
+
+    <form class="card narrow u-34caecf2 is-hidden" id="create-form">
       <label for="title">Giveaway title</label>
       <input id="title" placeholder="e.g. Weekend stay for two in Ras Al Khaimah" required />
 
       <label for="prize_description">What's the prize?</label>
-      <input id="prize_description" placeholder="e.g. 2-night stay, breakfast included" required />
+      <input id="prize_description" placeholder="e.g. 2-night stay for two, breakfast included" required />
+
+      <label for="prize_category">Prize category</label>
+      <select id="prize_category" required>
+        <option value="">Choose a category</option>
+        <option value="premium_electronics">Premium electronics</option>
+        <option value="luxury_stay_or_holiday">Luxury accommodation and holidays</option>
+        <option value="designer_fashion_or_accessories">Designer clothing, watches, bags and accessories</option>
+        <option value="fine_dining_experience">High-end dining experiences</option>
+        <option value="beauty_and_wellness">Premium beauty and wellness packages</option>
+        <option value="events_and_experiences">Concerts, sporting events and exclusive experiences</option>
+        <option value="home_technology_and_appliances">Premium home technology and appliances</option>
+        <option value="vehicle_or_major_prize">Vehicles and other major prizes</option>
+        <option value="brand_voucher">Valuable vouchers from reputable brands</option>
+        <option value="other_approved_premium">Something else, lawful and high quality</option>
+      </select>
+      <p class="hint">Naseeb does not publish promotional merchandise, ordinary food or groceries, samples, discount codes presented as prizes, or used, damaged or unsafe goods. High-end dining experiences yes; an ordinary meal, no.</p>
+
+      <label for="sponsor_name">Sponsoring business</label>
+      <input id="sponsor_name" placeholder="The business the campaign is for" required />
+
+      <label for="prize_supplied_by">Who supplies or funds the prize</label>
+      <input id="prize_supplied_by" placeholder="If it is not the sponsor, say who" required />
+
+      <label for="prize_retail_value_aed">Genuine retail or market value (AED)</label>
+      <input id="prize_retail_value_aed" type="number" min="1" step="1" placeholder="e.g. 4500" required />
+      <p class="hint">The real value. There is no minimum — premium is a judgement about quality, not a price threshold — but a value we cannot stand behind is a reason to decline.</p>
+
+      <label for="naseeb_custody">Who will be holding the prize?</label>
+      <select id="naseeb_custody" required>
+        <option value="">Choose one</option>
+        <option value="naseeb_holds">Naseeb holds it</option>
+        <option value="sponsor_holds_committed">The sponsor holds it, committed to Naseeb</option>
+        <option value="provider_fulfils">The provider fulfils it directly (hotel, restaurant, venue)</option>
+      </select>
+      <p class="hint">Naseeb will coordinate delivery and be the winner's point of contact in every case. This says who is physically holding the thing.</p>
+
+      <label for="fulfilment_method">How the winner receives it</label>
+      <input id="fulfilment_method" placeholder="e.g. Couriered within the UAE, or booked directly with the hotel" required />
+
+      <label for="prize_restrictions">Restrictions the winner must know (optional)</label>
+      <textarea id="prize_restrictions" placeholder="Geographic, booking, availability, age or validity limits. Everything has to be visible before anybody enters."></textarea>
+
+      <label for="prize_expiry_date">Prize expiry date (optional)</label>
+      <input id="prize_expiry_date" type="date" />
 
       <label for="description">Full description</label>
       <textarea id="description" placeholder="Tell people what's included, who's eligible, and how the winner will be contacted." required></textarea>
@@ -37,10 +99,10 @@
       <input id="estimated_value_aed" type="number" min="0" step="1" placeholder="e.g. 1500" />
 
       <label for="image_url">Giveaway image (optional)</label>
-      <div id="image-upload-row" style="display:none; margin-bottom:10px;">
+      <div id="image-upload-row" class="u-7a0acf60 is-hidden">
         <input type="file" id="image_file" accept="image/*" />
         <span class="hint" id="upload-status"></span>
-        <img id="image-preview" alt="" style="display:none; max-width:160px; border-radius:8px; margin-top:8px;" />
+        <img id="image-preview" alt="" class="u-e51fc531 is-hidden" />
       </div>
       <input id="image_url" type="url" placeholder="https://…" />
       <p class="hint" id="image-url-hint">Paste an image URL.</p>
@@ -49,14 +111,11 @@
       <input id="funded_by" placeholder="e.g. Marketing budget of [your business/name]" required />
       <p class="hint">Shown publicly on the listing. This confirms the prize is funded by you as a promotional cost, not by anything entrants pay.</p>
 
-      <label for="entry_deadline">Entry deadline</label>
-      <input id="entry_deadline" type="datetime-local" required />
-
       <div class="compliance-box">
-        By publishing, you confirm entry is free to everyone, no purchase or payment is required or accepted at any point, and the winner will be chosen by a random draw from all eligible entries after the deadline.
+        By submitting, you confirm entry is free to everyone, that no purchase or payment is required or accepted at any point, and that the winner will be chosen by a random draw from all eligible entries when the campaign closes. You confirm the prize exists, is committed, and is described honestly — including its real value and every restriction attached to it. You are responsible for any permit, advertising or consumer-protection requirement that applies to your campaign; Naseeb does not check this and does not advise on it. Once a campaign is published you cannot withdraw the prize.
       </div>
 
-      <button class="btn primary" type="submit">Publish giveaway</button>
+      <button class="btn primary" type="submit">Submit for review</button>
       <p class="form-error" id="error"></p>
     </form>
   </div>
@@ -64,68 +123,9 @@
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  if (!getToken()) window.location.href = '/login.html';
-
-  let cloudinaryConfig = null;
-  fetch('/api/config').then((r) => r.json()).then((config) => {
-    if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
-      cloudinaryConfig = config;
-      document.getElementById('image-upload-row').style.display = 'block';
-      document.getElementById('image-url-hint').textContent = 'Upload a file above, or paste an image URL.';
-    }
-  }).catch(() => {});
-
-  document.getElementById('image_file').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file || !cloudinaryConfig) return;
-    const statusEl = document.getElementById('upload-status');
-    statusEl.textContent = 'Uploading…';
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
-    try {
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudinary_cloud_name}/image/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
-      document.getElementById('image_url').value = data.secure_url;
-      const preview = document.getElementById('image-preview');
-      preview.src = data.secure_url;
-      preview.style.display = 'block';
-      statusEl.textContent = 'Uploaded.';
-    } catch (err) {
-      statusEl.textContent = err.message;
-    }
-  });
-
-  document.getElementById('create-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const errorEl = document.getElementById('error');
-    errorEl.classList.remove('show');
-    try {
-      const g = await api('/giveaways', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: document.getElementById('title').value,
-          description: document.getElementById('description').value,
-          prize_description: document.getElementById('prize_description').value,
-          estimated_value_aed: document.getElementById('estimated_value_aed').value || null,
-          image_url: document.getElementById('image_url').value || null,
-          funded_by: document.getElementById('funded_by').value,
-          entry_deadline: new Date(document.getElementById('entry_deadline').value).toISOString(),
-        }),
-      });
-      window.location.href = `/giveaway.html?id=${g.id}`;
-    } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.classList.add('show');
-    }
-  });
-</script>
+<script src="/js/pages/create.js"></script>
 </body>
 </html>

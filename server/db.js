@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { Pool, types } = require('pg');
 
 // node-postgres parses DATE columns (OID 1082) into a JS Date at local
@@ -12,160 +14,214 @@ types.setTypeParser(1082, (val) => val);
 // Postgres connection. Works with any hosted Postgres (Neon, Supabase, Render
 // Postgres, etc). Most hosted providers require SSL but use certificates that
 // Node doesn't automatically trust, hence rejectUnauthorized: false below.
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost')
-    ? false
-    : { rejectUnauthorized: false },
-});
+//
+// DATABASE_SSL decides, and the host is only sniffed as a fallback for
+// existing deployments that don't set it. The previous version tested the
+// connection string for the literal substring 'localhost', which meant an
+// otherwise identical local database addressed as 127.0.0.1 was handed an SSL
+// config it couldn't honour and failed with "The server does not support SSL
+// connections" — a confusing failure for anyone pointing the test suite at a
+// local cluster.
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
 
-async function init() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-      is_verified_business BOOLEAN NOT NULL DEFAULT FALSE,
-      email_verified BOOLEAN NOT NULL DEFAULT TRUE,
-      verification_token TEXT,
-      verification_token_expires TIMESTAMPTZ,
-      reset_token TEXT,
-      reset_token_expires TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
-    -- Manually toggled by an admin after actually checking a business (trade
-    -- license etc.) — no automated verification exists.
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified_business BOOLEAN NOT NULL DEFAULT FALSE;
-    -- Default TRUE so accounts that already existed before this column was
-    -- added aren't suddenly locked out. New signups override this to FALSE
-    -- explicitly in the signup route.
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token_expires TIMESTAMPTZ;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token TEXT;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMPTZ;
-
-    -- Intentionally no price/amount/payment columns on giveaways or entries.
-    -- Entry into a giveaway must always be free; prizes are funded by the host
-    -- as a marketing cost, never from participant payments.
-    CREATE TABLE IF NOT EXISTS giveaways (
-      id TEXT PRIMARY KEY,
-      host_id TEXT NOT NULL REFERENCES users(id),
-      title TEXT NOT NULL,
-      description TEXT NOT NULL,
-      prize_description TEXT NOT NULL,
-      estimated_value_aed REAL,
-      image_url TEXT,
-      funded_by TEXT NOT NULL,
-      entry_deadline TEXT NOT NULL,
-      max_entries_per_person INTEGER NOT NULL DEFAULT 1,
-      status TEXT NOT NULL DEFAULT 'active',
-      winner_entry_id TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    -- Public accountability signal: the host explicitly confirms the prize
-    -- was sent, shown on the giveaway page and the public Winners page.
-    -- There's no escrow or enforcement behind it — it's a trust signal, not
-    -- a guarantee — but an unconfirmed delivery is visible to everyone,
-    -- which is the whole point.
-    ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS prize_delivered BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS prize_delivered_at TIMESTAMPTZ;
-
-    CREATE TABLE IF NOT EXISTS entries (
-      id TEXT PRIMARY KEY,
-      giveaway_id TEXT NOT NULL REFERENCES giveaways(id),
-      user_id TEXT NOT NULL REFERENCES users(id),
-      ticket_number INTEGER NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(giveaway_id, user_id)
-    );
-
-    -- Host applications aren't gating anything today (no payment processor is
-    -- wired up, so anyone signed in can already create giveaways for free).
-    -- This just captures company/individual intent to host on a paid plan so
-    -- it can be followed up on manually.
-    CREATE TABLE IF NOT EXISTS host_applications (
-      id TEXT PRIMARY KEY,
-      user_id TEXT REFERENCES users(id),
-      applicant_type TEXT NOT NULL,
-      full_name TEXT NOT NULL,
-      business_name TEXT,
-      trade_license TEXT,
-      contact_email TEXT NOT NULL,
-      contact_phone TEXT,
-      plan TEXT NOT NULL,
-      message TEXT,
-      contacted BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    ALTER TABLE host_applications ADD COLUMN IF NOT EXISTS contacted BOOLEAN NOT NULL DEFAULT FALSE;
-
-    -- Ad inquiries: same pattern as host_applications — captures interest,
-    -- billed and followed up on manually, nothing automated.
-    CREATE TABLE IF NOT EXISTS ad_inquiries (
-      id TEXT PRIMARY KEY,
-      business_name TEXT NOT NULL,
-      contact_email TEXT NOT NULL,
-      contact_phone TEXT,
-      message TEXT,
-      contacted BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    -- Only one ad is ever "active" at a time (single homepage banner slot),
-    -- enforced in application logic, not a DB constraint. click_count is a
-    -- simple running total for manual billing — there's no CPC calculator,
-    -- just a number the admin can point to.
-    CREATE TABLE IF NOT EXISTS ads (
-      id TEXT PRIMARY KEY,
-      business_name TEXT NOT NULL,
-      image_url TEXT NOT NULL,
-      target_url TEXT NOT NULL,
-      active BOOLEAN NOT NULL DEFAULT FALSE,
-      click_count INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    -- 'image' or 'video' — tells the homepage banner whether to render an
-    -- <img> or a muted autoplay <video>. image_url holds the asset URL
-    -- either way (Cloudinary serves both from the same kind of secure_url).
-    ALTER TABLE ads ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'image';
-
-    -- Self-serve paid bookings (Stripe Checkout) alongside the original
-    -- manually-toggled admin ads. A paid booking is scheduled for a fixed
-    -- date range rather than switched on/off by hand; GET /api/ads/active
-    -- prefers a currently-in-window paid booking and falls back to the old
-    -- active flag so manual admin ads keep working unchanged.
-    ALTER TABLE ads ADD COLUMN IF NOT EXISTS contact_email TEXT;
-    ALTER TABLE ads ADD COLUMN IF NOT EXISTS starts_at DATE;
-    ALTER TABLE ads ADD COLUMN IF NOT EXISTS ends_at DATE;
-    ALTER TABLE ads ADD COLUMN IF NOT EXISTS paid BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE ads ADD COLUMN IF NOT EXISTS amount_aed NUMERIC;
-    ALTER TABLE ads ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;
-    CREATE INDEX IF NOT EXISTS idx_ads_stripe_session_id ON ads(stripe_session_id) WHERE stripe_session_id IS NOT NULL;
-
-    -- entries(giveaway_id) doesn't need its own index — it's already the
-    -- leading column of the UNIQUE(giveaway_id, user_id) constraint above,
-    -- which Postgres can use directly for single-column lookups on it.
-    CREATE INDEX IF NOT EXISTS idx_entries_user_id ON entries(user_id);
-    CREATE INDEX IF NOT EXISTS idx_giveaways_host_id ON giveaways(host_id);
-    CREATE INDEX IF NOT EXISTS idx_giveaways_status_deadline ON giveaways(status, entry_deadline);
-    CREATE INDEX IF NOT EXISTS idx_host_applications_user_id ON host_applications(user_id);
-    CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users(verification_token) WHERE verification_token IS NOT NULL;
-    CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token) WHERE reset_token IS NOT NULL;
-
-    -- Owner-editable values that would otherwise be hard-coded — ad price,
-    -- hosting plan prices shown on pricing.html, the maintenance banner.
-    -- Plain key/value rather than dedicated columns since these are simple
-    -- scalars with no relations of their own; see server/lib/settings.js.
-    CREATE TABLE IF NOT EXISTS site_settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
+function isLocalDatabase(connectionString) {
+  if (!connectionString) return false;
+  try {
+    return LOCAL_DB_HOSTS.has(new URL(connectionString).hostname);
+  } catch {
+    return connectionString.includes('localhost');
+  }
 }
 
-module.exports = { pool, init };
+function sslConfig() {
+  const explicit = (process.env.DATABASE_SSL || '').toLowerCase();
+  if (explicit === 'false' || explicit === 'disable' || explicit === '0') return false;
+  if (explicit === 'true' || explicit === 'require' || explicit === '1') {
+    return { rejectUnauthorized: false };
+  }
+  return isLocalDatabase(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false };
+}
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: sslConfig(),
+});
+
+// An idle client that dies must not take the process with it.
+//
+// `pg.Pool` emits `error` when a connection it is holding IDLE fails — a
+// provider idle timeout, a failover, a restart, a network blip. An `error` event
+// with no listener is an unhandled EventEmitter error, and Node raises those as
+// an uncaughtException. So without this line, the single most ordinary event in
+// the life of a hosted database — a connection going away while nothing is using
+// it — crashes the web process.
+//
+// There was no listener at all. It surfaced first in the test suite, where
+// dropping a fixture database killed an idle client and failed a whole file
+// whose every test had passed; the same defect in production is a restart.
+//
+// Swallowed deliberately, and only here: the pool discards the broken client and
+// opens another on the next query, which is the correct recovery. It is reported
+// so it is not invisible — through the sanitising reporter, because a pg error
+// can carry the host, the user and occasionally more.
+pool.on('error', (err) => {
+  // Required lazily: errorReporting is a leaf, but this file is required by
+  // almost everything and is not the place to add a load-order dependency.
+  try {
+    // eslint-disable-next-line global-require
+    require('./lib/errorReporting').reportError(err, { source: 'pg_pool_idle_client' });
+  } catch (reportErr) {
+    // Reporting must never be the thing that crashes the process either.
+    console.error('Idle database client failed, and the error could not be reported.');
+  }
+  // Message only. Never the error object, which can carry connection detail.
+  console.error(`Idle database client error (the pool will reconnect): ${err.message}`);
+});
+
+// The baseline schema lives in server/migrations/001_baseline.sql, FROZEN.
+//
+// It used to be a template literal here that every feature phase appended to.
+// That is fine for a bootstrap and useless as a historical migration: a checksum
+// over a file somebody keeps editing records only that it changed again. The
+// content is now a file nobody edits, and its SHA-256 is what the ledger holds.
+//
+// Read once at require time and cached. It is part of the deployed artefact, so
+// re-reading it per call would buy nothing.
+const BASELINE_PATH = path.join(__dirname, 'migrations', '001_baseline.sql');
+const BASELINE_SQL = fs.readFileSync(BASELINE_PATH, 'utf8');
+
+// Runs the baseline. Takes an optional client so the migration runner can
+// execute it inside its own connection; defaults to the pool for db:init and
+// for the test reset path.
+async function init(client = pool) {
+  await client.query(BASELINE_SQL);
+
+  // Separate from the batch above because it has to inspect existing data and
+  // decide whether the constraint can be applied at all — see the function.
+  //
+  // `client`, not `pool`: the fabricated pre-ledger fixtures build whole
+  // throwaway databases through this function, and sending the constraint to the
+  // module-level pool would apply it to the wrong database entirely.
+  await ensureSlotExclusionConstraint(client);
+}
+
+const SLOT_CONSTRAINT_NAME = 'ads_no_overlapping_slots';
+
+// Pairs of bookings that both occupy the slot on overlapping dates.
+//
+// Under the current code this should always come back empty — allocation holds
+// an advisory lock and the exclusion constraint refuses overlaps outright. It
+// exists for the one moment that isn't covered by either: the migration that
+// adds the constraint, running against data written before any of this existed.
+//
+// Returns identifiers and dates only. Which company booked what is not
+// something to write into a server log.
+async function findOverlappingSlots(client = pool) {
+  const result = await client.query(
+    `SELECT a.id AS booking_a, b.id AS booking_b,
+            a.starts_at AS a_starts, a.ends_at AS a_ends,
+            b.starts_at AS b_starts, b.ends_at AS b_ends
+       FROM ads a
+       JOIN ads b ON a.id < b.id
+      WHERE a.slot_status IN ('held', 'paid')
+        AND b.slot_status IN ('held', 'paid')
+        AND a.starts_at IS NOT NULL AND a.ends_at IS NOT NULL
+        AND b.starts_at IS NOT NULL AND b.ends_at IS NOT NULL
+        AND daterange(a.starts_at, a.ends_at, '[]') && daterange(b.starts_at, b.ends_at, '[]')
+      ORDER BY a.starts_at`
+  );
+  return result.rows;
+}
+
+// Adds the exclusion constraint that makes double-selling the banner slot
+// impossible at the storage layer.
+//
+// Idempotent: checks pg_constraint first, so a redeploy against a database that
+// already has it does nothing. Uses only core PostgreSQL — a GiST exclusion
+// constraint over a daterange needs no extension and no superuser, so it
+// applies cleanly on Neon, Supabase, Render Postgres or a plain server.
+//
+// If historical overlapping bookings already exist, the ALTER would fail. That
+// data is not this function's to fix: those are real bookings that real
+// advertisers may have paid for, and picking a winner automatically would
+// destroy a commercial record and quite possibly the wrong one. It reports them
+// and leaves both the rows and the decision alone. The application still starts;
+// it is simply unprotected until someone resolves the conflict, which is a
+// better outcome than refusing to boot the whole site.
+//
+// DEFERRABLE INITIALLY IMMEDIATE: behaves immediately in normal use, but lets a
+// transaction opt into deferring it — which is how the migration's own tests
+// stage overlapping rows without dropping the constraint for everyone else.
+async function ensureSlotExclusionConstraint(client = pool) {
+  const existing = await client.query(
+    `SELECT 1 FROM pg_constraint WHERE conname = $1 AND conrelid = 'ads'::regclass`,
+    [SLOT_CONSTRAINT_NAME]
+  );
+  if (existing.rowCount > 0) {
+    return { status: 'present' };
+  }
+
+  const overlaps = await findOverlappingSlots(client);
+  if (overlaps.length > 0) {
+    console.error(
+      `Cannot add ${SLOT_CONSTRAINT_NAME}: ${overlaps.length} existing booking pair(s) already ` +
+        'overlap. These are real commercial records and have been left untouched — no booking ' +
+        'has been deleted, moved or overwritten. Resolve them by hand: for one side of each ' +
+        'pair, set slot_status to released along with slot_released_at and a slot_release_reason ' +
+        '(the reason is what stops this migration re-claiming the slot on the next deploy), then ' +
+        'restart to apply the constraint. Self-serve ad checkout cannot be enabled until it ' +
+        'applies. Overlapping pairs (booking ids and dates):'
+    );
+    overlaps.forEach((row) => {
+      console.error(
+        `  ${row.booking_a} [${row.a_starts} .. ${row.a_ends}] overlaps ` +
+          `${row.booking_b} [${row.b_starts} .. ${row.b_ends}]`
+      );
+    });
+    return { status: 'blocked', overlaps };
+  }
+
+  await client.query(
+    `ALTER TABLE ads ADD CONSTRAINT ${SLOT_CONSTRAINT_NAME}
+       EXCLUDE USING gist (daterange(starts_at, ends_at, '[]') WITH &&)
+       WHERE (slot_status IN ('held', 'paid') AND starts_at IS NOT NULL AND ends_at IS NOT NULL)
+       DEFERRABLE INITIALLY IMMEDIATE`
+  );
+  return { status: 'created' };
+}
+
+// Is the database actually enforcing non-overlapping bookings right now?
+//
+// Asked of the database every time it matters rather than remembered from
+// startup, because "the constraint was there an hour ago" is not the same claim
+// as "the constraint is there". A dropped constraint, a restored-from-backup
+// database, a migration that reported 'blocked', or a connection that cannot be
+// queried at all must all read as unprotected.
+//
+// Any failure answers false. This gate exists to stop money being taken for
+// dates that might be double-sold, so the only safe response to "I could not
+// check" is to behave as though the answer were no.
+async function isSlotProtectionActive(client = pool) {
+  try {
+    const result = await client.query(
+      `SELECT 1 FROM pg_constraint
+        WHERE conname = $1 AND conrelid = 'ads'::regclass AND contype = 'x'`,
+      [SLOT_CONSTRAINT_NAME]
+    );
+    return result.rowCount > 0;
+  } catch (err) {
+    console.error('Could not verify booking overlap protection:', err.message);
+    return false;
+  }
+}
+
+module.exports = {
+  pool,
+  init,
+  BASELINE_SQL,
+  BASELINE_PATH,
+  findOverlappingSlots,
+  ensureSlotExclusionConstraint,
+  isSlotProtectionActive,
+  SLOT_CONSTRAINT_NAME,
+};

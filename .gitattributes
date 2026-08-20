@@ -1,0 +1,11 @@
+# Migration SQL is checksummed and recorded in the schema ledger, and its
+# `$function$ ... $function$` bodies are stored in the database verbatim. A
+# CRLF checkout therefore changes both the checksum and the stored function
+# text for a commit that has not changed at all — which is exactly what
+# happened on a Windows checkout with core.autocrlf=true.
+#
+# Pinning these files to LF in the working tree makes the bytes on disk the
+# same on every machine. The code no longer depends on it — see
+# server/lib/canonicalText.js — but the two together mean neither a fresh
+# checkout nor a fresh clone can reintroduce the difference.
+*.sql text eol=lf

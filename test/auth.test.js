@@ -1,6 +1,6 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { api, pool, ensureInit, uniqueEmail } = require('../testHelpers');
+const { api, pool, ensureInit, uniqueEmail, signIn, anon, closePool } = require('../testHelpers');
 
 const createdUserIds = [];
 
@@ -12,17 +12,21 @@ after(async () => {
   if (createdUserIds.length) {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
-test('signup creates an account and returns a token', async () => {
+test('signup creates an account and establishes a cookie session, not a token', async () => {
   const email = uniqueEmail('signup');
   const res = await api()
     .post('/api/auth/signup')
-    .send({ name: 'Test User', email, password: 'correcthorse123' });
+    .send({ name: 'Test User', email, password: 'correcthorse123', age_confirmed: true });
 
   assert.equal(res.status, 201);
-  assert.ok(res.body.token);
+  // No token in the body. The session is an HttpOnly cookie; what comes back is
+  // who you are and the CSRF token to send with future writes.
+  assert.equal(res.body.token, undefined);
+  assert.ok(res.body.csrf_token, 'a CSRF token is issued with the session');
+  assert.match(String(res.headers['set-cookie']), /naseeb_session=/);
   assert.equal(res.body.user.email, email);
   assert.equal(res.body.user.email_verified, false);
   createdUserIds.push(res.body.user.id);
@@ -32,12 +36,12 @@ test('signup rejects a duplicate email', async () => {
   const email = uniqueEmail('dupe');
   const first = await api()
     .post('/api/auth/signup')
-    .send({ name: 'A', email, password: 'correcthorse123' });
+    .send({ name: 'A', email, password: 'correcthorse123', age_confirmed: true });
   createdUserIds.push(first.body.user.id);
 
   const second = await api()
     .post('/api/auth/signup')
-    .send({ name: 'B', email, password: 'anotherpassword123' });
+    .send({ name: 'B', email, password: 'anotherpassword123', age_confirmed: true });
 
   assert.equal(second.status, 409);
 });
@@ -45,7 +49,7 @@ test('signup rejects a duplicate email', async () => {
 test('signup rejects a password under 8 characters', async () => {
   const res = await api()
     .post('/api/auth/signup')
-    .send({ name: 'A', email: uniqueEmail('shortpw'), password: '1234567' });
+    .send({ name: 'A', email: uniqueEmail('shortpw'), password: '1234567', age_confirmed: true });
 
   assert.equal(res.status, 400);
 });
@@ -53,7 +57,7 @@ test('signup rejects a password under 8 characters', async () => {
 test('signup rejects an invalid email address', async () => {
   const res = await api()
     .post('/api/auth/signup')
-    .send({ name: 'A', email: 'not-an-email', password: 'correcthorse123' });
+    .send({ name: 'A', email: 'not-an-email', password: 'correcthorse123', age_confirmed: true });
 
   assert.equal(res.status, 400);
 });
@@ -61,13 +65,16 @@ test('signup rejects an invalid email address', async () => {
 test('login succeeds with correct credentials', async () => {
   const email = uniqueEmail('login');
   const password = 'correcthorse123';
-  const signup = await api().post('/api/auth/signup').send({ name: 'Login Test', email, password });
+  const signup = await api()
+    .post('/api/auth/signup')
+    .send({ name: 'Login Test', email, password, age_confirmed: true });
   createdUserIds.push(signup.body.user.id);
 
   const res = await api().post('/api/auth/login').send({ email, password });
 
   assert.equal(res.status, 200);
-  assert.ok(res.body.token);
+  assert.equal(res.body.token, undefined, 'a session token must never be in a response body');
+  assert.ok(res.body.csrf_token);
   assert.equal(res.body.user.email, email);
 });
 
@@ -75,7 +82,7 @@ test('login rejects an incorrect password', async () => {
   const email = uniqueEmail('wrongpw');
   const signup = await api()
     .post('/api/auth/signup')
-    .send({ name: 'X', email, password: 'correcthorse123' });
+    .send({ name: 'X', email, password: 'correcthorse123', age_confirmed: true });
   createdUserIds.push(signup.body.user.id);
 
   const res = await api().post('/api/auth/login').send({ email, password: 'wrongpassword' });
@@ -96,9 +103,19 @@ test('a protected route rejects a request with no token', async () => {
   assert.equal(res.status, 401);
 });
 
-test('a protected route rejects a garbage token', async () => {
+test('a protected route rejects a bearer token outright', async () => {
+  // There is no bearer path any more, and there must never be a fallback to
+  // one: it would sidestep revocation, expiry, rotation, account status and
+  // CSRF in a single header.
   const res = await api()
     .get('/api/giveaways/mine/hosted')
     .set('Authorization', 'Bearer not-a-real-token');
+  assert.equal(res.status, 401);
+});
+
+test('a garbage session cookie is refused', async () => {
+  const res = await api()
+    .get('/api/giveaways/mine/hosted')
+    .set('Cookie', 'naseeb_session=not-a-real-session-token');
   assert.equal(res.status, 401);
 });

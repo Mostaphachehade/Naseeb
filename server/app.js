@@ -14,28 +14,90 @@ const adInquiryRoutes = require('./routes/adInquiries');
 const adsRoutes = require('./routes/ads');
 const adminRoutes = require('./routes/admin');
 const configRoutes = require('./routes/config');
+const webhookRoutes = require('./routes/webhooks');
+const claimRoutes = require('./routes/claims');
+const accountRoutes = require('./routes/account');
+const { csrfProtection } = require('./lib/csrf');
+const { securityHeaders } = require('./lib/securityHeaders');
+const healthRoutes = require('./routes/health');
+const { isRenderableMediaUrl } = require('./lib/mediaUrls');
+const { resolveTrustProxy } = require('./lib/proxyTrust');
 
 const app = express();
 
-// Render terminates TLS and proxies every request — without this, req.ip
-// collapses to the proxy's address for all traffic, and the rate limiters
-// end up sharing one bucket across every visitor instead of per-IP.
-app.set('trust proxy', 1);
+// How many proxies sit in front of this process, and therefore how much of
+// X-Forwarded-For may be believed.
+//
+// This used to be a hard-coded 1, which is correct on Render and wrong
+// everywhere else: run the same code with no proxy in front and a client can
+// write its own X-Forwarded-For, mint a fresh rate-limit identity per request,
+// and walk through every limiter on the site. The number is now configuration
+// with a fail-closed default of 0, validated at startup. See
+// server/lib/proxyTrust.js for the arithmetic and docs/ENTRY_INTEGRITY.md §7.
+const trustProxy = resolveTrustProxy();
+app.set('trust proxy', trustProxy.value);
 
-// CSP is left off: every page here uses inline <script>/<style> and loads
-// images from arbitrary host-provided URLs (prizes, ad banners), so a
-// default-restrictive CSP would break the app rather than harden it. The
-// other headers (HSTS, no-sniff, frame-deny, etc.) still apply.
-app.use(helmet({ contentSecurityPolicy: false }));
+// Every security header, on every response this process produces — including
+// API errors, the 404 page and the dynamically rendered giveaway page. Mounted
+// first for exactly that reason: a header only present on the happy path is
+// missing precisely when something has gone wrong.
+//
+// CSP used to be off, with a comment explaining that inline scripts and
+// arbitrary image origins made it unenforceable. Both of those are now fixed —
+// scripts are files, styles are classes, media origins are an allowlist — so
+// the policy is on, enforced, and has no switch to turn it off. See
+// server/lib/securityHeaders.js and docs/CSP.md.
+app.use(securityHeaders);
+
+// helmet still supplies the headers securityHeaders does not set. Its own CSP
+// and the headers we set above are disabled here so there is exactly one source
+// for each header and no chance of two contradicting each other.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    referrerPolicy: false,
+    frameguard: false,
+    strictTransportSecurity: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false,
+  })
+);
 app.use(compression());
 app.use(cors({ origin: process.env.APP_URL || 'http://localhost:3000' }));
+
+// Health probes, mounted early and outside /api on purpose.
+//
+// Early, because a readiness check that queues behind body parsing, CORS
+// negotiation and CSRF is a check that reports "slow" as "unhealthy". Outside
+// /api, because they are not part of the API surface: no CSRF, no session, no
+// rate limit, and nothing they do can mutate anything. They still get the full
+// security-header stack above, which is why this sits after `securityHeaders`
+// rather than at the very top.
+app.use(healthRoutes.router);
+
+// Mounted BEFORE express.json(), and the ordering is load-bearing rather than
+// stylistic. Stripe signs the exact bytes it sent; express.json() would consume
+// the stream and hand the route a parsed object, and re-serialising that object
+// does not reproduce those bytes — so every signature check would fail. Scoped
+// to this one path so the rest of the API still gets normal JSON parsing.
+app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhookRoutes);
+
 app.use(express.json());
+
+// Runs in front of every remaining API router, and deliberately AFTER the
+// webhook mount above so Stripe's raw-body path never reaches it. Checks
+// Origin/Referer on every unsafe request, and requires a session-bound CSRF
+// token on every unsafe request that carries a session cookie — both before any
+// handler runs, so a refused request has written nothing.
+app.use('/api', csrfProtection);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/giveaways', giveawayRoutes);
 app.use('/api/host-applications', hostApplicationRoutes);
 app.use('/api/ad-inquiries', adInquiryRoutes);
 app.use('/api/ads', adsRoutes);
+app.use('/api/claims', claimRoutes);
+app.use('/api/account', accountRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/config', configRoutes);
 
@@ -75,6 +137,11 @@ app.get('/giveaway.html', async (req, res, next) => {
     const giveaway = result.rows[0];
     if (!giveaway) return next();
 
+    // Only a URL that would be accepted today goes into og:image or the
+    // structured data — this markup is consumed by crawlers and chat apps, so a
+    // hostile URL here is a hostile URL republished under our name.
+    const shareableImage = isRenderableMediaUrl(giveaway.image_url) ? giveaway.image_url : null;
+
     const title = `${giveaway.title} — Naseeb`;
     const description = (giveaway.prize_description || giveaway.description || '')
       .slice(0, 200)
@@ -96,8 +163,8 @@ app.get('/giveaway.html', async (req, res, next) => {
       `<meta property="og:description" content="${escapeHtmlAttr(description)}" />`,
       `<meta property="og:type" content="website" />`,
       `<meta property="og:url" content="${escapeHtmlAttr(url)}" />`,
-      giveaway.image_url ? `<meta property="og:image" content="${escapeHtmlAttr(giveaway.image_url)}" />` : '',
-      `<meta name="twitter:card" content="${giveaway.image_url ? 'summary_large_image' : 'summary'}" />`,
+      shareableImage ? `<meta property="og:image" content="${escapeHtmlAttr(shareableImage)}" />` : '',
+      `<meta name="twitter:card" content="${shareableImage ? 'summary_large_image' : 'summary'}" />`,
     ].filter(Boolean).join('\n');
 
     // Mapped to Event rather than Product: schema.org has no dedicated
@@ -125,7 +192,7 @@ app.get('/giveaway.html', async (req, res, next) => {
             : 'https://schema.org/SoldOut',
         url,
       },
-      ...(giveaway.image_url ? { image: giveaway.image_url } : {}),
+      ...(shareableImage ? { image: shareableImage } : {}),
     };
 
     // JSON.stringify has no notion of HTML context — a title containing
@@ -149,9 +216,10 @@ app.get('/giveaway.html', async (req, res, next) => {
 // Serve the frontend
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Safety net for anything that slips past a route's own try/catch (e.g. a
-// bug in middleware itself) — most real errors are already covered by
-// captureConsoleIntegration in index.js.
+// Safety net for anything that slips past a route's own try/catch — a bug in
+// middleware itself, say. Everything it captures still goes through the
+// `beforeSend` scrubber configured in server/lib/errorReporting.js; this handler
+// decides *whether* an event is created, never what is in it.
 if (process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
 }
@@ -163,3 +231,6 @@ app.use((req, res) => {
 });
 
 module.exports = app;
+// Exposed so the shutdown coordinator can flip readiness false before anything
+// is torn down, and so tests can drive it.
+module.exports.health = healthRoutes;

@@ -6,21 +6,32 @@
 // manually in-browser against Stripe's actual test mode.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 
 before(async () => {
   await ensureInit();
+  // These assert the enabled path's input validation, so the kill switch has to
+  // be on for them to reach it — with ADS_CHECKOUT_ENABLED absent (the default
+  // since Phase 1.1) every request short-circuits to 503 before validation
+  // runs. The disabled path has its own coverage in ads-checkout-flag.test.js.
+  process.env.ADS_CHECKOUT_ENABLED = 'true';
 });
 
 after(async () => {
-  await pool.end();
+  await closePool();
 });
 
 test('availability returns a next-available date and the current price', async () => {
   const res = await api().get('/api/ads/availability');
   assert.equal(res.status, 200);
   assert.match(res.body.nextAvailableDate, /^\d{4}-\d{2}-\d{2}$/);
-  assert.equal(typeof res.body.pricePerWeekAed, 'number');
+  // Since Phase 1.4 the price is an unambiguous integer in fils plus a
+  // preformatted display string, rather than a bare AED number the page had to
+  // interpret and multiply for itself.
+  assert.equal(typeof res.body.pricePerWeekFils, 'number');
+  assert.equal(Number.isInteger(res.body.pricePerWeekFils), true);
+  assert.equal(res.body.currency, 'AED');
+  assert.equal(typeof res.body.quoteVersion, 'string');
   assert.equal(typeof res.body.maxWeeks, 'number');
 });
 
@@ -83,8 +94,17 @@ test('checkout/confirm requires a session_id', async () => {
 });
 
 test('a bad-input checkout attempt never leaves a pending ad row behind', async () => {
-  const before = await pool.query('SELECT COUNT(*)::int AS c FROM ads');
-  await api().post('/api/ads/checkout').send({ business_name: '', contact_email: 'x', weeks: 1 });
-  const after = await pool.query('SELECT COUNT(*)::int AS c FROM ads');
-  assert.equal(after.rows[0].c, before.rows[0].c);
+  // Keyed on a marker unique to this run rather than a global COUNT(*): test
+  // files run in parallel against one database, so a total row count also
+  // moves when another file inserts, which made this assertion flaky. Checking
+  // that this specific booking is absent is both stabler and a stronger claim.
+  const marker = `Bad Input Co ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const res = await api()
+    .post('/api/ads/checkout')
+    .send({ business_name: marker, contact_email: 'not-an-email', weeks: 1 });
+  assert.equal(res.status, 400);
+
+  const rows = await pool.query('SELECT COUNT(*)::int AS c FROM ads WHERE business_name = $1', [marker]);
+  assert.equal(rows.rows[0].c, 0);
 });

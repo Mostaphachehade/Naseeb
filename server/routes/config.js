@@ -1,5 +1,9 @@
 const express = require('express');
 const { getSetting } = require('../lib/settings');
+const { areClaimsEnabled } = require('../lib/featureFlags');
+const { currentPolicies } = require('../lib/policies');
+const appConfig = require('../lib/config');
+const emailDelivery = require('../lib/emailDelivery');
 
 const router = express.Router();
 
@@ -7,11 +11,9 @@ const router = express.Router();
 // cloud name and an unsigned preset name, never an API secret.
 router.get('/', async (req, res) => {
   try {
-    const [maintenanceMode, maintenanceMessage, standardPrice, partnerPrice] = await Promise.all([
+    const [maintenanceMode, maintenanceMessage] = await Promise.all([
       getSetting('maintenance_mode'),
       getSetting('maintenance_message'),
-      getSetting('hosting_plan_standard_price_aed'),
-      getSetting('hosting_plan_partner_price_aed'),
     ]);
     res.json({
       cloudinary_cloud_name: process.env.CLOUDINARY_CLOUD_NAME || null,
@@ -19,8 +21,43 @@ router.get('/', async (req, res) => {
       ga_measurement_id: process.env.GA_MEASUREMENT_ID || null,
       maintenance_mode: maintenanceMode === 'true',
       maintenance_message: maintenanceMessage,
-      hosting_plan_standard_price_aed: Number(standardPrice),
-      hosting_plan_partner_price_aed: Number(partnerPrice),
+      // No hosting prices are published here, because hosting has no paid tier
+      // to price. It is a closed beta and it is free while it lasts.
+      hosting_is_paid: false,
+      hosting_access_model: 'private_beta_application',
+      // So the host and winner UI can hide claim controls entirely rather than
+      // rendering buttons that answer 503.
+      claims_enabled: areClaimsEnabled(),
+      // So the policy pages can show which version a reader is looking at
+      // without that version being hard-coded into the markup twice.
+      policies: currentPolicies(),
+
+      // What this deployment IS, so every page can say so.
+      //
+      // The COARSE state only — `private_beta`, `staging`, `development`,
+      // `public_launch`. Deliberately not the launch blockers: those name the
+      // policy work that is outstanding and the provider configuration that is
+      // missing, which is an internal readiness detail and not something an
+      // unauthenticated page should enumerate.
+      deployment_state: appConfig.deploymentState(),
+      is_public_launch: appConfig.isPublicLaunch(),
+      // Present on any non-launch deployment. The wording is the truthful
+      // disclosure; it carries no blocker detail and no configuration.
+      deployment_disclosure: appConfig.stateDisclosure()
+        ? appConfig.stateDisclosure().disclosure
+        : null,
+
+      // So the UI can say email is temporarily unavailable rather than letting
+      // somebody fill in a signup form that will 503. A boolean and nothing
+      // else — no provider name, no reason detail, no configuration.
+      email_delivery_available: emailDelivery.canDeliver(),
+
+      // Whether the platform is accepting real operational activity at all, and
+      // the truthful sentence to show when it is not. A boolean and a fixed
+      // sentence — never the launch blockers, which name outstanding legal work
+      // and missing provider configuration.
+      accepting_operations: !appConfig.isPreLaunch(),
+      pre_launch_notice: appConfig.isPreLaunch() ? appConfig.PRE_LAUNCH_COPY : null,
     });
   } catch (err) {
     console.error(err);

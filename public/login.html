@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -20,7 +21,7 @@
 </header>
 
 <main id="main">
-  <div class="wrap" style="max-width:560px;">
+  <div class="wrap u-29cd8c40">
     <div class="section-head"><div><h2>Sign in</h2><p>Welcome back.</p></div></div>
     <form class="card narrow" id="login-form">
       <label for="email">Email</label>
@@ -28,42 +29,20 @@
 
       <label for="password">Password</label>
       <input id="password" type="password" required />
-      <p class="hint"><a href="/forgot-password.html" style="font-weight:600; color:var(--ink);">Forgot your password?</a></p>
+      <p class="hint"><a href="/forgot-password.html" class="u-b1c3aa06">Forgot your password?</a></p>
 
       <button class="btn primary" type="submit">Sign in</button>
       <p class="form-error" id="error"></p>
     </form>
-    <p style="text-align:center; margin-top:18px; color:var(--text-soft);">New here? <a id="signup-link" href="/signup.html" style="font-weight:600;">Join free</a></p>
+    <p class="u-11d6131e">New here? <a id="signup-link" href="/signup.html" class="u-0b87e9e0">Join free</a></p>
   </div>
 </main>
 
 <div id="site-footer"></div>
 
+<script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/app.js"></script>
-<script>
-  const redirectTo = safeRedirect(new URLSearchParams(window.location.search).get('redirect')) || '/index.html';
-  document.getElementById('signup-link').href = `/signup.html?redirect=${encodeURIComponent(redirectTo)}`;
-
-  document.getElementById('login-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const errorEl = document.getElementById('error');
-    errorEl.classList.remove('show');
-    try {
-      const { token, user } = await api('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({
-          email: document.getElementById('email').value,
-          password: document.getElementById('password').value,
-        }),
-      });
-      setSession(token, user);
-      window.location.href = redirectTo;
-    } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.classList.add('show');
-    }
-  });
-</script>
+<script src="/js/pages/login.js"></script>
 </body>
 </html>

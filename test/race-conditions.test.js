@@ -8,7 +8,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
-const { api, pool, ensureInit } = require('../testHelpers');
+const { api, pool, ensureInit, signIn, anon, nextTestIp, seedGiveaway, closePool } = require('../testHelpers');
 
 const createdUserIds = [];
 const createdGiveawayIds = [];
@@ -19,13 +19,24 @@ before(async () => {
 
 after(async () => {
   if (createdGiveawayIds.length) {
+    // Drawing a winner now also creates a prize claim, which references the
+    // winning entry — so claims come out before the entries they point at.
+    await pool.query(
+      'DELETE FROM claim_notifications WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))',
+      [createdGiveawayIds]
+    );
+    await pool.query(
+      'DELETE FROM prize_claim_events WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))',
+      [createdGiveawayIds]
+    );
+    await pool.query('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM entries WHERE giveaway_id = ANY($1)', [createdGiveawayIds]);
     await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [createdGiveawayIds]);
   }
   if (createdUserIds.length) {
     await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
   }
-  await pool.end();
+  await closePool();
 });
 
 // Inserted directly rather than via POST /api/auth/signup so tests don't
@@ -35,24 +46,28 @@ async function createVerifiedUser(tag) {
   const email = `test-race-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   const password = 'correcthorse123';
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, email_verified) VALUES ($1, $2, $3, $4, TRUE)`,
+    // Approved to host: these tests exercise concurrency, not the host-access gate.
+    `INSERT INTO users (id, name, email, password_hash, email_verified, host_status, age_attestation_status, age_attestation_version)
+     VALUES ($1, $2, $3, $4, TRUE, 'approved', 'confirmed', '2026-08-eligibility-18')`,
     [id, `Race Test ${tag}`, email, bcrypt.hashSync(password, 4)]
   );
   createdUserIds.push(id);
 
-  const login = await api().post('/api/auth/login').send({ email, password });
-  return { id, token: login.body.token };
+  // A cookie jar, not a token: authentication is an HttpOnly cookie the page
+  // cannot read, so a test cannot hold one either.
+  const session = await signIn(email, password, { ip: nextTestIp() });
+  return { ...session, id, email };
 }
 
 // Inserted directly (rather than via POST /api/giveaways) so the deadline
 // can be set in the past, which the create route deliberately rejects.
-async function createGiveaway(hostId, deadlineIso) {
-  const id = uuid();
-  await pool.query(
-    `INSERT INTO giveaways (id, host_id, title, description, prize_description, funded_by, entry_deadline)
-     VALUES ($1, $2, 'Race condition test giveaway', 'desc', 'prize', 'test budget', $3)`,
-    [id, hostId, deadlineIso]
-  );
+async function createGiveaway(hostId, deadlineIso, options = {}) {
+  const id = await seedGiveaway({
+    hostId,
+    title: 'Race condition test giveaway',
+    closesAt: new Date(deadlineIso),
+    ...options,
+  });
   createdGiveawayIds.push(id);
   return id;
 }
@@ -67,8 +82,8 @@ test('two simultaneous entries get distinct ticket numbers, not a collision', as
   ]);
 
   const [resA, resB] = await Promise.all([
-    api().post(`/api/giveaways/${giveawayId}/enter`).set('Authorization', `Bearer ${entrantA.token}`).send(),
-    api().post(`/api/giveaways/${giveawayId}/enter`).set('Authorization', `Bearer ${entrantB.token}`).send(),
+    entrantA.post(`/api/giveaways/${giveawayId}/enter`).send(),
+    entrantB.post(`/api/giveaways/${giveawayId}/enter`).send(),
   ]);
 
   assert.equal(resA.status, 201);
@@ -86,8 +101,8 @@ test('the same person entering twice at once only gets counted once', async () =
   const entrant = await createVerifiedUser('dupe-entrant');
 
   const [resA, resB] = await Promise.all([
-    api().post(`/api/giveaways/${giveawayId}/enter`).set('Authorization', `Bearer ${entrant.token}`).send(),
-    api().post(`/api/giveaways/${giveawayId}/enter`).set('Authorization', `Bearer ${entrant.token}`).send(),
+    entrant.post(`/api/giveaways/${giveawayId}/enter`).send(),
+    entrant.post(`/api/giveaways/${giveawayId}/enter`).send(),
   ]);
 
   const statuses = [resA.status, resB.status].sort();
@@ -99,7 +114,11 @@ test('the same person entering twice at once only gets counted once', async () =
 
 test('two simultaneous draws only let one succeed', async () => {
   const host = await createVerifiedUser('host-draw');
-  const giveawayId = await createGiveaway(host.id, new Date(Date.now() - 60 * 1000).toISOString());
+  // Closed, because its deadline has passed. A campaign closes itself now, and
+  // the draw route no longer draws an open one.
+  const giveawayId = await createGiveaway(host.id, new Date(Date.now() - 60 * 1000).toISOString(), {
+    status: 'closed_pending_draw',
+  });
 
   const entrant = await createVerifiedUser('draw-entrant');
   await pool.query(
@@ -108,12 +127,17 @@ test('two simultaneous draws only let one succeed', async () => {
   );
 
   const [resA, resB] = await Promise.all([
-    api().post(`/api/giveaways/${giveawayId}/draw`).set('Authorization', `Bearer ${host.token}`).send(),
-    api().post(`/api/giveaways/${giveawayId}/draw`).set('Authorization', `Bearer ${host.token}`).send(),
+    host.post(`/api/giveaways/${giveawayId}/draw`).send(),
+    host.post(`/api/giveaways/${giveawayId}/draw`).send(),
   ]);
 
+  // One draw wins; the other finds the campaign already resolved. 409 rather
+  // than 400: it is a conflict with a state that has already been reached, and
+  // it carries a code the caller can act on.
   const statuses = [resA.status, resB.status].sort();
-  assert.deepEqual(statuses, [200, 400]);
+  assert.deepEqual(statuses, [200, 409]);
+  const loser = [resA, resB].find((r) => r.status === 409);
+  assert.equal(loser.body.code, 'ALREADY_RESOLVED');
 
   const check = await pool.query('SELECT status, winner_entry_id FROM giveaways WHERE id = $1', [giveawayId]);
   assert.equal(check.rows[0].status, 'drawn');
@@ -131,9 +155,7 @@ test('only the host can draw a winner', async () => {
     [uuid(), giveawayId, entrant.id]
   );
 
-  const res = await api()
-    .post(`/api/giveaways/${giveawayId}/draw`)
-    .set('Authorization', `Bearer ${stranger.token}`)
+  const res = await stranger.post(`/api/giveaways/${giveawayId}/draw`)
     .send();
 
   assert.equal(res.status, 403);
