@@ -20,6 +20,7 @@
 // Everything in this file is read-only. It creates nothing, alters nothing and
 // needs no privilege beyond SELECT on the catalogue.
 const crypto = require('crypto');
+const { toLf } = require('./canonicalText');
 
 // The ledger's own table. `ensureLedger` creates and maintains it, not the
 // baseline, so it exists on a migrated database and not on one the baseline has
@@ -230,7 +231,19 @@ function keyFor(kind, row) {
 }
 
 // The comparable content of one object — everything except its identity.
+//
+// Canonicalised, and deliberately at this one point: `compare` funnels BOTH
+// sides through here, so the live `pg_get_functiondef` value and the committed
+// reference are folded identically. A function body that a Windows checkout
+// stored with CRLF therefore compares equal to the LF snapshot of the same
+// body, while every substantive difference still shows: this folds line
+// endings and nothing else, so a changed statement, a renamed object or an
+// edited body all still produce different text and still fail.
 function definitionFor(kind, row) {
+  return toLf(rawDefinitionFor(kind, row));
+}
+
+function rawDefinitionFor(kind, row) {
   switch (kind) {
     case 'tables':
     case 'extensions':

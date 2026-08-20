@@ -44,6 +44,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const schemaVerify = require('./schemaVerify');
+const { toLf } = require('./canonicalText');
 
 // Bumped when the expected schema changes. Readiness compares this to what the
 // ledger says has actually been applied.
@@ -117,16 +118,26 @@ function checksum(text) {
   return crypto.createHash('sha256').update(String(text)).digest('hex');
 }
 
-function sqlFor(migration) {
+// Canonicalised on the way in, so the SAME text is both checksummed and
+// executed. A CRLF working-tree copy and an LF one are the same migration, and
+// the ledger must not be able to tell them apart — see server/lib/canonicalText.js.
+//
+// This also stops a CRLF `$function$ ... $function$` body being carried into
+// the database verbatim, which is what made schema verification report an
+// unchanged function as `altered`.
+function sqlFor(migration, dir = MIGRATIONS_DIR) {
   if (!migration.sqlFile) return null;
-  return fs.readFileSync(path.join(MIGRATIONS_DIR, migration.sqlFile), 'utf8');
+  return toLf(fs.readFileSync(path.join(dir, migration.sqlFile), 'utf8'));
 }
 
 // A migration's checksum is over its own frozen content. The baseline's is the
 // file, so editing the file is detected; a `run` migration's is its source.
+//
+// Both are canonicalised first: a `run` migration's source comes from a .js
+// file that is subject to exactly the same checkout conversion as the .sql one.
 function checksumFor(migration) {
   if (migration.sqlFile) return checksum(sqlFor(migration));
-  return checksum(migration.run.toString());
+  return checksum(toLf(migration.run.toString()));
 }
 
 // Every checksum, computed once. Useful for a report and for a test that adding
