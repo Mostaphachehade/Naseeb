@@ -243,6 +243,7 @@ async function main() {
   });
 
   const results = [];
+  const axeProof = [];
   let serious = 0;
   let moderateOrMinor = 0;
 
@@ -272,9 +273,22 @@ async function main() {
       for (const page of PAGES) {
         if (page.auth) await context.addCookies([sessions[page.auth].browserCookie]);
         const tab = await context.newPage();
-        const consoleErrors = [];
-        tab.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 400)); });
-        tab.on('pageerror', (e) => consoleErrors.push(String(e.message).slice(0, 200)));
+        // Every console event is attributed to the PHASE it happened in.
+        //
+        // "It is probably axe" is not evidence. Splitting load from axe.run
+        // settles it by construction: anything recorded while `phase` is 'load'
+        // happened before axe was asked to do anything, and is the page's. Only
+        // events recorded during 'axe' can be blamed on the instrumentation.
+        let phase = 'load';
+        const events = [];
+        const note = (kind, text) => events.push({ phase, kind, text: String(text).slice(0, 400) });
+
+        tab.on('console', (m) => { if (m.type() === 'error') note('console', m.text()); });
+        tab.on('pageerror', (e) => note('pageerror', e.message));
+        // Network failures are a separate category from console noise: a page
+        // whose data never arrives is broken in a way no markup check sees.
+        tab.on('requestfailed', (r) => note('requestfailed', `${r.method()} ${r.url()} — ${r.failure()?.errorText || 'failed'}`));
+        tab.on('response', (r) => { if (r.status() >= 400) note('httperror', `${r.status()} ${r.request().method()} ${r.url()}`); });
 
         try {
           await tab.goto(`${BASE}/${page.file}${page.query ? page.query() : ''}`, { waitUntil: 'networkidle', timeout: 20000 });
@@ -282,32 +296,72 @@ async function main() {
           await tab.goto(`${BASE}/${page.file}${page.query ? page.query() : ''}`, { waitUntil: 'domcontentloaded', timeout: 20000 });
         }
 
+        phase = 'axe';
         const run = await tab.evaluate(async () => {
-          if (!window.axe) throw new Error("axe was not injected into this page");
-          // WCAG 2.2 AA and the best-practice rules. `axe.run` resolves with
-          // violations grouped by impact.
+          if (!window.axe) throw new Error('axe was not injected into this page');
           const r = await window.axe.run(document, {
             runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] },
           });
-          return r.violations.map((v) => ({
-            id: v.id, impact: v.impact, help: v.help,
-            nodes: v.nodes.length,
-            sample: v.nodes.slice(0, 2).map((n) => String(n.target).slice(0, 120)),
-          }));
+          const nodes = (list) => list.reduce((n, x) => n + (x.nodes ? x.nodes.length : 0), 0);
+          return {
+            // Proof of work. A zero-violation total says nothing on its own —
+            // an axe that failed to start also reports zero. These numbers say
+            // how many rules actually ran and how many DOM nodes they touched.
+            axeVersion: r.testEngine && r.testEngine.version,
+            rulesEvaluated: r.passes.length + r.violations.length + r.incomplete.length + r.inapplicable.length,
+            rulesPassed: r.passes.length,
+            rulesInapplicable: r.inapplicable.length,
+            rulesIncomplete: r.incomplete.length,
+            nodesPassed: nodes(r.passes),
+            nodesViolating: nodes(r.violations),
+            // "incomplete" is axe saying it could not decide. It is not a pass,
+            // and reporting it as one would be the quiet kind of dishonesty.
+            incomplete: r.incomplete.map((i) => ({ id: i.id, nodes: i.nodes.length, help: i.help })),
+            violations: r.violations.map((v) => ({
+              id: v.id, impact: v.impact, help: v.help,
+              nodes: v.nodes.length,
+              sample: v.nodes.slice(0, 2).map((n) => String(n.target).slice(0, 120)),
+            })),
+          };
         });
+        phase = 'after';
 
-        run.forEach((v) => {
+        run.violations.forEach((v) => {
           if (v.impact === 'serious' || v.impact === 'critical') serious += 1;
           else moderateOrMinor += 1;
         });
 
-        results.push({ page: page.file, viewport: viewport.name, auth: page.auth, violations: run, consoleErrors });
-        const mark = run.some((v) => ['serious', 'critical'].includes(v.impact)) ? 'FAIL' : (run.length ? 'warn' : 'ok  ');
+        // An axe that did not really run must not read as a clean page.
+        if (!run.axeVersion || run.rulesEvaluated < 20) {
+          throw new Error(
+            `axe did not evaluate a plausible number of rules on ${page.file} `
+            + `(version ${run.axeVersion}, ${run.rulesEvaluated} rules). Refusing to report this as a pass.`
+          );
+        }
+        axeProof.push({
+          page: page.file, viewport: viewport.name, version: run.axeVersion,
+          rulesEvaluated: run.rulesEvaluated, rulesPassed: run.rulesPassed,
+          rulesIncomplete: run.rulesIncomplete, nodesPassed: run.nodesPassed,
+          nodesViolating: run.nodesViolating,
+        });
+
+        const loadPhase = events.filter((e) => e.phase === 'load');
+        results.push({
+          page: page.file, viewport: viewport.name, auth: page.auth,
+          violations: run.violations, incomplete: run.incomplete, events,
+          axe: { version: run.axeVersion, rulesEvaluated: run.rulesEvaluated, nodesPassed: run.nodesPassed },
+        });
+        const mark = run.violations.some((v) => ['serious', 'critical'].includes(v.impact)) ? 'FAIL'
+          : (run.violations.length ? 'warn' : 'ok  ');
         process.stderr.write(
-          `  ${mark} ${viewport.name.padEnd(7)} ${page.file.padEnd(26)} ${run.length} violation(s)`
-          + `${consoleErrors.length ? ` · ${consoleErrors.length} console error(s)` : ''}\n`
+          `  ${mark} ${viewport.name.padEnd(7)} ${page.file.padEnd(26)}`
+          + ` ${String(run.rulesEvaluated).padStart(3)} rules / ${String(run.nodesPassed).padStart(4)} nodes ok`
+          + ` · ${run.violations.length} violation(s)`
+          + `${run.rulesIncomplete ? ` · ${run.rulesIncomplete} incomplete` : ''}`
+          + `${loadPhase.length ? ` · ${loadPhase.length} PAGE event(s)` : ''}\n`
         );
-        run.forEach((v) => process.stderr.write(`         ${String(v.impact).padEnd(8)} ${v.id} — ${v.help} (${v.nodes})\n`));
+        run.violations.forEach((v) => process.stderr.write(`         ${String(v.impact).padEnd(8)} ${v.id} — ${v.help} (${v.nodes})\n`));
+        loadPhase.forEach((e) => process.stderr.write(`         page ${e.kind}: ${e.text}\n`));
 
         await tab.close();
       }
@@ -344,24 +398,71 @@ async function main() {
       process.stderr.write('\n');
     });
 
-  // Distinct console errors, with counts. A total on its own is not evidence of
-  // anything — "94 console errors" could be one bug on every page or ninety-four
-  // different ones, and those need very different responses.
-  const consoleByText = new Map();
-  results.forEach((r) => r.consoleErrors.forEach((e) => {
-    const entry = consoleByText.get(e) || { text: e, count: 0, pages: new Set() };
-    entry.count += 1; entry.pages.add(r.page); consoleByText.set(e, entry);
-  }));
-  if (consoleByText.size) {
-    process.stderr.write('\nConsole errors, distinct\n\n');
-    [...consoleByText.values()]
-      .sort((a, b) => b.count - a.count)
-      .forEach((e) => process.stderr.write(
-        `  ${String(e.count).padStart(3)}x on ${String(e.pages.size).padStart(2)} page(s)  ${e.text}\n`
-      ));
+  // ---------------------------------------------------------------------
+  // Proof that axe actually ran
+  // ---------------------------------------------------------------------
+  //
+  // Zero violations is the same output an axe that never started would give.
+  // These are the numbers that distinguish the two.
+  const versions = [...new Set(axeProof.map((a) => a.version))];
+  const totalRules = axeProof.reduce((n, a) => n + a.rulesEvaluated, 0);
+  const totalNodes = axeProof.reduce((n, a) => n + a.nodesPassed + a.nodesViolating, 0);
+  const minRules = Math.min(...axeProof.map((a) => a.rulesEvaluated));
+  const totalIncomplete = results.reduce((n, r) => n + r.incomplete.length, 0);
+  process.stderr.write(
+    `\nAxe execution\n\n`
+    + `  version(s)          ${versions.join(', ')}\n`
+    + `  page-viewport pairs ${axeProof.length}\n`
+    + `  rules evaluated     ${totalRules} (fewest on any one page: ${minRules})\n`
+    + `  nodes examined      ${totalNodes}\n`
+    + `  incomplete results  ${totalIncomplete}   <- axe could not decide; NOT passes\n`
+  );
+
+  if (totalIncomplete) {
+    const incByRule = new Map();
+    results.forEach((r) => r.incomplete.forEach((i) => {
+      const e = incByRule.get(i.id) || { id: i.id, help: i.help, nodes: 0, pages: new Set() };
+      e.nodes += i.nodes; e.pages.add(r.page); incByRule.set(i.id, e);
+    }));
+    process.stderr.write('\nIncomplete (needs a human)\n\n');
+    [...incByRule.values()].sort((a, b) => b.nodes - a.nodes).forEach((e) => process.stderr.write(
+      `  ${e.id.padEnd(30)} ${String(e.nodes).padStart(4)} node(s) across ${e.pages.size} page(s) — ${e.help}\n`
+    ));
   }
 
-  const consoleTotal = results.reduce((n, r) => n + r.consoleErrors.length, 0);
+  // ---------------------------------------------------------------------
+  // Browser events, split by whose fault they are
+  // ---------------------------------------------------------------------
+  //
+  // `load` events happened before axe was asked to do anything, so they belong
+  // to the page. `axe` events happened during axe.run and belong to the
+  // instrumentation. The split is structural, not a judgement call, and nothing
+  // is filtered out — a suppressed error is an error nobody will ever fix.
+  const byPhaseKind = new Map();
+  results.forEach((r) => r.events.forEach((e) => {
+    const key = `${e.phase}|${e.kind}|${e.text}`;
+    const entry = byPhaseKind.get(key)
+      || { phase: e.phase, kind: e.kind, text: e.text, count: 0, pages: new Set() };
+    entry.count += 1; entry.pages.add(r.page); byPhaseKind.set(key, entry);
+  }));
+
+  const pageEvents = [...byPhaseKind.values()].filter((e) => e.phase === 'load');
+  const axeEvents = [...byPhaseKind.values()].filter((e) => e.phase !== 'load');
+
+  process.stderr.write('\nBrowser events attributable to THE PAGE (phase: load)\n\n');
+  if (!pageEvents.length) process.stderr.write('  none\n');
+  pageEvents.sort((a, b) => b.count - a.count).forEach((e) => process.stderr.write(
+    `  ${String(e.count).padStart(3)}x  ${e.kind.padEnd(14)} on ${e.pages.size} page(s)\n       ${e.text}\n`
+  ));
+
+  process.stderr.write('\nBrowser events attributable to AXE INSTRUMENTATION (phase: axe)\n\n');
+  if (!axeEvents.length) process.stderr.write('  none\n');
+  axeEvents.sort((a, b) => b.count - a.count).forEach((e) => process.stderr.write(
+    `  ${String(e.count).padStart(3)}x  ${e.kind.padEnd(14)} on ${e.pages.size} page(s)\n       ${e.text}\n`
+  ));
+
+  const pageEventTotal = results.reduce((n, r) => n + r.events.filter((e) => e.phase === 'load').length, 0);
+  const consoleTotal = results.reduce((n, r) => n + r.events.length, 0);
   process.stderr.write(
     `\n  ${results.length} page-viewport pairs, ${serious} serious/critical, ${moderateOrMinor} moderate/minor,`
     + ` ${consoleTotal} console error(s).\n`
@@ -374,7 +475,9 @@ async function main() {
     pairs: results.length,
     serious_or_critical: serious,
     moderate_or_minor: moderateOrMinor,
-    console_errors: consoleTotal,
+    page_events: pageEventTotal,
+    instrumentation_events: consoleTotal - pageEventTotal,
+    axe: { versions, rules_evaluated: totalRules, nodes_examined: totalNodes, incomplete: totalIncomplete },
     rules: [...byRule.values()].map((e) => ({ id: e.id, impact: e.impact, nodes: e.nodes, pages: [...e.pages] })),
   }, null, 2)}\n`);
 
