@@ -16,7 +16,8 @@
     "maintenance": "node scripts/maintenance.js",
     "migrate": "node scripts/migrate.js",
     "backup:verify": "node scripts/backup-verify.js",
-    "schema:snapshot": "node scripts/schema-snapshot.js"
+    "schema:snapshot": "node scripts/schema-snapshot.js",
+    "rehearse:giveaway": "node scripts/rehearsal-giveaway.js"
   },
   "dependencies": {
     "@sentry/node": "^10.68.0",
@@ -32,6 +33,8 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "axe-core": "4.10.2",
+    "playwright-core": "1.55.0",
     "supertest": "^7.2.2"
   },
   "engines": {

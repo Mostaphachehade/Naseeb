@@ -214,3 +214,73 @@ jobs:
       # which only the owner can confirm — see docs/OPERATIONS.md.
       - name: Backup and restore verification
         run: npm run backup:verify
+
+  # The joined-up giveaway rehearsal.
+  #
+  # Separate from `test` because it is a single narrative run rather than a
+  # suite, and its value is the ORDER: proposal, approval, publication, a
+  # hundred entries, closure, the draw, the queued notification, cancellation.
+  # A green unit suite can still describe a journey nobody has walked.
+  #
+  # It refuses to start against anything that is not an isolated test database —
+  # twice, through two independent guards. See scripts/rehearsal-giveaway.js.
+  rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: naseeb
+          POSTGRES_PASSWORD: naseeb
+          POSTGRES_DB: naseeb_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgresql://naseeb:naseeb@localhost:5432/naseeb_test
+      DATABASE_SSL: 'false'
+      APP_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Prepare the isolated schema
+        run: node scripts/reset-test-db.js
+
+      # Proves the guard refuses a production-shaped target before it refuses
+      # anything else. Inverted on purpose: this step FAILS if the rehearsal is
+      # willing to run against a database called neondb on a Neon host.
+      - name: Guard self-test — the rehearsal must refuse production
+        run: |
+          if TEST_DATABASE_URL='postgresql://u:p@ep-fake.us-east-1.aws.neon.tech/neondb' \
+             ALLOW_REMOTE_TEST_DB=yes npm run rehearse:giveaway; then
+            echo "::error::The rehearsal accepted a production-shaped database. The guard is broken."
+            exit 1
+          fi
+          echo "Guard behaved correctly: the production-shaped target was refused."
+
+      - name: Giveaway rehearsal
+        run: npm run rehearse:giveaway
+
+      - name: Upload rehearsal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: giveaway-rehearsal
+          path: .rehearsal/
+          retention-days: 7
+          if-no-files-found: ignore
