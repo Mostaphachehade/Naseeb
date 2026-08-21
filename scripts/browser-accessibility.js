@@ -104,46 +104,59 @@ const made = { users: [], giveaways: [] };
 const seeded = { giveawayId: null };
 
 // A published campaign, so giveaway.html can be swept in the state a visitor
-// actually sees rather than in its "no such giveaway" error state. Written
-// directly rather than driven through the API: this harness measures rendered
-// pages, and the lifecycle route is the rehearsal's job, not this one's.
-async function seedGiveaway(hostId) {
-  const id = crypto.randomUUID();
-  await pool.query(
-    // The evidence columns are not optional decoration: giveaways_prize_governed
-    // refuses any published campaign at governance version 1 without a category
-    // from the allowlist, a named sponsor and supplier, a positive retail value,
-    // a stated custody, AND prize_evidence_verified = TRUE. The first version of
-    // this seed omitted them and the constraint rejected the row, which is the
-    // governance rule doing exactly what it exists to do — a campaign cannot be
-    // published without a recorded, verified prize commitment, not even by a
-    // test harness reaching past the approval route.
-    `INSERT INTO giveaways
-       (id, host_id, title, description, prize_description, funded_by,
-        entry_deadline, max_entries_per_person, status, prize_category,
-        sponsor_name, prize_supplied_by, prize_retail_value_aed, naseeb_custody,
-        fulfilment_method, entry_target, published_at, closes_at,
-        prize_evidence_kind, prize_evidence_reference, prize_evidence_verified,
-        prize_evidence_verified_at, prize_evidence_verified_by)
-     VALUES ($1, $2, $3, $4, $5, $6,
-             to_char((NOW() + INTERVAL '30 days') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-             1, 'active', 'luxury_stay_or_holiday', $7, $7, 4000, 'provider_fulfils',
-             $8, 100, NOW(), NOW() + INTERVAL '30 days',
-             'booking_reference_held', $9, TRUE, NOW(), $2)`,
-    [
-      id, hostId,
-      'Accessibility sweep campaign (fabricated)',
-      'A fabricated campaign that exists only so the giveaway page can be measured in its real state.',
-      'Two nights, fabricated partner hotel.',
-      'Accessibility Sweep Partner (fabricated)',
-      'Accessibility Sweep Partner (fabricated)',
-      'Booking arranged by Naseeb with the provider.',
-      `A11Y-SWEEP-REF-${crypto.randomBytes(3).toString('hex')}`,
-    ]
-  );
+// actually sees rather than in its "no such giveaway" error state.
+//
+// Published through the API — submit, then approve — rather than by writing the
+// row. The first version of this wrote it directly and was refused five times in
+// a row: outcome coherence, prize governance, and finally
+// giveaways_publication_approved, which requires approved_at and approved_by.
+//
+// That was the schema making a point worth taking. Publication is reachable ONLY
+// through approval, by construction, and a seed that satisfies each constraint
+// individually is imitating an approval rather than performing one — it would
+// drift the moment a sixth rule appeared, and it would let this harness render a
+// campaign the product itself would never publish. Going through the route costs
+// two extra calls and cannot lie.
+async function seedGiveawayViaApi(memberSession, adminSession) {
+  const call = (session, method, url) => request(app)[method](url)
+    .set('Cookie', session.cookie)
+    .set('X-CSRF-Token', session.csrf)
+    .set('X-Forwarded-For', '203.0.113.20');
+
+  const attested = await call(memberSession, 'post', '/api/account/eligibility').send({ confirmed: true });
+  if (attested.status !== 200) throw new Error(`attestation refused: ${attested.status}`);
+
+  const submitted = await call(memberSession, 'post', '/api/giveaways').send({
+    title: 'Accessibility sweep campaign (fabricated)',
+    description: 'A fabricated campaign that exists only so the giveaway page can be measured in its real state.',
+    prize_description: 'Two nights, fabricated partner hotel.',
+    prize_category: 'luxury_stay_or_holiday',
+    sponsor_name: 'Accessibility Sweep Partner (fabricated)',
+    prize_supplied_by: 'Accessibility Sweep Partner (fabricated)',
+    prize_retail_value_aed: 4000,
+    naseeb_custody: 'provider_fulfils',
+    fulfilment_method: 'Booking arranged by Naseeb with the provider.',
+    funded_by: 'Accessibility Sweep Partner (fabricated)',
+    max_entries_per_person: 1,
+  });
+  if (![200, 201].includes(submitted.status)) {
+    throw new Error(`submission refused: ${submitted.status} ${JSON.stringify(submitted.body)}`);
+  }
+  const id = submitted.body.id || (submitted.body.giveaway && submitted.body.giveaway.id);
+  if (!id) throw new Error('no giveaway id returned');
   made.giveaways.push(id);
+
+  const approved = await call(adminSession, 'post', `/api/admin/giveaways/${id}/approve`).send({
+    evidence_kind: 'booking_reference_held',
+    evidence_reference: `A11Y-SWEEP-REF-${crypto.randomBytes(3).toString('hex')}`,
+    review_notes: 'Accessibility sweep approval — fabricated prize, fabricated partner.',
+  });
+  if (![200, 201, 204].includes(approved.status)) {
+    throw new Error(`approval refused: ${approved.status} ${JSON.stringify(approved.body)}`);
+  }
   return id;
 }
+
 
 async function makeUser({ name, admin }) {
   const id = crypto.randomUUID();
@@ -158,14 +171,27 @@ async function makeUser({ name, admin }) {
   return { id, email };
 }
 
-async function sessionCookieFor(email) {
+// Returns the session in both shapes it is needed in: a cookie header for
+// supertest calls, the CSRF token those calls must carry, and a Playwright
+// cookie for the browser context.
+async function sessionFor(email) {
   const agent = request.agent(app);
   const res = await agent.post('/api/auth/login').send({ email, password: PASSWORD });
   if (res.status !== 200) throw new Error(`login failed: ${res.status}`);
-  const raw = res.headers['set-cookie'].map((c) => c.split(';')[0]);
-  const found = raw.map((c) => c.split('=')).find(([k]) => k === SESSION_COOKIE);
+
+  const pairs = res.headers['set-cookie'].map((c) => c.split(';')[0]);
+  const found = pairs.map((c) => c.split('=')).find(([k]) => k === SESSION_COOKIE);
   if (!found) throw new Error('no session cookie issued');
-  return { name: SESSION_COOKIE, value: found.slice(1).join('='), domain: '127.0.0.1', path: '/' };
+  const csrf = res.body && res.body.csrf_token;
+  if (!csrf) throw new Error('login returned no CSRF token');
+
+  return {
+    cookie: pairs.join('; '),
+    csrf,
+    browserCookie: {
+      name: SESSION_COOKIE, value: found.slice(1).join('='), domain: '127.0.0.1', path: '/',
+    },
+  };
 }
 
 async function cleanup() {
@@ -175,9 +201,21 @@ async function cleanup() {
     const m = String(err.message || err);
     if (!/relation .* does not exist/i.test(m)) process.stderr.write(`  cleanup warning: ${m}\n`);
   } };
-  try { await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [made.giveaways]); } catch (err) {
-    process.stderr.write(`  cleanup warning: ${String(err.message || err)}
-`);
+  // The campaign is approved and published, so it carries lifecycle events.
+  // Those are append-only and cannot be removed — see the rehearsal harness for
+  // the same finding. Delete what can go, in dependency order.
+  if (made.giveaways.length) {
+    for (const sql of [
+      'DELETE FROM entries WHERE giveaway_id = ANY($1)',
+      'DELETE FROM giveaway_notifications WHERE giveaway_id = ANY($1)',
+      'DELETE FROM giveaways WHERE id = ANY($1)',
+    ]) {
+      try {
+        await pool.query(sql, [made.giveaways]);
+      } catch (err) {
+        process.stderr.write(`  cleanup warning: ${String(err.message || err)}\n`);
+      }
+    }
   }
   await safe('DELETE FROM sessions WHERE user_id = ANY($1)');
   await safe('DELETE FROM session_families WHERE user_id = ANY($1)');
@@ -192,11 +230,11 @@ async function main() {
 
   const member = await makeUser({ name: 'member', admin: false });
   const admin = await makeUser({ name: 'admin', admin: true });
-  const cookies = {
-    member: await sessionCookieFor(member.email),
-    admin: await sessionCookieFor(admin.email),
+  const sessions = {
+    member: await sessionFor(member.email),
+    admin: await sessionFor(admin.email),
   };
-  seeded.giveawayId = await seedGiveaway(member.id);
+  seeded.giveawayId = await seedGiveawayViaApi(sessions.member, sessions.admin);
 
   const server = app.listen(PORT);
   const browser = await chromium.launch({
@@ -232,7 +270,7 @@ async function main() {
       await context.addInitScript({ content: AXE });
 
       for (const page of PAGES) {
-        if (page.auth) await context.addCookies([cookies[page.auth]]);
+        if (page.auth) await context.addCookies([sessions[page.auth].browserCookie]);
         const tab = await context.newPage();
         const consoleErrors = [];
         tab.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 400)); });
