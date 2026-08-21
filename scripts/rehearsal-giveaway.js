@@ -236,6 +236,22 @@ async function main() {
   const asAdmin = api(adminSession);
   const asHost = api(hostSession);
 
+  // -- 0: the age attestation, which publishing is gated on -------------------
+  //
+  // Not a detour. A host cannot submit a campaign without an explicit, versioned
+  // 18-or-over attestation, and the rehearsal records one the same way the UI
+  // does rather than writing the column directly — the point is to walk the
+  // gates, not to step around them.
+  await step('0. the sponsor records the explicit age attestation', async () => {
+    const res = await asHost('post', '/api/account/eligibility').send({ confirmed: true });
+    assert(res.status === 200, `attestation refused: ${res.status} ${JSON.stringify(res.body)}`);
+    const row = (await pool.query(
+      'SELECT age_attestation_status, age_attestation_version FROM users WHERE id = $1', [host.id]
+    )).rows[0];
+    assert(row.age_attestation_status, 'no attestation status was recorded');
+    return `status ${row.age_attestation_status}, version ${row.age_attestation_version}`;
+  });
+
   // -- 1, 2: a proposal carrying its provider and custody ---------------------
   let giveawayId;
   await step('1-2. sponsor proposes a premium prize with provider and custody recorded', async () => {
@@ -317,6 +333,10 @@ async function main() {
     members.push(member);
     const asMember = api(await sessionFor(member.email));
 
+    // Entering is gated on the same explicit attestation as publishing.
+    const attested = await asMember('post', '/api/account/eligibility').send({ confirmed: true });
+    assert(attested.status === 200, `member attestation refused: ${attested.status}`);
+
     const first = await asMember('post', `/api/giveaways/${giveawayId}/enter`).send({});
     assert([200, 201].includes(first.status), `entry refused: ${first.status} ${JSON.stringify(first.body)}`);
 
@@ -356,7 +376,10 @@ async function main() {
 
     const hundredth = await makeUser({ name: 'Rehearsal Member 100' });
     members.push(hundredth);
-    const res = await api(await sessionFor(hundredth.email))('post', `/api/giveaways/${giveawayId}/enter`).send({});
+    const asHundredth = api(await sessionFor(hundredth.email));
+    const attested = await asHundredth('post', '/api/account/eligibility').send({ confirmed: true });
+    assert(attested.status === 200, `attestation refused for the 100th member: ${attested.status}`);
+    const res = await asHundredth('post', `/api/giveaways/${giveawayId}/enter`).send({});
     assert([200, 201].includes(res.status), `the 100th entry was refused: ${res.status} ${JSON.stringify(res.body)}`);
 
     const g = (await pool.query('SELECT status, winner_entry_id FROM giveaways WHERE id = $1', [giveawayId])).rows[0];
