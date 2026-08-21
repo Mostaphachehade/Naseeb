@@ -197,11 +197,23 @@ async function cleanup() {
   const g = made.giveaways;
   const u = made.users;
   // Children first. Any table that may not exist on an older schema is guarded.
-  const safe = async (sql, params) => { try { await pool.query(sql, params); } catch { /* table absent */ } };
+  // Tolerant of a table that does not exist on an older schema, but NOT silent:
+  // a swallowed error here is how a cleanup quietly stops cleaning. The first
+  // version of this hid a wrong column name for several runs.
+  const safe = async (sql, params) => {
+    try {
+      await pool.query(sql, params);
+    } catch (err) {
+      const message = String(err.message || err);
+      if (/does not exist/i.test(message) && /relation/i.test(message)) return; // absent table
+      process.stderr.write(`  cleanup warning: ${message}\n`);
+    }
+  };
   await safe('DELETE FROM prize_claim_events WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))', [g]);
   await safe('DELETE FROM claim_notifications WHERE giveaway_id = ANY($1)', [g]);
   await safe('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [g]);
-  await safe('DELETE FROM giveaway_notification_events WHERE giveaway_id = ANY($1)', [g]);
+  await safe('DELETE FROM giveaway_notification_events WHERE notification_id IN (SELECT id FROM giveaway_notifications WHERE giveaway_id = ANY($1))', [g]);
+  await safe('DELETE FROM giveaway_notifications WHERE giveaway_id = ANY($1)', [g]);
   await safe('DELETE FROM giveaway_lifecycle_events WHERE giveaway_id = ANY($1)', [g]);
   await safe('DELETE FROM entry_integrity_case_events WHERE case_id IN (SELECT id FROM entry_integrity_cases WHERE giveaway_id = ANY($1))', [g]);
   await safe('DELETE FROM entry_integrity_cases WHERE giveaway_id = ANY($1)', [g]);
@@ -606,12 +618,17 @@ async function main() {
     });
     assert([200, 201, 204].includes(res.status), `cancellation refused: ${res.status} ${JSON.stringify(res.body)}`);
 
+    // giveaway_notifications is the durable outbox, one row per entrant.
+    // giveaway_notification_events is its append-only transition history, keyed
+    // by notification_id — not by giveaway.
     const queued = (await pool.query(
-      'SELECT COUNT(*)::int AS n FROM giveaway_notification_events WHERE giveaway_id = $1', [target]
-    )).rows[0].n;
-    assert(queued > 0, 'cancellation queued no entrant notification');
+      'SELECT COUNT(*)::int AS n, COUNT(sent_at)::int AS sent FROM giveaway_notifications WHERE giveaway_id = $1',
+      [target]
+    )).rows[0];
+    assert(queued.n > 0, 'cancellation queued no entrant notification');
+    assert(queued.sent === 0, 'an entrant notification was marked sent during a rehearsal');
 
-    walked(18, `${queued} entrant notification(s) queued durably, none delivered`);
+    walked(18, `${queued.n} entrant notification(s) queued durably, none sent`);
     cited(18, 'gl21-gl23 — exceptional cancellation needs an administrator and a reason, preserves everything, and notifies entrants');
     return `${queued} queued`;
   });
