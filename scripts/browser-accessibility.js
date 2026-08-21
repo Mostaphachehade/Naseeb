@@ -235,8 +235,10 @@ async function main() {
   // usually five rules repeated, and the rules are what get fixed.
   const byRule = new Map();
   results.forEach((r) => r.violations.forEach((v) => {
-    const e = byRule.get(v.id) || { id: v.id, impact: v.impact, help: v.help, pages: new Set(), nodes: 0 };
-    e.pages.add(r.page); e.nodes += v.nodes; byRule.set(v.id, e);
+    const e = byRule.get(v.id) || { id: v.id, impact: v.impact, help: v.help, pages: new Set(), nodes: 0, samples: [] };
+    e.pages.add(r.page); e.nodes += v.nodes;
+    (v.sample || []).forEach((s2) => { if (!e.samples.includes(s2)) e.samples.push(s2); });
+    byRule.set(v.id, e);
   }));
 
   process.stderr.write('\nBy rule\n\n');
@@ -245,6 +247,23 @@ async function main() {
     .forEach((e) => process.stderr.write(
       `  ${String(e.impact).padEnd(8)} ${e.id.padEnd(34)} ${String(e.nodes).padStart(4)} node(s) across ${e.pages.size} page(s)\n`
     ));
+
+  // Distinct console errors, with counts. A total on its own is not evidence of
+  // anything — "94 console errors" could be one bug on every page or ninety-four
+  // different ones, and those need very different responses.
+  const consoleByText = new Map();
+  results.forEach((r) => r.consoleErrors.forEach((e) => {
+    const entry = consoleByText.get(e) || { text: e, count: 0, pages: new Set() };
+    entry.count += 1; entry.pages.add(r.page); consoleByText.set(e, entry);
+  }));
+  if (consoleByText.size) {
+    process.stderr.write('\nConsole errors, distinct\n\n');
+    [...consoleByText.values()]
+      .sort((a, b) => b.count - a.count)
+      .forEach((e) => process.stderr.write(
+        `  ${String(e.count).padStart(3)}x on ${String(e.pages.size).padStart(2)} page(s)  ${e.text}\n`
+      ));
+  }
 
   const consoleTotal = results.reduce((n, r) => n + r.consoleErrors.length, 0);
   process.stderr.write(
