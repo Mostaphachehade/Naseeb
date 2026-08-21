@@ -512,6 +512,23 @@ input:focus, textarea:focus {
   outline-offset: 1px;
   border-color: var(--gold);
 }
+/* Placeholder text is text, and 1.4.3 applies to it.
+ *
+ * Left unstyled, this inherits the browser default — Chrome uses #757575, which
+ * against `--paper` measures 4.16:1 and fails the 4.5:1 needed at this size.
+ * Every placeholder on the site was below the line.
+ *
+ * axe does not evaluate ::placeholder, so nothing in the automated sweep would
+ * ever have reported this. It is a good illustration of why the green job in
+ * docs/ACCESSIBILITY.md is described as a floor: this was found by measuring
+ * the rendered page, not by the tool.
+ *
+ * `--text-soft` is 6.38:1 on paper and already the palette's recessive tone, so
+ * placeholders stay visibly secondary to typed input (`--text`) without being
+ * unreadable.
+ */
+input::placeholder, textarea::placeholder { color: var(--text-soft); opacity: 1; }
+
 textarea { resize: vertical; min-height: 90px; }
 .hint { color: var(--text-soft); font-size: 0.82rem; margin-top: 4px; }
 form .btn { margin-top: 24px; width: 100%; justify-content: center; }

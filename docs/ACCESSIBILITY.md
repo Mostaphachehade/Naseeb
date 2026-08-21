@@ -112,6 +112,36 @@ public launch, and neither has happened.** They are listed as owner actions in
 
 ---
 
+## Incomplete results, and what each one turned out to be
+
+axe returned **12 incomplete `color-contrast` results, 22 nodes across 6 pages**.
+"Incomplete" means axe could not decide. It is not a pass, and reporting it as
+one would be the quiet kind of dishonesty, so each was measured by hand against
+the live site.
+
+| axe's reason | Elements | Measured | Verdict |
+| --- | --- | --- | --- |
+| "partially obscured by another element" | `#inq_message`, `#request-message`, `#prize_restrictions`, `#description` | **14.62:1** | Passes. The elements sit below the fold, and `elementFromPoint` returns null off-viewport — axe reads that as occlusion. |
+| "due to a background gradient" | `.num` (homepage stat tiles) | **12.88:1** | Passes. A gradient in the ancestry defeats axe's background walk; the effective background is solid `rgb(220,238,231)`. |
+| "due to a pseudo element" | same family | — | Same cause as the gradient case: decorative `::before`/`::after` in the ancestry. |
+
+None was a real failure. They remain reported rather than suppressed, because
+the *reason* axe cannot decide can change when the markup does.
+
+### What the incomplete results led to, which axe never checked
+
+Measuring those by hand surfaced a genuine defect the tool cannot see:
+
+**Placeholder text was `#757575` on `--paper` — 4.16:1, against 4.5:1 required
+at 15.2px. Every placeholder on the site failed.** That is the browser default,
+inherited because nothing styled `::placeholder`, and **axe does not evaluate
+`::placeholder` at all**. Fixed by setting `--text-soft` (6.38:1), which keeps
+placeholders visibly secondary to typed input without being unreadable.
+
+This is the clearest illustration in this document of why the green job is a
+floor: a site-wide contrast failure on every form on every page, invisible to
+the automated sweep, found only by measuring the rendered page.
+
 ## Known non-defects
 
 The sweep reports 92 console errors, 46 of each of two kinds, on every page.
