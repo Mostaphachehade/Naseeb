@@ -110,16 +110,26 @@ const seeded = { giveawayId: null };
 async function seedGiveaway(hostId) {
   const id = crypto.randomUUID();
   await pool.query(
+    // The evidence columns are not optional decoration: giveaways_prize_governed
+    // refuses any published campaign at governance version 1 without a category
+    // from the allowlist, a named sponsor and supplier, a positive retail value,
+    // a stated custody, AND prize_evidence_verified = TRUE. The first version of
+    // this seed omitted them and the constraint rejected the row, which is the
+    // governance rule doing exactly what it exists to do — a campaign cannot be
+    // published without a recorded, verified prize commitment, not even by a
+    // test harness reaching past the approval route.
     `INSERT INTO giveaways
        (id, host_id, title, description, prize_description, funded_by,
         entry_deadline, max_entries_per_person, status, prize_category,
         sponsor_name, prize_supplied_by, prize_retail_value_aed, naseeb_custody,
         fulfilment_method, entry_target, published_at, closes_at,
-        entries_closed_at, entries_closed_reason)
+        prize_evidence_kind, prize_evidence_reference, prize_evidence_verified,
+        prize_evidence_verified_at, prize_evidence_verified_by)
      VALUES ($1, $2, $3, $4, $5, $6,
              to_char((NOW() + INTERVAL '30 days') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
              1, 'active', 'luxury_stay_or_holiday', $7, $7, 4000, 'provider_fulfils',
-             $8, 100, NOW(), NOW() + INTERVAL '30 days', NULL, NULL)`,
+             $8, 100, NOW(), NOW() + INTERVAL '30 days',
+             'booking_reference_held', $9, TRUE, NOW(), $2)`,
     [
       id, hostId,
       'Accessibility sweep campaign (fabricated)',
@@ -128,6 +138,7 @@ async function seedGiveaway(hostId) {
       'Accessibility Sweep Partner (fabricated)',
       'Accessibility Sweep Partner (fabricated)',
       'Booking arranged by Naseeb with the provider.',
+      `A11Y-SWEEP-REF-${crypto.randomBytes(3).toString('hex')}`,
     ]
   );
   made.giveaways.push(id);
