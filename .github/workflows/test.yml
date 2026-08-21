@@ -284,3 +284,63 @@ jobs:
           path: .rehearsal/
           retention-days: 7
           if-no-files-found: ignore
+
+  # Accessibility sweep: axe-core over all 23 pages, desktop and mobile.
+  #
+  # A green run here is a FLOOR, not a conformance claim — axe-core covers a
+  # minority of WCAG criteria, and the manual keyboard and screen-reader checks
+  # that cover the rest live in docs/ACCESSIBILITY.md along with what could not
+  # be verified.
+  accessibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: naseeb
+          POSTGRES_PASSWORD: naseeb
+          POSTGRES_DB: naseeb_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgresql://naseeb:naseeb@localhost:5432/naseeb_test
+      DATABASE_SSL: 'false'
+      APP_URL: http://localhost:3000
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.pw-browsers
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Same pinned Chromium the hostile-data job uses.
+      - name: Install pinned Chromium
+        run: npx --yes playwright@1.55.0 install --with-deps chromium
+
+      - name: Prepare the isolated schema
+        run: node scripts/reset-test-db.js
+
+      - name: Accessibility sweep
+        run: npm run test:accessibility
+
+      - name: Upload axe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accessibility-report
+          path: .accessibility/
+          retention-days: 7
+          if-no-files-found: ignore
