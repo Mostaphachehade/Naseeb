@@ -5,6 +5,10 @@
   --ink-deep: #072925;
   --gold: #C9A15A;
   --gold-bright: #E4C078;
+  /* The same gold, taken dark enough to be readable as small text on --paper.
+   * Not a replacement for --gold: as a border or an accent on the dark hero the
+   * brand gold is right, and only text needs this. */
+  --gold-deep: #7F5E28;
   --paper: #F7F3EA;
   --mint: #DCEEE7;
   --text: #17231F;
@@ -590,7 +594,17 @@ form .btn { margin-top: 24px; width: 100%; justify-content: center; }
   font-size: 0.74rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--gold);
+  /* `--gold` on `--paper` is 2.17:1, and at 11.8px this is small text, so it
+   * needs 4.5:1. This is the LAUNCHING SOON badge — the single clearest
+   * statement the homepage makes about the platform's state right now — and it
+   * was the hardest thing on the page to read.
+   *
+   * `--gold-deep` rather than a change to `--gold`: the brand gold is correct
+   * as a border, a rule and an accent on the dark hero, where contrast is not
+   * the question. Only gold used as small text on a light surface needs to be
+   * darker, so only that case changes. 5.4:1.
+   */
+  color: var(--gold-deep);
   font-weight: 600;
   margin-bottom: 10px;
 }
