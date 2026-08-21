@@ -382,8 +382,19 @@ async function main() {
     const res = await asHundredth('post', `/api/giveaways/${giveawayId}/enter`).send({});
     assert([200, 201].includes(res.status), `the 100th entry was refused: ${res.status} ${JSON.stringify(res.body)}`);
 
+    const closed = (await pool.query('SELECT status, winner_entry_id FROM giveaways WHERE id = $1', [giveawayId])).rows[0];
+    assert(closed.status !== lifecycle.STATUS.ACTIVE, `campaign still ${closed.status} after the 100th entry`);
+
+    // Closing and drawing are two things. The 100th entry closes the campaign;
+    // the draw is performed by the lifecycle worker, which is exactly why that
+    // worker needs a schedule in production — see docs/OPERATIONS.md §4. If the
+    // draw already happened synchronously this is a no-op.
+    if (!closed.winner_entry_id) {
+      await maintenance.runJobs(['giveaway_lifecycle'], {});
+    }
+
     const g = (await pool.query('SELECT status, winner_entry_id FROM giveaways WHERE id = $1', [giveawayId])).rows[0];
-    assert(g.status !== lifecycle.STATUS.ACTIVE, `campaign still ${g.status} after the 100th entry`);
+    assert(g.winner_entry_id, `no winner drawn; campaign is ${g.status}`);
 
     const winners = (await pool.query('SELECT COUNT(*)::int AS n FROM entries WHERE id = (SELECT winner_entry_id FROM giveaways WHERE id = $1)', [giveawayId])).rows[0].n;
     const claims = (await pool.query('SELECT COUNT(*)::int AS n FROM prize_claims WHERE giveaway_id = $1', [giveawayId])).rows[0].n;
