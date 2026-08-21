@@ -197,34 +197,51 @@ async function cleanup() {
   const g = made.giveaways;
   const u = made.users;
   // Children first. Any table that may not exist on an older schema is guarded.
-  // Tolerant of a table that does not exist on an older schema, but NOT silent:
-  // a swallowed error here is how a cleanup quietly stops cleaning. The first
-  // version of this hid a wrong column name for several runs.
+  // Tolerant of two things and NOT silent about anything else: a swallowed
+  // error here is how a cleanup quietly stops cleaning. The first version of
+  // this hid a wrong column name for several runs.
+  //
+  // The two tolerated cases:
+  //   * a table that does not exist on an older schema;
+  //   * an append-only table refusing DELETE. giveaway_lifecycle_events and
+  //     giveaway_notification_events are protected by triggers, so a rehearsal
+  //     CANNOT erase its own audit trail — which is the guarantee working, not
+  //     a defect. It is also why this harness requires a disposable database:
+  //     the rows it writes to those tables are indelible by design.
+  const indelible = [];
   const safe = async (sql, params) => {
     try {
       await pool.query(sql, params);
     } catch (err) {
       const message = String(err.message || err);
-      if (/does not exist/i.test(message) && /relation/i.test(message)) return; // absent table
+      if (/relation .* does not exist/i.test(message)) return;
+      if (/append-only/i.test(message)) { indelible.push(message.split(';')[0]); return; }
       process.stderr.write(`  cleanup warning: ${message}\n`);
     }
   };
+  // Children before parents, and the winner pointer cleared before the entry it
+  // points at can go.
   await safe('DELETE FROM prize_claim_events WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))', [g]);
-  await safe('DELETE FROM claim_notifications WHERE giveaway_id = ANY($1)', [g]);
+  await safe('DELETE FROM claim_notifications WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))', [g]);
+  await safe('DELETE FROM claim_rescue_queue WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))', [g]);
   await safe('DELETE FROM prize_claims WHERE giveaway_id = ANY($1)', [g]);
-  await safe('DELETE FROM giveaway_notification_events WHERE notification_id IN (SELECT id FROM giveaway_notifications WHERE giveaway_id = ANY($1))', [g]);
   await safe('DELETE FROM giveaway_notifications WHERE giveaway_id = ANY($1)', [g]);
-  await safe('DELETE FROM giveaway_lifecycle_events WHERE giveaway_id = ANY($1)', [g]);
   await safe('DELETE FROM entry_integrity_case_events WHERE case_id IN (SELECT id FROM entry_integrity_cases WHERE giveaway_id = ANY($1))', [g]);
   await safe('DELETE FROM entry_integrity_cases WHERE giveaway_id = ANY($1)', [g]);
   await safe('DELETE FROM entry_integrity_events WHERE giveaway_id = ANY($1)', [g]);
-  await safe('DELETE FROM entry_risk_signals WHERE user_id = ANY($1)', [u]);
+  await safe('DELETE FROM entry_risk_signals WHERE giveaway_id = ANY($1)', [g]);
+  await safe('UPDATE giveaways SET winner_entry_id = NULL WHERE id = ANY($1)', [g]);
   await safe('DELETE FROM entries WHERE giveaway_id = ANY($1)', [g]);
   await safe('DELETE FROM giveaways WHERE id = ANY($1)', [g]);
   await safe('DELETE FROM sessions WHERE user_id = ANY($1)', [u]);
   await safe('DELETE FROM session_families WHERE user_id = ANY($1)', [u]);
   await safe('DELETE FROM policy_acceptances WHERE user_id = ANY($1)', [u]);
   await safe('DELETE FROM users WHERE id = ANY($1)', [u]);
+
+  if (indelible.length) {
+    process.stderr.write(`  audit rows left in place by design (append-only): ${[...new Set(indelible)].join('; ')}
+`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -630,7 +647,7 @@ async function main() {
 
     walked(18, `${queued.n} entrant notification(s) queued durably, none sent`);
     cited(18, 'gl21-gl23 — exceptional cancellation needs an administrator and a reason, preserves everything, and notifies entrants');
-    return `${queued} queued`;
+    return `${queued.n} queued, ${queued.sent} sent`;
   });
 }
 
