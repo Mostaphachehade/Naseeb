@@ -49,15 +49,24 @@ Verified in code and by the automated suite. These are done.
 
 **Not yet complete in engineering** — tracked in this phase, not yet done:
 
-- [ ] WCAG 2.2 AA remediation. Audited: `aria-live` **0** occurrences sitewide,
-      `<h1>` on **5 of 23** pages, no dialog semantics, `verify-email-change.html`
-      has no skip link. Async form errors are never announced (WCAG 4.1.3).
+- [x] WCAG 2.2 AA — **automated portion only.** axe-core over 23 pages at two
+      viewports reports 0 serious/critical. Three contrast failures that were
+      live on production are fixed, including an effectively invisible submit
+      button on `advertise.html` (1.11:1), and five unlabelled controls now have
+      accessible names. **This is not conformance** — see `docs/ACCESSIBILITY.md`.
+- [ ] **Screen-reader pass — never done.** No NVDA, JAWS, VoiceOver or Orca run
+      exists. How any of this sounds is unknown.
+- [ ] **Manual keyboard walkthrough — never done.** No local runtime on the
+      development machine, so tab order, focus restoration after dialogs, and
+      keyboard traps are unverified rather than verified-and-passing.
+- [ ] Zoom and reflow at 200% and 400%, touch-target size, and focus appearance
+      (WCAG 2.4.11) not assessed.
 - [ ] Arabic parity. Key parity is 81/81, but only **31 `data-i18n` attributes on
       3 of 23 pages**. Twenty pages have no Arabic at all.
-- [ ] Automated accessibility coverage (axe-core) across all pages.
-- [ ] End-to-end browser rehearsal of the member, administrator, claim and
-      fulfilment journeys. Invariants are covered by the existing suite; the
-      joined-up browser journey is not.
+- [x] Automated accessibility coverage (axe-core) across all pages — CI job
+      `accessibility`, 46 page-viewport pairs.
+- [x] End-to-end giveaway rehearsal — CI job `rehearsal`, 21/21 requirements,
+      reporting separately what it walked and what existing suites prove.
 - [ ] SEO metadata prepared behind the deployment-state switch: canonical
       **0 of 23**, description **16 of 23**, JSON-LD on index only.
 
