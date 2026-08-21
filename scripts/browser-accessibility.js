@@ -316,7 +316,18 @@ async function main() {
             nodesViolating: nodes(r.violations),
             // "incomplete" is axe saying it could not decide. It is not a pass,
             // and reporting it as one would be the quiet kind of dishonesty.
-            incomplete: r.incomplete.map((i) => ({ id: i.id, nodes: i.nodes.length, help: i.help })),
+            incomplete: r.incomplete.map((i) => ({
+              id: i.id, nodes: i.nodes.length, help: i.help,
+              sample: i.nodes.slice(0, 3).map((n) => String(n.target).slice(0, 120)),
+              // axe explains WHY it could not decide. Without the reason these
+              // are unactionable, and an unactionable finding quietly becomes an
+              // ignored one.
+              reason: i.nodes.slice(0, 3).map((n) => String(
+                (n.any && n.any[0] && n.any[0].message)
+                || (n.all && n.all[0] && n.all[0].message)
+                || (n.none && n.none[0] && n.none[0].message) || ''
+              ).slice(0, 160)),
+            })),
             violations: r.violations.map((v) => ({
               id: v.id, impact: v.impact, help: v.help,
               nodes: v.nodes.length,
@@ -421,13 +432,22 @@ async function main() {
   if (totalIncomplete) {
     const incByRule = new Map();
     results.forEach((r) => r.incomplete.forEach((i) => {
-      const e = incByRule.get(i.id) || { id: i.id, help: i.help, nodes: 0, pages: new Set() };
-      e.nodes += i.nodes; e.pages.add(r.page); incByRule.set(i.id, e);
+      const e = incByRule.get(i.id)
+        || { id: i.id, help: i.help, nodes: 0, pages: new Set(), samples: new Set(), reasons: new Set() };
+      e.nodes += i.nodes; e.pages.add(r.page);
+      (i.sample || []).forEach((s) => e.samples.add(s));
+      (i.reason || []).filter(Boolean).forEach((s) => e.reasons.add(s));
+      incByRule.set(i.id, e);
     }));
     process.stderr.write('\nIncomplete (needs a human)\n\n');
-    [...incByRule.values()].sort((a, b) => b.nodes - a.nodes).forEach((e) => process.stderr.write(
-      `  ${e.id.padEnd(30)} ${String(e.nodes).padStart(4)} node(s) across ${e.pages.size} page(s) — ${e.help}\n`
-    ));
+    [...incByRule.values()].sort((a, b) => b.nodes - a.nodes).forEach((e) => {
+      process.stderr.write(
+        `  ${e.id.padEnd(30)} ${String(e.nodes).padStart(4)} node(s) across ${e.pages.size} page(s) — ${e.help}\n`
+      );
+      process.stderr.write(`      pages: ${[...e.pages].sort().join(', ')}\n`);
+      [...e.samples].slice(0, 5).forEach((s) => process.stderr.write(`      at: ${s}\n`));
+      [...e.reasons].slice(0, 3).forEach((s) => process.stderr.write(`      why: ${s}\n`));
+    });
   }
 
   // ---------------------------------------------------------------------
