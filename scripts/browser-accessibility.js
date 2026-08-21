@@ -74,7 +74,10 @@ const PAGES = [
   { file: 'create.html', auth: 'member' },
   { file: 'dashboard.html', auth: 'member' },
   { file: 'forgot-password.html', auth: null },
-  { file: 'giveaway.html', auth: null },
+  // Visited with a real published campaign. Without `?id=` this page fetches
+  // /api/giveaways/undefined, 404s, and renders its error state — so sweeping
+  // it bare was measuring the wrong page and calling the result coverage.
+  { file: 'giveaway.html', auth: null, query: () => `?id=${encodeURIComponent(seeded.giveawayId)}` },
   { file: 'host-apply.html', auth: 'member' },
   { file: 'index.html', auth: null },
   { file: 'login.html', auth: null },
@@ -97,7 +100,39 @@ const VIEWPORTS = [
   { name: 'mobile', width: 390, height: 844 },
 ];
 
-const made = { users: [] };
+const made = { users: [], giveaways: [] };
+const seeded = { giveawayId: null };
+
+// A published campaign, so giveaway.html can be swept in the state a visitor
+// actually sees rather than in its "no such giveaway" error state. Written
+// directly rather than driven through the API: this harness measures rendered
+// pages, and the lifecycle route is the rehearsal's job, not this one's.
+async function seedGiveaway(hostId) {
+  const id = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO giveaways
+       (id, host_id, title, description, prize_description, funded_by,
+        entry_deadline, max_entries_per_person, status, prize_category,
+        sponsor_name, prize_supplied_by, prize_retail_value_aed, naseeb_custody,
+        fulfilment_method, entry_target, published_at, closes_at,
+        entries_closed_at, entries_closed_reason)
+     VALUES ($1, $2, $3, $4, $5, $6,
+             to_char((NOW() + INTERVAL '30 days') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+             1, 'active', 'luxury_stay_or_holiday', $7, $7, 4000, 'provider_fulfils',
+             $8, 100, NOW(), NOW() + INTERVAL '30 days', NULL, NULL)`,
+    [
+      id, hostId,
+      'Accessibility sweep campaign (fabricated)',
+      'A fabricated campaign that exists only so the giveaway page can be measured in its real state.',
+      'Two nights, fabricated partner hotel.',
+      'Accessibility Sweep Partner (fabricated)',
+      'Accessibility Sweep Partner (fabricated)',
+      'Booking arranged by Naseeb with the provider.',
+    ]
+  );
+  made.giveaways.push(id);
+  return id;
+}
 
 async function makeUser({ name, admin }) {
   const id = crypto.randomUUID();
@@ -129,6 +164,10 @@ async function cleanup() {
     const m = String(err.message || err);
     if (!/relation .* does not exist/i.test(m)) process.stderr.write(`  cleanup warning: ${m}\n`);
   } };
+  try { await pool.query('DELETE FROM giveaways WHERE id = ANY($1)', [made.giveaways]); } catch (err) {
+    process.stderr.write(`  cleanup warning: ${String(err.message || err)}
+`);
+  }
   await safe('DELETE FROM sessions WHERE user_id = ANY($1)');
   await safe('DELETE FROM session_families WHERE user_id = ANY($1)');
   await safe('DELETE FROM policy_acceptances WHERE user_id = ANY($1)');
@@ -146,6 +185,7 @@ async function main() {
     member: await sessionCookieFor(member.email),
     admin: await sessionCookieFor(admin.email),
   };
+  seeded.giveawayId = await seedGiveaway(member.id);
 
   const server = app.listen(PORT);
   const browser = await chromium.launch({
@@ -188,9 +228,9 @@ async function main() {
         tab.on('pageerror', (e) => consoleErrors.push(String(e.message).slice(0, 200)));
 
         try {
-          await tab.goto(`${BASE}/${page.file}`, { waitUntil: 'networkidle', timeout: 20000 });
+          await tab.goto(`${BASE}/${page.file}${page.query ? page.query() : ''}`, { waitUntil: 'networkidle', timeout: 20000 });
         } catch {
-          await tab.goto(`${BASE}/${page.file}`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+          await tab.goto(`${BASE}/${page.file}${page.query ? page.query() : ''}`, { waitUntil: 'domcontentloaded', timeout: 20000 });
         }
 
         const run = await tab.evaluate(async () => {
