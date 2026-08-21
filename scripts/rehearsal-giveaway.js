@@ -463,15 +463,19 @@ async function main() {
       funded_by: 'Rehearsal Partner Restaurant (fabricated)',
       max_entries_per_person: 1,
     });
-    assert([200, 201].includes(second.status), `second submission refused: ${second.status}`);
+    assert([200, 201].includes(second.status), `second submission refused: ${second.status} ${JSON.stringify(second.body)}`);
     const secondId = second.body.id || (second.body.giveaway && second.body.giveaway.id);
     made.giveaways.push(secondId);
 
     const approved = await asAdmin('post', `/api/admin/giveaways/${secondId}/approve`).send({
       evidence_kind: 'written_commitment_from_sponsor',
       evidence_reference: `REHEARSAL-REF2-${suffix}`,
+      // Required. An approval with no recorded reasoning is refused, which is
+      // the point of REVIEW_NOTES_REQUIRED.
+      review_notes: 'Rehearsal approval — fabricated sponsor commitment, deadline path.',
     });
-    assert([200, 201, 204].includes(approved.status), `second approval refused: ${approved.status}`);
+    assert([200, 201, 204].includes(approved.status),
+      `second approval refused: ${approved.status} ${JSON.stringify(approved.body)}`);
 
     // Three entrants, then the clock moved past the deadline. Moving the
     // deadline rather than waiting a month is the only way to rehearse this;
