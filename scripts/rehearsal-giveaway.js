@@ -178,11 +178,18 @@ async function makeUser({ name, admin = false, hostStatus = 'not_requested' }) {
   return { id, email, name };
 }
 
-async function cookieFor(email) {
+// Returns { cookie, csrf }. The CSRF token is issued by the login response
+// itself, exactly as the browser client receives it — the rehearsal sends it on
+// every mutation rather than being exempted from the check. A harness that
+// skipped CSRF would be testing a configuration nobody runs.
+async function sessionFor(email) {
   const agent = request.agent(app);
   const res = await agent.post('/api/auth/login').send({ email, password: PASSWORD });
   assert(res.status === 200, `login failed for a rehearsal account: ${res.status}`);
-  return res.headers['set-cookie'].map((c) => c.split(';')[0]).join('; ');
+  const cookie = res.headers['set-cookie'].map((c) => c.split(';')[0]).join('; ');
+  const csrf = res.body && res.body.csrf_token;
+  assert(csrf, 'login returned no CSRF token');
+  return { cookie, csrf };
 }
 
 async function cleanup() {
@@ -217,14 +224,17 @@ async function main() {
 
   const admin = await makeUser({ name: 'Rehearsal Admin', admin: true });
   const host = await makeUser({ name: 'Rehearsal Sponsor', hostStatus: 'approved' });
-  const adminCookie = await cookieFor(admin.email);
-  const hostCookie = await cookieFor(host.email);
+  const adminSession = await sessionFor(admin.email);
+  const hostSession = await sessionFor(host.email);
 
-  const api = (cookie) => (method, url) =>
-    request(app)[method](url).set('Cookie', cookie).set('X-Forwarded-For', '203.0.113.10');
+  const api = (session) => (method, url) =>
+    request(app)[method](url)
+      .set('Cookie', session.cookie)
+      .set('X-CSRF-Token', session.csrf)
+      .set('X-Forwarded-For', '203.0.113.10');
 
-  const asAdmin = api(adminCookie);
-  const asHost = api(hostCookie);
+  const asAdmin = api(adminSession);
+  const asHost = api(hostSession);
 
   // -- 1, 2: a proposal carrying its provider and custody ---------------------
   let giveawayId;
@@ -305,8 +315,7 @@ async function main() {
   await step('5-6. a member enters, and the same verified account cannot enter twice', async () => {
     const member = await makeUser({ name: 'Rehearsal Member 001' });
     members.push(member);
-    const cookie = await cookieFor(member.email);
-    const asMember = api(cookie);
+    const asMember = api(await sessionFor(member.email));
 
     const first = await asMember('post', `/api/giveaways/${giveawayId}/enter`).send({});
     assert([200, 201].includes(first.status), `entry refused: ${first.status} ${JSON.stringify(first.body)}`);
@@ -347,7 +356,7 @@ async function main() {
 
     const hundredth = await makeUser({ name: 'Rehearsal Member 100' });
     members.push(hundredth);
-    const res = await api(await cookieFor(hundredth.email))('post', `/api/giveaways/${giveawayId}/enter`).send({});
+    const res = await api(await sessionFor(hundredth.email))('post', `/api/giveaways/${giveawayId}/enter`).send({});
     assert([200, 201].includes(res.status), `the 100th entry was refused: ${res.status} ${JSON.stringify(res.body)}`);
 
     const g = (await pool.query('SELECT status, winner_entry_id FROM giveaways WHERE id = $1', [giveawayId])).rows[0];
