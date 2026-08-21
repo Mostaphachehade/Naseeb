@@ -487,7 +487,18 @@ async function main() {
         [crypto.randomUUID(), secondId, m.id, i + 1]
       );
     }
-    await pool.query("UPDATE giveaways SET entry_deadline = NOW() - INTERVAL '1 hour' WHERE id = $1", [secondId]);
+    // `closes_at` is the clock the worker actually reads; `entry_deadline` is a
+    // formatted mirror of it for display. Moving only the mirror leaves the
+    // campaign open forever, so both move together, exactly as
+    // approveAndPublish writes them.
+    await pool.query(
+      `UPDATE giveaways
+          SET closes_at = NOW() - INTERVAL '1 hour',
+              entry_deadline = to_char((NOW() - INTERVAL '1 hour') AT TIME ZONE 'UTC',
+                                       'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+        WHERE id = $1`,
+      [secondId]
+    );
 
     const summary = await maintenance.runJobs(['giveaway_lifecycle'], {});
     assert(summary, 'the lifecycle job returned nothing');
