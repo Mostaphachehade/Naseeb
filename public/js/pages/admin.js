@@ -488,6 +488,10 @@
     const verifiedToggle = el('input', {
       type: 'checkbox',
       class: 'verified-toggle',
+      // Named per row. A column header is not an accessible name: somebody
+      // moving through the table cell by cell hears "checkbox, not checked"
+      // with no indication of WHOSE verified badge is about to be toggled.
+      'aria-label': `Verified business badge for ${u.name || u.email || 'this account'}`,
       checked: Boolean(u.is_verified_business),
       on: {
         change: async (e) => {
@@ -559,8 +563,12 @@
       : u.host_status === 'suspended' ? 'Reinstate' : 'Grant hosting';
 
     return el('button', {
-      class: 'btn ghost host-status-btn u-51820e15',
+      // `on-light`: this ghost button sits on the white admin table, where
+      // `.btn`'s paper text measures 1.11:1. See public/css/style.css.
+      class: 'btn ghost on-light host-status-btn u-51820e15',
       text: label,
+      // "Suspend hosting" is unambiguous only if you can see which row it is in.
+      'aria-label': `${label} — ${u.name || u.email || 'this account'}`,
       on: {
         click: async (e) => {
           const btn = e.currentTarget;

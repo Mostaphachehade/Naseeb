@@ -43,6 +43,32 @@ body {
   top: 12px;
 }
 
+/* A label that is announced but not drawn.
+ *
+ * For controls whose meaning is obvious to a sighted user from context — an
+ * admin search box sitting directly above the table it filters — but which
+ * would otherwise reach a screen reader as "edit text, blank". A placeholder is
+ * NOT a label: it is not exposed as an accessible name reliably, and it
+ * disappears the moment somebody types, which is exactly when a person who
+ * cannot see the field most needs to know what it is (WCAG 3.3.2, 4.1.2).
+ *
+ * clip-path plus a 1px box rather than display:none or visibility:hidden —
+ * both of those remove the element from the accessibility tree as well, which
+ * would defeat the entire purpose. white-space:nowrap stops a long label being
+ * wrapped into a tall invisible column that can still be scrolled to.
+ */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 :focus-visible {
   outline: 3px solid var(--gold-bright);
   outline-offset: 2px;
@@ -238,6 +264,33 @@ nav.site-nav a:hover, nav.site-nav button:hover { border-color: rgba(220,238,231
 .btn.primary:hover { background: var(--gold-bright); }
 .btn.ghost { border-color: rgba(247,243,234,0.4); }
 .btn.ghost:hover { border-color: var(--paper); }
+
+/* A ghost button standing on a light surface.
+ *
+ * `.btn` sets `color: var(--paper)`, which is right on the dark hero and wrong
+ * everywhere else: paper on white measures 1.11:1, so the label is very nearly
+ * invisible. The advertise page's "Send inquiry" — its primary action — was
+ * shipped that way.
+ *
+ * The variant already existed as an extracted utility applied to exactly one
+ * button on about.html, which is how the others were missed. Naming it means
+ * the next ghost button on a light background can be given the right class
+ * rather than the right hash.
+ */
+.btn.ghost.on-light {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.btn.ghost.on-light:hover { border-color: var(--ink-deep); }
+
+/* Softened body copy ON A DARK SURFACE.
+ *
+ * `--text-soft` is a dark green-grey meant for light pages. Inside the hero it
+ * measures 2.2:1 against `--ink` — the inline-style extraction moved it there
+ * mechanically without noticing the background had changed. This is the same
+ * intent expressed the other way round: light, slightly recessive, and 8.9:1.
+ */
+.on-dark-soft { color: rgba(247, 243, 234, 0.82); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Perforated ticket-stub decoration behind the hero — hidden once the
