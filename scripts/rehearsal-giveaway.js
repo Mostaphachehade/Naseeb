@@ -230,7 +230,20 @@ async function cleanup() {
   await safe('DELETE FROM entry_integrity_cases WHERE giveaway_id = ANY($1)', [g]);
   await safe('DELETE FROM entry_integrity_events WHERE giveaway_id = ANY($1)', [g]);
   await safe('DELETE FROM entry_risk_signals WHERE giveaway_id = ANY($1)', [g]);
-  await safe('UPDATE giveaways SET winner_entry_id = NULL WHERE id = ANY($1)', [g]);
+  // giveaways.winner_entry_id and entries.giveaway_id reference each other, so
+  // one side has to be released before either row can go. Nulling the winner
+  // alone is refused by giveaways_outcome_coherent — a drawn campaign must have
+  // a winner and a drawn_at, and the constraint will not allow half of that to
+  // be true. Correct, and it means the release has to be a coherent state
+  // rather than a poke at one column: pending_approval is exempt from
+  // published_has_window and closure_explained, so the row stays legal at every
+  // instant on its way out.
+  await safe(
+    `UPDATE giveaways
+        SET status = 'pending_approval', winner_entry_id = NULL, drawn_at = NULL
+      WHERE id = ANY($1)`,
+    [g]
+  );
   await safe('DELETE FROM entries WHERE giveaway_id = ANY($1)', [g]);
   await safe('DELETE FROM giveaways WHERE id = ANY($1)', [g]);
   await safe('DELETE FROM sessions WHERE user_id = ANY($1)', [u]);
