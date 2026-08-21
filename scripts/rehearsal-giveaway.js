@@ -207,18 +207,35 @@ async function cleanup() {
   //     giveaway_notification_events are protected by triggers, so a rehearsal
   //     CANNOT erase its own audit trail — which is the guarantee working, not
   //     a defect. It is also why this harness requires a disposable database:
-  //     the rows it writes to those tables are indelible by design.
-  const indelible = [];
+  //     the rows it writes to those tables survive by design — counted and
+  //     reported below rather than deleted.
   const safe = async (sql, params) => {
     try {
       await pool.query(sql, params);
     } catch (err) {
       const message = String(err.message || err);
       if (/relation .* does not exist/i.test(message)) return;
-      if (/append-only/i.test(message)) { indelible.push(message.split(';')[0]); return; }
       process.stderr.write(`  cleanup warning: ${message}\n`);
     }
   };
+
+  // Counted BEFORE anything is deleted, and reported as a fact rather than
+  // discovered by failing to delete them. The append-only triggers on these two
+  // tables refuse DELETE outright, so these rows survive the rehearsal — which
+  // is why the harness requires a disposable database. Attempting the delete
+  // just to watch it be refused would be theatre; saying how many rows stay is
+  // the useful part.
+  const retained = [];
+  for (const [table, where] of [
+    ['giveaway_lifecycle_events', 'giveaway_id = ANY($1)'],
+    ['giveaway_notification_events',
+      'notification_id IN (SELECT id FROM giveaway_notifications WHERE giveaway_id = ANY($1))'],
+  ]) {
+    try {
+      const n = (await pool.query(`SELECT COUNT(*)::int AS n FROM ${table} WHERE ${where}`, [g])).rows[0].n;
+      if (n > 0) retained.push(`${table}: ${n}`);
+    } catch { /* table absent on an older schema */ }
+  }
   // Children before parents, and the winner pointer cleared before the entry it
   // points at can go.
   await safe('DELETE FROM prize_claim_events WHERE claim_id IN (SELECT id FROM prize_claims WHERE giveaway_id = ANY($1))', [g]);
@@ -251,8 +268,8 @@ async function cleanup() {
   await safe('DELETE FROM policy_acceptances WHERE user_id = ANY($1)', [u]);
   await safe('DELETE FROM users WHERE id = ANY($1)', [u]);
 
-  if (indelible.length) {
-    process.stderr.write(`  audit rows left in place by design (append-only): ${[...new Set(indelible)].join('; ')}
+  if (retained.length) {
+    process.stderr.write(`  append-only audit rows retained by design: ${retained.join(', ')}
 `);
   }
 }
