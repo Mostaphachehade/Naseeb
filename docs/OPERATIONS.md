@@ -321,6 +321,75 @@ bottom of `render.yaml`. If the plan does not include cron jobs, that is a
 commercial decision for the owner — and until it is made, **retention is not
 running on a schedule**, which is a fact to record rather than paper over.
 
+### Scheduling status, verified 2026-08-21
+
+Checked against Render's own documentation rather than assumed. Three findings,
+two of which corrected what this repository previously said.
+
+**Cron is available to this account, and cost is the only obstacle.** Cron jobs
+cannot run on a *Free* instance, but they are separate services with their own
+instance type, and the `naseeb` web service is on **Starter**, not Free. Each
+cron job bills at a **minimum of $1/month**, prorated by the second. The earlier
+note implying the plan made cron impossible was wrong; `render.yaml` also
+declared `plan: free` for a web service that is actually Starter, and that has
+been corrected.
+
+**The previous blueprint draft would not have worked.** It nested cron entries
+under a top-level `jobs:` key. There is no such key in a Render blueprint — cron
+jobs are services, declared in the `services:` list with `type: cron` and a
+`schedule`. Uncommenting it as written would have failed the sync. Corrected in
+`render.yaml`, and still commented.
+
+**Committing `render.yaml` provisions nothing.** A Blueprint must be created and
+synced from the dashboard, CLI or API, and no Blueprint is synced for this
+repository. The cron definitions stay commented so that even an accidental
+future sync cannot create billable services. Activation is two deliberate acts:
+uncomment, then sync.
+
+#### What to create
+
+| Service | Command | Schedule (UTC) | Dubai | Timeout |
+| --- | --- | --- | --- | --- |
+| `naseeb-maintenance` | `node scripts/maintenance.js all` | `*/15 * * * *` | every 15m | 10 min |
+| `naseeb-giveaway-lifecycle` | `node scripts/maintenance.js giveaway_lifecycle giveaway_outbox` | `7 * * * *` | hourly :07 | 10 min |
+| `naseeb-retention-daily` | `node scripts/maintenance.js sessions risk_signals claims` | `23 3 * * *` | 07:23 | 15 min |
+
+**Minimum viable is one service** — `all` covers every job, so
+`naseeb-maintenance` alone is a complete schedule (~$1/month plus runtime). The
+other two are redundancy: they keep the lifecycle and retention jobs running on
+their own cadence if the frequent job is failing and nobody has noticed. Three
+services is the recommendation; one is the floor. **Zero is what exists today.**
+
+Retry and alerting: Render surfaces a non-zero cron exit as a failed run. Every
+job is idempotent and advisory-locked, so a retry is always safe and overlapping
+runs collapse to one worker plus a `skipped`. No retry logic belongs in the job.
+
+Emergency manual equivalents, safe to run at any time:
+
+```
+node scripts/maintenance.js --list
+node scripts/maintenance.js all
+node scripts/maintenance.js claim_outbox email_change_outbox giveaway_outbox
+node scripts/maintenance.js sessions risk_signals claims
+```
+
+#### Environment
+
+`fromGroup: naseeb-shared` assumes an environment group that **does not exist
+yet** — the web service holds its variables directly. Creating it, or setting
+variables on each cron service, is an owner action. A cron service that runs any
+outbox job needs `RESEND_API_KEY` and `EMAIL_FROM`: **the outboxes send email**,
+and without them those jobs cannot deliver.
+
+#### Consequence of doing nothing
+
+No maintenance job runs in production at all. Expired sessions are never swept,
+both outboxes never drain, claims never expire, delivery addresses are never
+erased on schedule, risk signals are never purged, ad holds are never released,
+and a campaign that reaches its deadline is never closed or drawn by anything
+other than a visitor happening to trigger it. This is tracked as the largest
+operational gap in `docs/LAUNCH_READINESS.md` §2.
+
 ---
 
 ## 5. Liveness and readiness
