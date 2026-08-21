@@ -166,6 +166,20 @@ async function main() {
         reducedMotion: viewport.name === 'mobile' ? 'reduce' : 'no-preference',
       });
 
+      // axe goes in through addInitScript, NOT addScriptTag.
+      //
+      // addScriptTag appends a real <script> element, so the page's own Content
+      // Security Policy governs it — and this site sends `script-src 'self'`,
+      // which refused it outright. That refusal is the CSP working: an attacker
+      // who can inject markup cannot run script either. The policy is not
+      // relaxed, and no 'unsafe-inline' or hash is added to let a test tool in.
+      //
+      // addInitScript runs through the debugger channel before page scripts,
+      // which is outside the document's CSP by construction. The page under test
+      // is therefore observed with its real policy intact, which is the only
+      // version worth measuring.
+      await context.addInitScript({ content: AXE });
+
       for (const page of PAGES) {
         if (page.auth) await context.addCookies([cookies[page.auth]]);
         const tab = await context.newPage();
@@ -179,8 +193,8 @@ async function main() {
           await tab.goto(`${BASE}/${page.file}`, { waitUntil: 'domcontentloaded', timeout: 20000 });
         }
 
-        await tab.addScriptTag({ content: AXE });
         const run = await tab.evaluate(async () => {
+          if (!window.axe) throw new Error("axe was not injected into this page");
           // WCAG 2.2 AA and the best-practice rules. `axe.run` resolves with
           // violations grouped by impact.
           const r = await window.axe.run(document, {
