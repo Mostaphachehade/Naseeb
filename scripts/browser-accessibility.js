@@ -184,7 +184,7 @@ async function main() {
         if (page.auth) await context.addCookies([cookies[page.auth]]);
         const tab = await context.newPage();
         const consoleErrors = [];
-        tab.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 200)); });
+        tab.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 400)); });
         tab.on('pageerror', (e) => consoleErrors.push(String(e.message).slice(0, 200)));
 
         try {
@@ -244,9 +244,16 @@ async function main() {
   process.stderr.write('\nBy rule\n\n');
   [...byRule.values()]
     .sort((a, b) => b.nodes - a.nodes)
-    .forEach((e) => process.stderr.write(
-      `  ${String(e.impact).padEnd(8)} ${e.id.padEnd(34)} ${String(e.nodes).padStart(4)} node(s) across ${e.pages.size} page(s)\n`
-    ));
+    .forEach((e) => {
+      process.stderr.write(
+        `  ${String(e.impact).padEnd(8)} ${e.id.padEnd(30)} ${String(e.nodes).padStart(4)} node(s) across ${e.pages.size} page(s)\n`
+      );
+      process.stderr.write(`           pages: ${[...e.pages].sort().join(', ')}\n`);
+      // The selectors are the whole point: a rule name says what is wrong, a
+      // selector says where. Without these the report cannot be acted on.
+      (e.samples || []).slice(0, 4).forEach((s) => process.stderr.write(`           at: ${s}\n`));
+      process.stderr.write('\n');
+    });
 
   // Distinct console errors, with counts. A total on its own is not evidence of
   // anything — "94 console errors" could be one bug on every page or ninety-four
