@@ -562,7 +562,44 @@ async function main() {
 
   // -- 18: cancellation notifies entrants -------------------------------------
   await step('18. exceptional cancellation notifies entrants through the outbox', async () => {
-    const target = made.giveaways[1];
+    // A third campaign, published and still open. The first two are drawn, and a
+    // drawn campaign cannot be cancelled — ALREADY_DRAWN, because cancelling
+    // would not undo the winner or their claim. That refusal is correct, so the
+    // rehearsal gives cancellation its own live campaign rather than working
+    // around the rule.
+    const third = await asHost('post', '/api/giveaways').send({
+      title: `Rehearsal cancellation campaign ${suffix}`,
+      description: 'Third fabricated campaign — exercises the entrant notification path on cancellation.',
+      prize_description: 'Fabricated spa afternoon for two.',
+      prize_category: 'beauty_and_wellness',
+      sponsor_name: 'Rehearsal Partner Spa (fabricated)',
+      prize_supplied_by: 'Rehearsal Partner Spa (fabricated)',
+      prize_retail_value_aed: 700,
+      naseeb_custody: 'naseeb_holds',
+      fulfilment_method: 'Naseeb holds the voucher and arranges the booking with the winner.',
+      funded_by: 'Rehearsal Partner Spa (fabricated)',
+      max_entries_per_person: 1,
+    });
+    assert([200, 201].includes(third.status), `third submission refused: ${third.status} ${JSON.stringify(third.body)}`);
+    const target = third.body.id || (third.body.giveaway && third.body.giveaway.id);
+    made.giveaways.push(target);
+
+    const approved = await asAdmin('post', `/api/admin/giveaways/${target}/approve`).send({
+      evidence_kind: 'voucher_codes_held',
+      evidence_reference: `REHEARSAL-REF3-${suffix}`,
+      review_notes: 'Rehearsal approval — fabricated voucher held by Naseeb.',
+    });
+    assert([200, 201, 204].includes(approved.status),
+      `third approval refused: ${approved.status} ${JSON.stringify(approved.body)}`);
+
+    // Two entrants, so there is somebody to notify.
+    for (let i = 0; i < 2; i += 1) {
+      await pool.query(
+        'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, $4)',
+        [crypto.randomUUID(), target, members[i].id, i + 1]
+      );
+    }
+
     const res = await asAdmin('post', `/api/admin/giveaways/${target}/cancel`).send({
       ground: 'fulfilment_impossible',
       reason: 'Rehearsal cancellation — fabricated campaign, exercising the entrant notification path.',
