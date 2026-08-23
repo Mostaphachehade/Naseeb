@@ -244,7 +244,7 @@
       deliveryEl.classList.remove('is-hidden');
       deliveryEl.replaceChildren();
       const heading = document.createElement('strong');
-      heading.textContent = 'Deliver to';
+      heading.textContent = t('detail.deliverTo');
       deliveryEl.appendChild(heading);
       [
         d.recipient_name,
@@ -286,7 +286,7 @@
     if (DISPUTABLE.includes(claim.status) && (claim.role === 'host' || claim.role === 'winner')) {
       const raise = document.createElement('button');
       raise.className = 'btn ghost';
-      raise.textContent = 'Report a problem';
+      raise.textContent = t('detail.reportAProblem');
       raise.onclick = () => {
         disputeBox.classList.toggle('is-hidden');
       };
@@ -315,7 +315,7 @@
     const reason = document.getElementById('claim-dispute-reason').value.trim();
     const errorEl = document.getElementById('claim-error');
     if (!reason) {
-      errorEl.textContent = 'Please describe the problem so an administrator can act on it.';
+      errorEl.textContent = t('detail.pleaseDescribeTheProblem');
       errorEl.classList.add('show');
       return;
     }

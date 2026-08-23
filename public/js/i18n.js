@@ -143,6 +143,9 @@ const TRANSLATIONS = {
     'policy.status.effective': "EFFECTIVE",
     'policy.notYetEffective': "not yet effective",
     'detail.documentTitle': "{title} — Naseeb",
+    'detail.deliverTo': "Deliver to",
+    'detail.reportAProblem': "Report a problem",
+    'detail.pleaseDescribeTheProblem': "Please describe the problem so an administrator can act on it.",
   },
   ar: {
     'nav.browse': 'تصفح',
@@ -265,6 +268,9 @@ const TRANSLATIONS = {
     'policy.status.effective': "سارية",
     'policy.notYetEffective': "غير سارية بعد",
     'detail.documentTitle': "{title} — نصيب",
+    'detail.deliverTo': "التسليم إلى",
+    'detail.reportAProblem': "الإبلاغ عن مشكلة",
+    'detail.pleaseDescribeTheProblem': "يُرجى وصف المشكلة ليتمكّن المشرف من التصرّف بشأنها.",
   },
 };
 

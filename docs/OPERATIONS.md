@@ -225,9 +225,14 @@ See `docs/RELEASE_CANDIDATE.md` for the deployment checklist this produces.
 
 
 Technical deployment and public launch are different decisions.
-`DEPLOYMENT_STATE` is one of `development`, `staging`, `private_beta`,
-`public_launch`. Unset means `development` locally and **`private_beta`** in
-production — never `public_launch` by omission.
+`DEPLOYMENT_STATE` is one of `development`, `staging`, `pre_launch`,
+`private_beta`, `public_launch`.
+
+**Unset or misspelled means `pre_launch`, everywhere.** This paragraph used to
+say `private_beta` in production, and that was left behind when the default was
+tightened — worth naming rather than quietly correcting, because a stale
+statement about a fail-closed default is the kind that gets believed. There is no
+inference from `NODE_ENV`, and `public_launch` is never reached by omission.
 
 A staging or private-beta deployment **must identify itself truthfully**:
 `config.stateDisclosure()` returns the wording, it is logged at boot, and
@@ -243,7 +248,7 @@ any of these is true — each checked, not asserted:
 - checkout is enabled without `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`;
 - claims are enabled while claim encryption is unavailable.
 
-`render.yaml` pins `DEPLOYMENT_STATE: private_beta`. **No committed file sets
+`render.yaml` pins `DEPLOYMENT_STATE: pre_launch`. **No committed file sets
 `public_launch`.**
 
 ---

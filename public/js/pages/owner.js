@@ -16,7 +16,7 @@
     const file = e.target.files[0];
     if (!file || !qhCloudinaryConfig) return;
     const statusEl = document.getElementById('qh-upload-status');
-    statusEl.textContent = 'Uploading…';
+    statusEl.textContent = t('owner.uploading');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', qhCloudinaryConfig.cloudinary_upload_preset);
@@ -29,12 +29,12 @@
       if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
       const preview = document.getElementById('qh-image-preview');
       if (!NaseebDom.setMediaSrc(preview, data.secure_url)) {
-        statusEl.textContent = 'Upload returned an image address we do not accept.';
+        statusEl.textContent = t('owner.uploadReturnedAnImage');
         return;
       }
       document.getElementById('qh_image_url').value = data.secure_url;
       preview.classList.remove('is-hidden');
-      statusEl.textContent = 'Uploaded.';
+      statusEl.textContent = t('owner.uploaded');
     } catch (err) {
       statusEl.textContent = err.message;
     }
@@ -70,7 +70,7 @@
       e.target.reset();
       document.getElementById('qh-image-preview').classList.add('is-hidden');
       document.getElementById('qh_funded_by').value = 'Naseeb marketing budget';
-      successEl.textContent = 'Published — live on the homepage now.';
+      successEl.textContent = t('owner.publishedLiveOnThe');
       successEl.classList.add('show');
     } catch (err) {
       errorEl.textContent = err.message;
@@ -157,7 +157,7 @@
           maintenance_message: document.getElementById('s_maintenance_message').value,
         }),
       });
-      successEl.textContent = 'Saved.';
+      successEl.textContent = t('owner.saved');
       successEl.classList.add('show');
     } catch (err) {
       errorEl.textContent = err.message;

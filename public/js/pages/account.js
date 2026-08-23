@@ -155,7 +155,7 @@
 
     if (state.pending_email_change) {
       const pending = state.pending_email_change;
-      return card('Change your email address', [
+      return card(t('account.changeYourEmailAddress'), [
         el('p', { class: 'js-mint-box' }, [
           'A change to ',
           el('strong', { text: pending.new_email }),
@@ -166,7 +166,7 @@
         el('button', {
           class: 'btn ghost u-e21d2b9e u-8a359a76',
           type: 'button',
-          text: 'Cancel this change',
+          text: t('account.cancelThisChange'),
           on: {
             click: async (e) => {
               e.currentTarget.disabled = true;
@@ -186,19 +186,19 @@
     const newEmail = el('input', { id: 'new-email', type: 'email' });
     const password = el('input', { id: 'email-password', type: 'password', autocomplete: 'current-password' });
 
-    return card('Change your email address', [
-      el('label', { htmlFor: 'new-email', text: 'New email address' }),
+    return card(t('account.changeYourEmailAddress'), [
+      el('label', { htmlFor: 'new-email', text: t('account.newEmailAddress') }),
       newEmail,
-      el('label', { htmlFor: 'email-password', text: 'Your current password' }),
+      el('label', { htmlFor: 'email-password', text: t('account.yourCurrentPassword') }),
       password,
       el('p', {
         class: 'hint',
-        text: 'Your address does not change until you confirm it from the new inbox. We will tell your current address once it does, and you will be signed out everywhere at that point. If the confirmation email does not arrive, we keep retrying — each attempt sends a new link and stops the previous one working, so use the most recent email.',
+        text: t('account.yourAddressDoesNot'),
       }),
       el('button', {
         class: 'btn primary u-8a359a76',
         type: 'button',
-        text: 'Send confirmation',
+        text: t('account.sendConfirmation'),
         on: {
           click: async (e) => {
             const btn = e.currentTarget;
@@ -226,12 +226,12 @@
 
   function sessionsCard() {
     const note = feedback();
-    return card('Signed-in devices', [
-      el('p', { text: 'Sign out everywhere, including here. Use this if you think somebody else has access.' }),
+    return card(t('account.signedInDevices'), [
+      el('p', { text: t('account.signOutEverywhereIncluding') }),
       el('button', {
         class: 'btn ghost u-e21d2b9e u-8a359a76',
         type: 'button',
-        text: 'Sign out everywhere',
+        text: t('account.signOutEverywhere'),
         on: {
           click: async (e) => {
             e.currentTarget.disabled = true;
@@ -255,18 +255,18 @@
     const password = el('input', { id: 'export-password', type: 'password', autocomplete: 'current-password' });
     const note = feedback();
 
-    return card('Download your data', [
-      el('p', { text: 'A JSON file with your account, your entries, giveaways you host, your applications, your claims and your requests.' }),
+    return card(t('account.downloadYourData'), [
+      el('p', { text: t('account.aJsonFileWith') }),
       el('p', {
         class: 'hint',
-        text: 'It does not include passwords, session or login links, other people’s data, internal notes, or the technical signals used to spot entry abuse. Delivery details you gave for a prize stay in the claim itself.',
+        text: t('account.itDoesNotInclude'),
       }),
-      el('label', { htmlFor: 'export-password', text: 'Your current password' }),
+      el('label', { htmlFor: 'export-password', text: t('account.yourCurrentPassword') }),
       password,
       el('button', {
         class: 'btn primary u-8a359a76',
         type: 'button',
-        text: 'Download',
+        text: t('account.download'),
         on: {
           click: async (e) => {
             const btn = e.currentTarget;
@@ -339,26 +339,26 @@
       ])
     );
 
-    return card('Ask us to do something', [
-      el('label', { htmlFor: 'request-type', text: 'What would you like?' }),
+    return card(t('account.askUsToDo'), [
+      el('label', { htmlFor: 'request-type', text: t('account.whatWouldYouLike') }),
       type,
-      el('label', { htmlFor: 'request-message', text: 'Anything you want to add (optional)' }),
+      el('label', { htmlFor: 'request-message', text: t('account.anythingYouWantTo') }),
       message,
       el('p', {
         class: 'hint',
-        text: 'A deletion request is a request for review by a person, not an instant erase. Some records — an open prize claim, a payment record, an audit trail — cannot simply be removed, and we will tell you which.',
+        text: t('account.aDeletionRequestIs'),
       }),
       // Said before the request is sent, not discovered afterwards. Somebody
       // asking to be deleted deserves to know today's answer is "not yet"
       // rather than finding out weeks later.
       el('p', {
         class: 'hint',
-        text: 'To be straight with you about deletion specifically: we have not finished deciding which records can be erased, which can be anonymised, and which we are obliged to keep. Until that is settled we will not carry out an erasure, and we will not close your request as done while nothing has been done. It stays open with us.',
+        text: t('account.toBeStraightWith'),
       }),
       el('button', {
         class: 'btn primary u-8a359a76',
         type: 'button',
-        text: 'Send request',
+        text: t('account.sendRequest'),
         on: {
           click: async (e) => {
             const btn = e.currentTarget;
@@ -380,7 +380,7 @@
       }),
       note,
       existing.length
-        ? el('div', { class: 'u-680b5a65' }, [el('p', { class: 'u-5bf9ad33', text: 'Your requests' }), existing])
+        ? el('div', { class: 'u-680b5a65' }, [el('p', { class: 'u-5bf9ad33', text: t('account.yourRequests') }), existing])
         : null,
       existing.length
         ? el('p', { class: 'hint', text: state.privacy_requests[0].timing_note })
@@ -405,7 +405,7 @@
       rows,
       el('p', {
         class: 'hint',
-        text: 'Both documents are drafts pending owner information and qualified UAE counsel review. There is no acceptance recorded against your account, and none will be until a document is genuinely in force.',
+        text: t('account.bothDocumentsAreDrafts'),
       }),
       (state.policies_outstanding || []).length
         ? el('p', { class: 'js-mint-box', text: `Outstanding: ${state.policies_outstanding.map((p) => `${p.policy_id} ${p.version}`).join(', ')}` })

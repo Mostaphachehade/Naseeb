@@ -65,7 +65,7 @@
 
     const openBtn = el('button', {
       class: 'btn ghost app-open-btn u-51820e15',
-      text: 'Review',
+      text: t('admin.review'),
       on: { click: () => openApplication(a.id, detailRow, detailCell) },
     });
 
@@ -76,7 +76,7 @@
     const closeBtn = a.status === 'pending'
       ? el('button', {
           class: 'btn ghost app-close-btn u-51820e15',
-          text: 'Close without deciding',
+          text: t('admin.closeWithoutDeciding'),
           on: {
             click: async (e) => {
               const btn = e.currentTarget;
@@ -105,7 +105,7 @@
       tdNode([
         a.display_name || '—',
         a.user_id ? null : el('br'),
-        a.user_id ? null : el('span', { class: 'u-73c3c8ab', text: 'Legacy enquiry — no account attached' }),
+        a.user_id ? null : el('span', { class: 'u-73c3c8ab', text: t('admin.legacyEnquiryNoAccount') }),
       ]),
       tdNode(pill(STATUS_LABELS[a.status] || a.status)),
       td(shortDate(a.created_at)),
@@ -151,7 +151,7 @@
         const reasonInput = el('input', {
           class: 'decision-reason',
           maxLength: 1000,
-          placeholder: 'Why this decision?',
+          placeholder: t('admin.whyThisDecision'),
         });
         const decide = (decision, label, className) => el('button', {
           class: className,
@@ -180,7 +180,7 @@
         });
 
         decisionBlock = frag([
-          el('label', { class: 'u-1964b55e', text: 'Reason (recorded against this decision, and shown to the applicant)' }),
+          el('label', { class: 'u-1964b55e', text: t('admin.reasonRecordedAgainstThis') }),
           reasonInput,
           el('div', { class: 'u-d8a81eac' }, [
             decide('approved', 'Approve to host', 'btn primary decide-btn u-14da4875'),
@@ -188,7 +188,7 @@
           ]),
           el('p', {
             class: 'hint u-b1ecc496',
-            text: 'Approving is the only thing that grants host access. Nothing else on this page does.',
+            text: t('admin.approvingIsTheOnly'),
           }),
         ]);
       }
@@ -263,7 +263,7 @@
 
     const remove = el('button', {
       class: 'btn ghost inquiry-delete-btn u-54750247',
-      text: 'Delete',
+      text: t('admin.delete'),
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
@@ -380,7 +380,7 @@
 
     const remove = el('button', {
       class: 'btn ghost ad-delete-btn u-162e4030',
-      text: 'Delete',
+      text: t('admin.delete'),
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
@@ -553,7 +553,7 @@
           })
         : null,
       u.is_admin ? el('br') : null,
-      u.is_admin ? el('span', { class: 'u-5e8e7900', text: 'admin — this gate does not apply' }) : null,
+      u.is_admin ? el('span', { class: 'u-5e8e7900', text: t('admin.adminThisGateDoes') }) : null,
     ];
   }
 
@@ -633,7 +633,7 @@
     if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
       cloudinaryConfig = config;
       document.getElementById('ad-image-upload-row').classList.remove('is-hidden');
-      document.getElementById('ad-image-url-hint').textContent = 'Upload a file above, or paste a media URL.';
+      document.getElementById('ad-image-url-hint').textContent = t('admin.uploadAFileAbove');
     }
   }).catch(() => {});
 
@@ -659,7 +659,7 @@
     const file = e.target.files[0];
     if (!file || !cloudinaryConfig) return;
     const statusEl = document.getElementById('ad-upload-status');
-    statusEl.textContent = 'Uploading…';
+    statusEl.textContent = t('admin.uploading');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
@@ -676,13 +676,13 @@
       const target = adMediaType === 'video' ? videoPreview : imgPreview;
       const other = adMediaType === 'video' ? imgPreview : videoPreview;
       if (!NaseebDom.setMediaSrc(target, data.secure_url)) {
-        statusEl.textContent = 'Upload returned a media address we do not accept.';
+        statusEl.textContent = t('admin.uploadReturnedAMedia');
         return;
       }
       document.getElementById('ad_image_url').value = data.secure_url;
       target.classList.remove('is-hidden');
       other.classList.add('is-hidden');
-      statusEl.textContent = 'Uploaded.';
+      statusEl.textContent = t('admin.uploaded');
     } catch (err) {
       statusEl.textContent = err.message;
     }
@@ -739,9 +739,9 @@
   // server/lib/claimStateMachine.js; the server refuses anything else outright,
   // so this only decides which button to draw.
   const RESCUE_NEXT = {
-    claimed: { to: 'preparing_delivery', label: 'Mark preparing delivery' },
-    preparing_delivery: { to: 'shipped_or_arranged', label: 'Mark shipped / arranged' },
-    shipped_or_arranged: { to: 'delivered_pending_confirmation', label: 'Report delivered — winner confirms' },
+    claimed: { to: 'preparing_delivery', label: t('admin.markPreparingDelivery') },
+    preparing_delivery: { to: 'shipped_or_arranged', label: t('admin.markShippedArranged') },
+    shipped_or_arranged: { to: 'delivered_pending_confirmation', label: t('admin.reportDeliveredWinnerConfirms') },
   };
 
   const CLAIM_STATE_LABELS = {
@@ -793,7 +793,7 @@
     const detailsBtn = r.delivery_available
       ? el('button', {
           class: 'btn ghost rescue-details u-51820e15',
-          text: 'Open delivery details',
+          text: t('admin.openDeliveryDetails'),
           on: {
             click: async (e) => {
               const btn = e.currentTarget;
@@ -834,7 +834,7 @@
             },
           },
         })
-      : el('span', { class: 'u-73c3c8ab', text: 'no details available' });
+      : el('span', { class: 'u-73c3c8ab', text: t('admin.noDetailsAvailable') });
 
     const row = el('tr', {}, [
       tdNode([
@@ -854,7 +854,7 @@
         detailsBtn,
         next ? null : el('span', {
           class: 'u-c2238623',
-          text: 'Nothing for you to do here — this one is waiting on the winner.',
+          text: t('admin.nothingForYouTo'),
         }),
       ]), 'u-a9efa544'),
     ]);
@@ -888,7 +888,7 @@
         box.replaceChildren();
         const empty = document.createElement('p');
         empty.className = 'hint';
-        empty.textContent = 'Nothing waiting. Disputes and expired claims appear here.';
+        empty.textContent = t('admin.nothingWaitingDisputesAnd');
         box.appendChild(empty);
         return;
       }
@@ -924,7 +924,7 @@
 
         const open = document.createElement('button');
         open.className = 'btn ghost';
-        open.textContent = 'Open case';
+        open.textContent = t('admin.openCase');
         // Delivery details are loaded only here, on a deliberate click by an
         // authenticated administrator — never as part of the list above.
         open.onclick = () => openCase(row, card);
@@ -968,7 +968,7 @@
       const box = document.createElement('div');
       box.classList.add('js-mint-box');
       const label = document.createElement('strong');
-      label.textContent = 'Delivery details (opened deliberately, for this case)';
+      label.textContent = t('admin.deliveryDetailsOpenedDeliberately');
       box.appendChild(label);
       [d.recipient_name, d.phone, d.address_line1, d.address_line2, [d.city, d.emirate].filter(Boolean).join(', ')]
         .filter(Boolean)
@@ -992,7 +992,7 @@
     const act = async (to) => {
       error.classList.remove('show');
       if (!reason.value.trim()) {
-        error.textContent = 'A reason is required — it is recorded against the claim.';
+        error.textContent = t('admin.aReasonIsRequired');
         error.classList.add('show');
         return;
       }
@@ -1024,7 +1024,7 @@
     } else {
       const reissue = document.createElement('button');
       reissue.className = 'btn primary';
-      reissue.textContent = 'Reissue claim link to the same winner';
+      reissue.textContent = t('admin.reissueClaimLinkTo');
       reissue.onclick = async () => {
         error.classList.remove('show');
         try {
@@ -1042,7 +1042,7 @@
 
       const close = document.createElement('button');
       close.className = 'btn ghost';
-      close.textContent = 'Close claim';
+      close.textContent = t('admin.closeClaim');
       close.onclick = () => act('cancelled');
       buttons.appendChild(close);
     }
@@ -1058,7 +1058,7 @@
       if (!rows.length) {
         const empty = document.createElement('p');
         empty.className = 'hint';
-        empty.textContent = 'None — every drawn giveaway has a claim.';
+        empty.textContent = t('admin.noneEveryDrawnGiveaway');
         box.appendChild(empty);
         return;
       }
@@ -1076,7 +1076,7 @@
 
         const button = document.createElement('button');
         button.className = 'btn primary';
-        button.textContent = 'Issue claim to that winner';
+        button.textContent = t('admin.issueClaimToThat');
         button.onclick = async () => {
           button.disabled = true;
           try {
@@ -1119,7 +1119,7 @@
 
     const openBtn = el('button', {
       class: 'btn ghost u-51820e15',
-      text: 'Open',
+      text: t('admin.open'),
       on: { click: () => openIntegrityEntry(r.entry_id, detailRow, detailCell) },
     });
 
@@ -1181,7 +1181,7 @@
     const notesInput = el('textarea', {
       class: 'js-spaced-input',
       maxLength: 4000,
-      placeholder: 'Administrator notes — internal. Evidence, accounts compared, what a signal showed. The entrant never sees this.',
+      placeholder: t('admin.administratorNotesInternalEvidence'),
     });
     const error = el('p', { class: 'form-error' });
     const preview = el('p', { class: 'hint js-flush' });
@@ -1207,12 +1207,12 @@
           error.classList.remove('show');
           fillCodes(status);
           if (!notesInput.value.trim()) {
-            error.textContent = 'Administrator notes are required — they are the record of why this decision was made.';
+            error.textContent = t('admin.administratorNotesAreRequired');
             error.classList.add('show');
             return;
           }
           if (!codeSelect.value) {
-            error.textContent = 'Choose the explanation the entrant will be given.';
+            error.textContent = t('admin.chooseTheExplanationThe');
             error.classList.add('show');
             return;
           }
@@ -1255,19 +1255,19 @@
     const winnerNote = data.entry.is_winner
       ? el('p', {
           class: 'hint u-b1ecc496',
-          text: 'This entry won. It cannot be disqualified here — open an integrity case instead, which pauses fulfilment and leaves the winner in place.',
+          text: t('admin.thisEntryWonIt'),
         })
       : null;
 
     const caseBtn = el('button', {
       class: 'btn ghost u-51820e15',
-      text: 'Open integrity case (pauses fulfilment)',
+      text: t('admin.openIntegrityCasePauses'),
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
           error.classList.remove('show');
           if (!notesInput.value.trim()) {
-            error.textContent = 'Administrator notes are required to open a case.';
+            error.textContent = t('admin.administratorNotesAreRequired2');
             error.classList.add('show');
             return;
           }
@@ -1311,7 +1311,7 @@
                 const btn = e.currentTarget;
                 error.classList.remove('show');
                 if (!notesInput.value.trim()) {
-                  error.textContent = 'Administrator notes are required to resolve a case.';
+                  error.textContent = t('admin.administratorNotesAreRequired3');
                   error.classList.add('show');
                   return;
                 }
@@ -1348,27 +1348,27 @@
         text: `Account created ${new Date(data.account.created_at).toLocaleDateString()} · entered ${new Date(data.entry.entered_at).toLocaleString()} · ticket #${data.entry.ticket_number}`,
       }),
 
-      el('p', { class: 'u-5bf9ad33', text: 'Signals' }),
+      el('p', { class: 'u-5bf9ad33', text: t('admin.signals') }),
       data.signals.length
         ? el('div', { class: 'js-history' }, data.signals.map((sig) =>
             el('div', {
               text: `${SIGNAL_LABELS[sig.code] || sig.code} · ${sig.severity} · seen ${new Date(sig.observed_at).toLocaleString()} · expires ${new Date(sig.expires_at).toLocaleDateString()}`,
             })
           ))
-        : el('p', { class: 'hint js-flush', text: 'No signals recorded for this entry.' }),
+        : el('p', { class: 'hint js-flush', text: t('admin.noSignalsRecordedFor') }),
       el('p', {
         class: 'hint u-b1ecc496',
-        text: 'Signals are indicators, not proof. A shared network is a household, an office or a phone carrier far more often than it is abuse — nothing here has disqualified anybody, and nothing will unless you do it.',
+        text: t('admin.signalsAreIndicatorsNot'),
       }),
 
-      el('p', { class: 'u-5bf9ad33', text: 'History' }),
+      el('p', { class: 'u-5bf9ad33', text: t('admin.history') }),
       data.history.length
         ? el('div', { class: 'js-history' }, data.history.map((ev) =>
             el('div', {
               text: `${new Date(ev.created_at).toLocaleString()} — ${ev.from_status || 'new'} → ${ev.to_status} (${ev.reason_code}) by ${ev.actor_name || ev.actor_role}${ev.reason ? `: ${ev.reason}` : ''}`,
             })
           ))
-        : el('p', { class: 'hint js-flush', text: 'No decisions recorded yet.' }),
+        : el('p', { class: 'hint js-flush', text: t('admin.noDecisionsRecordedYet') }),
 
       openCase
         ? el('p', {
@@ -1380,9 +1380,9 @@
         : null,
 
       winnerNote,
-      el('label', { class: 'u-1964b55e', text: 'Administrator notes (internal — never shown to the entrant)' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.administratorNotesInternalNever') }),
       notesInput,
-      el('label', { class: 'u-1964b55e', text: 'Explanation the entrant will be given' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.explanationTheEntrantWill') }),
       codeSelect,
       preview,
       el('div', { class: 'js-button-row' }, spaced([...actions, openCase ? null : caseBtn, ...resolveButtons])),
@@ -1426,7 +1426,7 @@
 
     const openBtn = el('button', {
       class: 'btn ghost u-51820e15',
-      text: 'Open',
+      text: t('admin.open'),
       on: { click: () => openPrivacyRequest(r.id, detailRow, detailCell) },
     });
 
@@ -1478,7 +1478,7 @@
     const notesInput = el('textarea', {
       class: 'js-spaced-input',
       maxLength: 4000,
-      placeholder: 'Administrator notes — internal. What you checked, what you decided, why. The requester never sees this.',
+      placeholder: t('admin.administratorNotesInternalWhat'),
     });
 
     // Offered by the server, not assumed here. A deletion request has a shorter
@@ -1496,36 +1496,36 @@
     const erasedInput = el('input', {
       class: 'js-spaced-input',
       maxLength: 500,
-      placeholder: 'Categories erased, comma separated (e.g. account_name, account_email)',
+      placeholder: t('admin.categoriesErasedCommaSeparated'),
     });
     const anonymisedInput = el('input', {
       class: 'js-spaced-input',
       maxLength: 500,
-      placeholder: 'Categories anonymised, comma separated',
+      placeholder: t('admin.categoriesAnonymisedCommaSeparated'),
     });
     const retainedInput = el('textarea', {
       class: 'js-spaced-input',
       maxLength: 2000,
       rows: 3,
-      placeholder: 'Categories retained, one per line, as "category — reason it must be kept"',
+      placeholder: t('admin.categoriesRetainedOnePer'),
     });
     const summaryInput = el('input', {
       class: 'js-spaced-input',
       maxLength: 1000,
-      placeholder: 'What was provided, sent or corrected',
+      placeholder: t('admin.whatWasProvidedSent'),
     });
     const evidenceBlock = el('div', { class: 'is-hidden' }, [
       el('p', {
         class: 'hint',
-        text: 'A request is only completed when something was actually done. Record it here — it is written to an append-only evidence table alongside the decision.',
+        text: t('admin.aRequestIsOnly'),
       }),
-      el('label', { class: 'u-1964b55e', text: 'What was provided or corrected' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.whatWasProvidedOr') }),
       summaryInput,
-      el('label', { class: 'u-1964b55e', text: 'Categories erased' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.categoriesErased') }),
       erasedInput,
-      el('label', { class: 'u-1964b55e', text: 'Categories anonymised' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.categoriesAnonymised') }),
       anonymisedInput,
-      el('label', { class: 'u-1964b55e', text: 'Categories retained, and why' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.categoriesRetainedAndWhy') }),
       retainedInput,
     ]);
 
@@ -1555,7 +1555,7 @@
       const codes = data.outcome_codes[statusSelect.value] || [];
       clear(codeSelect);
       if (!codes.length) {
-        codeSelect.appendChild(el('option', { value: '', text: '— no outcome for this status —' }));
+        codeSelect.appendChild(el('option', { value: '', text: t('admin.noOutcomeForThis') }));
         setText(preview, 'The requester will not be given an outcome sentence for this status.');
         return;
       }
@@ -1576,13 +1576,13 @@
 
     const submit = el('button', {
       class: 'btn primary u-51820e15',
-      text: 'Record decision',
+      text: t('admin.recordDecision'),
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
           error.classList.remove('show');
           if (!notesInput.value.trim()) {
-            error.textContent = 'Administrator notes are required — they are the record of this decision.';
+            error.textContent = t('admin.administratorNotesAreRequired4');
             error.classList.add('show');
             return;
           }
@@ -1644,11 +1644,11 @@
       el('p', { class: 'u-a76e0798', text: `${data.account.name} · ${data.account.email} · account created ${new Date(data.account.created_at).toLocaleDateString()}` }),
       req.user_message
         ? el('p', { class: 'js-mint-box', text: `They wrote: ${req.user_message}` })
-        : el('p', { class: 'u-a2aae0fb', text: 'They did not add a message.' }),
+        : el('p', { class: 'u-a2aae0fb', text: t('admin.theyDidNotAdd') }),
 
       blockers.length
         ? el('div', {}, [
-            el('p', { class: 'u-5bf9ad33', text: 'What currently stands in the way of erasure' }),
+            el('p', { class: 'u-5bf9ad33', text: t('admin.whatCurrentlyStandsIn') }),
             el('ul', { class: 'u-a2aae0fb' }, blockers),
           ])
         : null,
@@ -1657,28 +1657,28 @@
         ? el('p', { class: 'hint', text: `Currently shown to them: ${req.requester_sees}` })
         : null,
 
-      el('label', { class: 'u-1964b55e', text: 'Administrator notes (internal — never shown to the requester)' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.administratorNotesInternalNever2') }),
       notesInput,
-      el('label', { class: 'u-1964b55e', text: 'Status' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.status') }),
       statusSelect,
-      el('label', { class: 'u-1964b55e', text: 'Outcome the requester will be given' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.outcomeTheRequesterWill') }),
       codeSelect,
       preview,
       evidenceBlock,
       // Said on the screen where the mistake would be made.
       el('p', {
         class: 'hint',
-        text: 'Recording a decision here changes the status and writes the history. It does not delete or anonymise any record — that is a separate, deliberate action.',
+        text: t('admin.recordingADecisionHere'),
       }),
       req.type === 'deletion' && !data.deletion_execution_implemented
         ? el('p', {
             class: 'js-mint-box',
-            text: 'This is a deletion request and it cannot be marked completed. Nothing erases data yet, and the rules for which records may be erased, anonymised or kept are not approved. Use "Awaiting retention policy" to leave it honestly open with us, or close it as unable to complete or declined.',
+            text: t('admin.thisIsADeletion'),
           })
         : null,
       (data.executions || []).length
         ? el('div', { class: 'u-680b5a65' }, [
-            el('p', { class: 'u-5bf9ad33', text: 'What was carried out' }),
+            el('p', { class: 'u-5bf9ad33', text: t('admin.whatWasCarriedOut') }),
             data.executions.map((ex) =>
               el('p', { class: 'u-a76e0798' }, [
                 `${new Date(ex.executed_at).toLocaleString()} · ${ex.action_kind} · by ${ex.executed_by || ex.executed_by_job}`,
@@ -1697,7 +1697,7 @@
       el('div', { class: 'js-button-row' }, submit),
       error,
       history.length
-        ? el('div', { class: 'u-680b5a65' }, [el('p', { class: 'u-5bf9ad33', text: 'History' }), history])
+        ? el('div', { class: 'u-680b5a65' }, [el('p', { class: 'u-5bf9ad33', text: t('admin.history') }), history])
         : null,
     ]));
   }
@@ -1742,7 +1742,7 @@
 
     const openBtn = el('button', {
       class: 'btn ghost u-51820e15',
-      text: 'History',
+      text: t('admin.history'),
       on: { click: () => openNotification(n, detailRow, detailCell) },
     });
 
@@ -1751,7 +1751,7 @@
     const retryBtn = n.status === 'failed'
       ? el('button', {
           class: 'btn ghost u-51820e15',
-          text: 'Retry',
+          text: t('admin.retry'),
           on: {
             click: async (e) => {
               const btn = e.currentTarget;
@@ -1823,7 +1823,7 @@
       ]),
       el('p', {
         class: 'hint',
-        text: 'This record holds no address, message or link. Every retry issues a fresh link and stops the previous one working.',
+        text: t('admin.thisRecordHoldsNo'),
       }),
       events.map((ev) =>
         el('p', { class: 'u-a76e0798' }, [

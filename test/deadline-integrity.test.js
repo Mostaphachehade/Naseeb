@@ -124,4 +124,54 @@ test('dl6: the approved rule is stated once and the public copy matches it', () 
     }
   });
   assert.deepEqual(offenders, [], `pages still promise a 30-day entry window: ${offenders.join(', ')}`);
+
+  // And the dictionaries, which are what a visitor actually reads. applyI18n()
+  // overwrites the text in the HTML, so a page could be clean here and still
+  // render "٣٠ يومًا" from an entry nothing above inspects — the same class of
+  // failure as the stale hero.lede, in the language nobody on this project can
+  // proofread by eye.
+  const dictDir = path.join(ROOT, 'public', 'js', 'i18n');
+  const dictFiles = ['../i18n.js', ...fs.readdirSync(dictDir).filter((f) => f.endsWith('.js'))];
+  const dictOffenders = [];
+  dictFiles.forEach((f) => {
+    // privacy.js and admin.js measure retention and a reporting window in days;
+    // neither is the entry deadline.
+    if (f === 'privacy.js' || f === 'admin.js') return;
+    const src = fs.readFileSync(path.join(dictDir, f), 'utf8');
+    src.split(/\r?\n/).forEach((line, i) => {
+      if (/30[- ]day|30 days|٣٠ يوم|30 يوم/i.test(line)) {
+        dictOffenders.push(`${f === '../i18n.js' ? 'i18n.js' : f}:${i + 1}`);
+      }
+    });
+  });
+  assert.deepEqual(
+    dictOffenders,
+    [],
+    'dictionary entries promise a 30-day entry window in text that overwrites the page:'
+    + ` ${dictOffenders.join(', ')}`
+  );
+
+  // And the page scripts, which is where this actually was.
+  //
+  // create.js told a host, on the screen shown immediately after they submitted
+  // a prize, that "it runs for 30 days". The code has enforced one calendar
+  // month since this file was written. The markup was clean, the dictionaries
+  // were clean, and the sentence a host read at the one moment they were paying
+  // attention was wrong — because it was built in JavaScript and nothing here
+  // looked there.
+  const scriptDir = path.join(ROOT, 'public', 'js', 'pages');
+  const scriptOffenders = [];
+  fs.readdirSync(scriptDir).filter((f) => f.endsWith('.js')).forEach((f) => {
+    // owner.js reports advertising revenue over a rolling 30-day window, which
+    // is a reporting period and not the entry deadline.
+    if (f === 'owner.js') return;
+    fs.readFileSync(path.join(scriptDir, f), 'utf8').split(/\r?\n/).forEach((line, i) => {
+      if (/30[- ]day|30 days|٣٠ يوم/i.test(line)) scriptOffenders.push(`${f}:${i + 1}`);
+    });
+  });
+  assert.deepEqual(
+    scriptOffenders,
+    [],
+    `page scripts promise a 30-day entry window: ${scriptOffenders.join(', ')}`
+  );
 });

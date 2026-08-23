@@ -139,13 +139,13 @@
     }
 
     if (!quote) {
-      errorEl.textContent = 'Prices are still loading. Give it a moment and try again.';
+      errorEl.textContent = t('advertise.pricesAreStillLoading');
       errorEl.classList.add('show');
       return;
     }
 
     btn.disabled = true;
-    btn.textContent = 'Starting checkout…';
+    btn.textContent = t('advertise.startingCheckout');
 
     // Deliberately sends no price and no total — only which duration was
     // chosen, and which quote the customer was looking at when they chose it.
@@ -167,10 +167,10 @@
         body: JSON.stringify(payload),
       });
     } catch (err) {
-      errorEl.textContent = 'Could not reach the server. Please try again.';
+      errorEl.textContent = t('advertise.couldNotReachThe');
       errorEl.classList.add('show');
       btn.disabled = false;
-      btn.textContent = 'Continue to payment';
+      btn.textContent = t('advertise.continueToPayment');
       return;
     }
 
@@ -190,7 +190,7 @@
       notice.classList.remove('is-hidden');
 
       btn.disabled = false;
-      btn.textContent = 'Confirm new price and continue';
+      btn.textContent = t('advertise.confirmNewPriceAnd');
       return;
     }
 
@@ -207,7 +207,7 @@
     // Stripe's hosted checkout, relayed by our API. Checked against the one
     // origin it may be, because "our API said so" is not a property of a URL.
     if (!NaseebDom.navigateToCheckout(data.checkoutUrl)) {
-      errorEl.textContent = 'Checkout is unavailable right now. Please try again later.';
+      errorEl.textContent = t('advertise.checkoutIsUnavailableRight');
       errorEl.classList.add('show');
       btn.disabled = false;
     }
@@ -227,7 +227,7 @@
         }),
       });
       document.getElementById('inquiry-form').classList.add('is-hidden');
-      document.getElementById('inquiry-success').textContent = "Got it — we'll be in touch.";
+      document.getElementById('inquiry-success').textContent = t('advertise.gotItWeLl');
       document.getElementById('inquiry-success').classList.add('show');
     } catch (err) {
       errorEl.textContent = err.message;
@@ -259,11 +259,11 @@
           document.getElementById('success-details').textContent =
             `${booking.business_name}'s banner runs ${runs} (${booking.amountDisplay} paid).`;
         } else {
-          document.getElementById('success-heading').textContent = 'Payment received — confirming';
+          document.getElementById('success-heading').textContent = t('advertise.paymentReceivedConfirming');
           document.getElementById('success-details').textContent =
             `We're waiting for your bank to confirm the payment. Once it clears, ${booking.business_name}'s banner is scheduled for ${runs}.`;
           document.getElementById('success-note').textContent =
-            "This usually takes a few seconds. You'll get an email as soon as it's confirmed — you don't need to stay on this page or pay again.";
+            t('advertise.thisUsuallyTakesA');
         }
       } catch (err) {
         document.getElementById('processing-panel').classList.add('is-hidden');
