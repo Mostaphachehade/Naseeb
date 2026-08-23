@@ -110,6 +110,7 @@ test('i18n1: every English key has an Arabic counterpart, and vice versa', () =>
 const INTENTIONALLY_UNTRANSLATED = {
   'advertise.https': 'A URL shape shown as a hint in a web-address field. Rendering "https" in Arabic would be a worse hint.',
   'advertise.httpsYourBusinessSite': 'An example web address. Addresses are typed in Latin script; a translated example would not be typeable.',
+  'create.https': 'A URL shape shown as a hint in a web-address field, same reason as advertise.https.',
 };
 
 test('i18n2: no Arabic entry is left as its English source', () => {
