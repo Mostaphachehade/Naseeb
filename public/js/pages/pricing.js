@@ -4,6 +4,11 @@
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
       if (!data || !data.pricePerWeekDisplay) return;
-      document.getElementById('ad-price').textContent = `${data.pricePerWeekDisplay} / week`;
+      // The price is isolated: it is a Latin-digit run with a currency code,
+      // and dropped raw into an Arabic line the bidi algorithm moves the
+      // separator to the wrong end of it.
+      document.getElementById('ad-price').textContent = window.NaseebI18n.t('pricing.perWeek', {
+        price: window.NaseebI18n.isolate(data.pricePerWeekDisplay),
+      });
     })
     .catch(() => {});

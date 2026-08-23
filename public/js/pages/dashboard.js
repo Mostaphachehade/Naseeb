@@ -1,3 +1,5 @@
+  const t = (key) => window.NaseebI18n.t(key);
+
   // Awaited, because whether somebody is signed in is now a question for the
   // server rather than a synchronous read of browser storage.
   const ready = requireSession('/dashboard.html');
@@ -15,36 +17,36 @@
   // as text that something later parses.
   const HOST_STATE_NOTES = {
     not_requested: {
-      note: 'Hosting is a closed beta. Apply and an administrator will review your request.',
-      action: () => el('a', { href: '/host-apply.html', class: 'btn primary', text: 'Apply to host' }),
+      note: () => t('dashboard.hostNotRequested'),
+      action: () => el('a', { href: '/host-apply.html', class: 'btn primary', text: t('nav.applyToHost') }),
     },
     pending: {
-      note: 'Your application to host is with an administrator. It grants no access on its own, and we have not set a review deadline.',
+      note: () => t('dashboard.hostPending'),
       action: () => null,
     },
     rejected: {
-      note: 'This account has not been approved to host giveaways.',
-      action: () => el('a', { href: '/host-apply.html', class: 'btn ghost u-e21d2b9e', text: 'Apply again' }),
+      note: () => t('dashboard.hostRejected'),
+      action: () => el('a', { href: '/host-apply.html', class: 'btn ghost u-e21d2b9e', text: t('dashboard.applyAgain') }),
     },
     suspended: {
-      note: 'Hosting access for this account is suspended. Nothing has been deleted — your giveaways, entries and records are all still on file — but new listings and draws are stopped, and any open prize claim is now handled by an administrator.',
+      note: () => t('dashboard.hostSuspended'),
       action: () => null,
     },
   };
 
   const ENTRY_STATUS_NOTE = {
-    under_review: 'Entry being checked',
-    disqualified: 'Entry not in the draw',
+    under_review: 'dashboard.entryUnderReview',
+    disqualified: 'dashboard.entryDisqualified',
   };
 
   // A short label plus the server's own fixed sentence. No administrator note
   // reaches here, because none is sent.
   function entryStatusNote(myEntry) {
     if (!myEntry) return null;
-    const label = ENTRY_STATUS_NOTE[myEntry.status]
-      || (myEntry.resolution_pending ? 'Outcome pending' : null);
-    if (!label) return null;
-    return el('p', { class: 'delivery-pill pending', text: label });
+    const key = ENTRY_STATUS_NOTE[myEntry.status]
+      || (myEntry.resolution_pending ? 'dashboard.entryOutcomePending' : null);
+    if (!key) return null;
+    return el('p', { class: 'delivery-pill pending', text: t(key) });
   }
 
   function emptyWithLink(before, href, linkText, after) {
@@ -70,7 +72,7 @@
     if (state && !state.can_host) {
       const info = HOST_STATE_NOTES[state.host_status] || HOST_STATE_NOTES.not_requested;
       mount(noteEl, el('div', { class: 'card narrow u-5583aeec' }, [
-        el('p', { class: 'u-ecf28f6f', text: info.note }),
+        el('p', { class: 'u-ecf28f6f', text: info.note() }),
         // An administrator's free-typed reason. Text.
         state.status_reason
           ? el('p', { class: 'u-d02706d3', text: 'Reason given: ' + state.status_reason })
@@ -81,12 +83,12 @@
       return;
     }
 
-    mount(actionEl, el('a', { href: '/create.html', class: 'btn primary', text: 'Host a giveaway' }));
+    mount(actionEl, el('a', { href: '/create.html', class: 'btn primary', text: t('nav.hostGiveaway') }));
     try {
       const hosted = await api('/giveaways/mine/hosted');
       mount(hostedGrid, hosted.length
         ? hosted.map(giveawayCard)
-        : emptyWithLink("You haven't hosted a giveaway yet. ", '/create.html', 'Start one', '.'));
+        : emptyWithLink(t('dashboard.emptyHostedBefore'), '/create.html', t('dashboard.emptyHostedLink'), t('dashboard.emptyAfter')));
     } catch (err) {
       mount(hostedGrid, errorNode(err.message));
     }
@@ -108,7 +110,7 @@
             if (note) card.appendChild(note);
             return card;
           })
-        : emptyWithLink("You haven't entered anything yet. ", '/index.html', 'Browse open giveaways', '.'));
+        : emptyWithLink(t('dashboard.emptyEnteredBefore'), '/index.html', t('pricing.browseOpenGiveaways'), t('dashboard.emptyAfter')));
     } catch (err) {
       mount(enteredGrid, errorNode(err.message));
     }

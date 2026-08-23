@@ -1,3 +1,12 @@
+  // Every displayed string comes from the dictionary, and every value the
+  // server supplies is wrapped in isolate() before it is dropped into a
+  // sentence. A prize title or a host name is a run of text in an unknown
+  // direction: inside an Arabic sentence an untreated Latin title reorders the
+  // punctuation around it, and a name carrying its own direction marks can
+  // reorder the rest of the line.
+  const t = (key, vars) => window.NaseebI18n.t(key, vars);
+  const iso = (value) => window.NaseebI18n.isolate(value);
+
   // Already captured and erased by the inline script above.
   const claimToken = window.__claimToken;
   window.__claimToken = null;
@@ -16,7 +25,7 @@
   }
 
   async function load() {
-    if (!claimToken) return invalid('No claim link was provided.');
+    if (!claimToken) return invalid(t('claim.noClaimLink'));
 
     let claim;
     try {
@@ -34,8 +43,11 @@
     consentVersion = claim.consent_version;
     document.getElementById('giveaway-title').textContent = claim.title;
     document.getElementById('prize-description').textContent = claim.prize_description;
-    document.getElementById('prize-line').textContent = `Confirm your claim for ${claim.title}.`;
-    document.getElementById('host-line').textContent = `Hosted by ${claim.host_name}. Funded by: ${claim.funded_by}`;
+    document.getElementById('prize-line').textContent = t('claim.confirmYourClaimFor', { title: iso(claim.title) });
+    document.getElementById('host-line').textContent = t('claim.hostedByFundedBy', {
+      host: iso(claim.host_name),
+      funder: iso(claim.funded_by),
+    });
     document.getElementById('consent-host').textContent = claim.host_name;
     show('claim-panel');
   }
@@ -47,13 +59,13 @@
     errorEl.classList.remove('show');
 
     if (!document.getElementById('consent').checked) {
-      errorEl.textContent = 'Please tick the box so we can share your address with the host.';
+      errorEl.textContent = t('claim.pleaseTickTheBox');
       errorEl.classList.add('show');
       return;
     }
 
     btn.disabled = true;
-    btn.textContent = 'Sending…';
+    btn.textContent = t('claim.sending');
 
     try {
       await api('/claims/redeem', {
@@ -73,14 +85,13 @@
           },
         }),
       });
-      document.getElementById('done-message').textContent =
-        "The host has been told you've claimed, and can now arrange delivery. You'll get an email at each step, and you're the one who confirms it arrived.";
+      document.getElementById('done-message').textContent = t('claim.doneMessage');
       show('done-panel');
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.add('show');
       btn.disabled = false;
-      btn.textContent = 'Confirm claim and share details';
+      btn.textContent = t('claim.confirmClaimAndShare');
     }
   });
 

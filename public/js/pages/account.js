@@ -1,3 +1,7 @@
+  const t = (key, vars) => window.NaseebI18n.t(key, vars);
+  const iso = (value) => window.NaseebI18n.isolate(value);
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
+
   // The account centre.
   //
   // Everything rendered here is the signed-in person's own data, and every node
@@ -58,20 +62,24 @@
       },
     });
 
-    return card('Your details', [
-      el('label', { htmlFor: 'account-name', text: 'Display name' }),
+    return card(t('account.yourDetails'), [
+      el('label', { htmlFor: 'account-name', text: t('account.displayName') }),
       nameInput,
-      el('p', { class: 'hint', text: 'This is the name shown beside your entries and on the winners page.' }),
+      el('p', { class: 'hint', text: t('account.displayNameHint') }),
       save,
       note,
       el('p', { class: 'u-680b5a65' }, [
-        el('strong', { text: 'Email: ' }),
-        state.account.email,
-        state.account.email_verified ? ' (verified)' : ' (not verified)',
+        el('strong', { text: t('account.emailLabel') }),
+        // An address is a Latin run inside an Arabic line; without isolation the
+        // trailing punctuation ends up at the wrong end of it.
+        iso(state.account.email),
+        state.account.email_verified ? t('account.verifiedSuffix') : t('account.notVerifiedSuffix'),
       ]),
       el('p', {
         class: 'u-a2aae0fb',
-        text: `Account created ${new Date(state.account.created_at).toLocaleDateString()}.`,
+        text: t('account.accountCreated', {
+          when: new Date(state.account.created_at).toLocaleDateString(locale),
+        }),
       }),
     ]);
   }

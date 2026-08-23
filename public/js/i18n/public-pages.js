@@ -49,6 +49,7 @@ register({
     'about.thePrizeIsThe': "The prize is the host's marketing cost. Naseeb does not buy, hold, insure or ship prizes, and money paid to us is never used to fund one.",
     'about.weDoNotClaim': "We do not claim that using this platform makes a campaign lawful or removes any permit, licensing or consumer-protection obligation. If you are hosting giveaways — especially at scale, for a client, or beyond a straightforward free-entry promotion — take advice from a qualified UAE lawyer about your specific situation.",
     'about.chatOnWhatsapp': "Chat on WhatsApp",
+    'about.metaDescription': "Naseeb is a free-entry giveaway platform. Entry is always free, hosts fund their own prizes, and every draw is on the record.",
   },
   ar: {
     'about.aboutNaseeb': 'من نحن — نصيب',
@@ -87,5 +88,6 @@ register({
     'about.thePrizeIsThe': "الجائزة تكلفة تسويقية يتحمّلها المضيف. ولا تشتري نصيب الجوائز ولا تحتفظ بها ولا تؤمّن عليها ولا تشحنها، ولا يُستخدَم أي مبلغ يُدفع إلينا في تمويل جائزة.",
     'about.weDoNotClaim': "لا ندّعي أن استخدام هذه المنصّة يجعل الحملة قانونية أو يُسقط أي التزام يتعلّق بالتصاريح أو التراخيص أو حماية المستهلك. وإذا كنت تستضيف مسابقات — ولا سيّما على نطاق واسع، أو لصالح عميل، أو بما يتجاوز ترويجًا مجاني المشاركة بسيطًا — فاطلب مشورة محامٍ إماراتي مؤهَّل بشأن وضعك تحديدًا.",
     'about.chatOnWhatsapp': "تواصل عبر WhatsApp",
+    'about.metaDescription': "نصيب منصّة مسابقات مجانية المشاركة. المشاركة مجانية دائمًا، ويموّل المضيفون جوائزهم بأنفسهم، وكل سحب مُوثَّق.",
   },
 });

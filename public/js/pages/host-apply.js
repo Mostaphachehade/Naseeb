@@ -1,3 +1,8 @@
+  const t = (key, vars) => window.NaseebI18n.t(key, vars);
+  const iso = (value) => window.NaseebI18n.isolate(value);
+  // Dates follow the page's language, not the operating system's.
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
+
   const companyFields = document.getElementById('company-fields');
   const fullNameLabel = document.getElementById('full_name-label');
   const businessNameInput = document.getElementById('business_name');
@@ -37,7 +42,11 @@
   // The administrator's reason for a rejection or suspension, shown to the
   // account it concerns. Text node, never markup.
   function reasonNode(reason) {
-    return reason ? el('p', { class: 'reason', text: 'Reason given: ' + reason }) : null;
+    // The reason is the server's own fixed wording, isolated because it can
+    // carry a direction of its own inside an Arabic sentence.
+    return reason
+      ? el('p', { class: 'reason', text: t('hostapply.reasonGiven', { reason: iso(reason) }) })
+      : null;
   }
 
   // Everything below decides what to SHOW. The server decides what is allowed,
@@ -46,16 +55,16 @@
   function render(state) {
     if (state.is_admin) {
       mount(statusPanel, panel(
-        'You are an administrator',
-        el('p', { text: 'Administrator accounts can host without an approval, so there is nothing to apply for.' }),
-        el('a', { class: 'btn primary', href: '/create.html', text: 'Host a giveaway' })
+        t('hostapply.youAreAnAdministrator'),
+        el('p', { text: t('hostapply.administratorAccountsCanHost') }),
+        el('a', { class: 'btn primary', href: '/create.html', text: t('nav.hostGiveaway') })
       ));
       return;
     }
     if (!state.email_verified) {
       mount(statusPanel, panel(
-        'Verify your email first',
-        el('p', { text: 'We need a working email address on your account before you can apply. Check your inbox, or resend the verification email from the banner above.' })
+        t('hostapply.verifyYourEmailFirst'),
+        el('p', { text: t('hostapply.weNeedAWorkingEmail') })
       ));
       return;
     }
@@ -63,43 +72,47 @@
     switch (state.host_status) {
       case 'approved':
         mount(statusPanel, panel(
-          'You are approved to host',
-          el('p', { text: 'Your account has host access. There is nothing further to apply for.' }),
-          el('a', { class: 'btn primary', href: '/create.html', text: 'Host a giveaway' })
+          t('hostapply.youAreApprovedToHost'),
+          el('p', { text: t('hostapply.yourAccountHasHostAccess') }),
+          el('a', { class: 'btn primary', href: '/create.html', text: t('nav.hostGiveaway') })
         ));
         return;
       case 'pending':
         mount(statusPanel, panel(
-          'Your application is with an administrator',
+          t('hostapply.yourApplicationIsWith'),
           [
             el('p', {
-              text: `Submitted ${state.application ? new Date(state.application.created_at).toLocaleDateString() : 'recently'}. It grants no hosting access on its own.`,
+              text: t('hostapply.submittedOn', {
+                when: state.application
+                  ? new Date(state.application.created_at).toLocaleDateString(locale)
+                  : t('hostapply.recently'),
+              }),
             }),
-            el('p', { text: 'We have not set a review deadline, so we are not going to promise you one.' }),
+            el('p', { text: t('hostapply.noReviewDeadline') }),
           ],
-          el('a', { class: 'btn ghost u-e21d2b9e', href: '/dashboard.html', text: 'Back to my giveaways' })
+          el('a', { class: 'btn ghost u-e21d2b9e', href: '/dashboard.html', text: t('hostapply.backToMyGiveaways') })
         ));
         return;
       case 'rejected':
         mount(statusPanel, panel(
-          'This account has not been approved to host',
+          t('hostapply.notApprovedToHost'),
           [
-            el('p', { text: 'An administrator reviewed your application and did not approve it.' }),
+            el('p', { text: t('hostapply.anAdministratorReviewed') }),
             reasonNode(state.status_reason),
-            el('p', { text: 'You can apply again if something has changed since.' }),
+            el('p', { text: t('hostapply.youCanApplyAgain') }),
           ]
         ));
         applyForm.classList.remove('is-hidden');
         return;
       case 'suspended':
         mount(statusPanel, panel(
-          'Hosting access is suspended',
+          t('hostapply.hostingAccessIsSuspended'),
           [
-            el('p', { text: 'An administrator has suspended hosting for this account. Your existing giveaways, entries and records are unchanged — what has stopped is publishing new giveaways and drawing winners.' }),
+            el('p', { text: t('hostapply.anAdministratorHasSuspended') }),
             reasonNode(state.status_reason),
-            el('p', { text: 'Applying again will not lift a suspension. Please get in touch.' }),
+            el('p', { text: t('hostapply.applyingAgainWillNot') }),
           ],
-          el('a', { class: 'btn ghost u-e21d2b9e', href: '/about.html#get-in-touch', text: 'Contact us' })
+          el('a', { class: 'btn ghost u-e21d2b9e', href: '/about.html#get-in-touch', text: t('hostapply.contactUs') })
         ));
         return;
       default:
@@ -112,11 +125,11 @@
     if (!isSignedIn()) {
       document.getElementById('form-head').classList.add('is-hidden');
       mount(statusPanel, panel(
-        'Sign in to apply',
-        el('p', { text: 'An application is attached to your account, so we need you signed in with a verified email address before you can make one.' }),
+        t('hostapply.signInToApply'),
+        el('p', { text: t('hostapply.anApplicationIsAttached') }),
         frag([
-          el('a', { class: 'btn primary', href: '/login.html?redirect=%2Fhost-apply.html', text: 'Sign in' }),
-          el('a', { class: 'btn ghost u-f7228bba', href: '/signup.html?redirect=%2Fhost-apply.html', text: 'Create a free account' }),
+          el('a', { class: 'btn primary', href: '/login.html?redirect=%2Fhost-apply.html', text: t('nav.signIn') }),
+          el('a', { class: 'btn ghost u-f7228bba', href: '/signup.html?redirect=%2Fhost-apply.html', text: t('hostapply.createAFreeAccount') }),
         ])
       ));
       return;

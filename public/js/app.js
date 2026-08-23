@@ -133,6 +133,31 @@ function forgetSession() {
 
 const UNSAFE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
+// The server writes its refusals in English, deliberately: the same response
+// goes to a browser, a test and an operations script, and it has no business
+// guessing which language the reader wants. The page is where that is known, so
+// the sentence is looked up here and shown in the page's language.
+//
+// Falls back to the server's own words rather than to a generic apology. An
+// untranslated sentence that says what actually happened is more use than a
+// translated one that does not — and public/js/i18n/errors.js is checked against
+// the server's error literals by test/server-error-i18n.test.js, so the gap is
+// visible rather than permanent.
+function localiseServerError(message) {
+  const fallback = message || 'Something went wrong. Please try again.';
+  const i18n = window.NaseebI18n;
+  const index = window.NaseebServerErrors;
+  if (!i18n || !index || !message) {
+    return i18n ? i18n.t('errors.somethingWentWrong') : fallback;
+  }
+  const key = index[String(message).replace(/\s+/g, ' ').trim()];
+  if (!key) return fallback;
+  const translated = i18n.t(key);
+  // t() echoes the key when it has no entry; showing "errors.sessionExpired"
+  // to a reader would be worse than showing them English.
+  return translated === key ? fallback : translated;
+}
+
 async function api(path, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -157,7 +182,7 @@ async function api(path, options = {}) {
     // A session that ended server-side (expired, revoked, password reset,
     // account suspended) should stop the page pretending otherwise.
     if (res.status === 401) forgetSession();
-    throw new Error(data.error || 'Something went wrong. Please try again.');
+    throw new Error(localiseServerError(data.error));
   }
   return data;
 }

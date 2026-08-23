@@ -1,3 +1,6 @@
+  const t = (key, vars) => window.NaseebI18n.t(key, vars);
+  const iso = (value) => window.NaseebI18n.isolate(value);
+
   // Cosmetic only. Every route this page calls re-reads users.is_admin from
   // Postgres on the request, so reaching this page without being an
   // administrator produces a screen full of 403s rather than an admin panel.
@@ -9,18 +12,20 @@
     try {
       const s = await api('/admin/stats');
       const cards = [
-        { num: s.pending_host_applications, label: 'Pending applications', attention: s.pending_host_applications > 0 },
-        { num: s.pending_ad_inquiries, label: 'Pending ad inquiries', attention: s.pending_ad_inquiries > 0 },
-        { num: s.live_giveaways, label: 'Live giveaways' },
-        { num: s.total_hosts, label: 'Total hosts' },
-        { num: s.verified_hosts, label: 'Verified hosts' },
-        { num: s.approved_hosts, label: 'Approved hosts' },
-        { num: s.suspended_hosts, label: 'Suspended hosts', attention: s.suspended_hosts > 0 },
+        { num: s.pending_host_applications, label: t('admin.statPendingApplications'), attention: s.pending_host_applications > 0 },
+        { num: s.pending_ad_inquiries, label: t('admin.statPendingAdInquiries'), attention: s.pending_ad_inquiries > 0 },
+        { num: s.live_giveaways, label: t('admin.statLiveGiveaways') },
+        { num: s.total_hosts, label: t('admin.statTotalHosts') },
+        { num: s.verified_hosts, label: t('admin.statVerifiedHosts') },
+        { num: s.approved_hosts, label: t('admin.statApprovedHosts') },
+        { num: s.suspended_hosts, label: t('admin.statSuspendedHosts'), attention: s.suspended_hosts > 0 },
         // The advertiser's business name, inside a label. Text, like every
         // other value on this page.
         {
           num: s.active_ad ? s.active_ad.click_count : '—',
-          label: s.active_ad ? `Clicks — ${s.active_ad.business_name}` : 'No active ad',
+          label: s.active_ad
+            ? t('admin.statClicksFor', { business: iso(s.active_ad.business_name) })
+            : t('admin.statNoActiveAd'),
         },
       ];
       mount(content, cards.map((c) => el('div', { class: c.attention ? 'admin-stat attention' : 'admin-stat' }, [

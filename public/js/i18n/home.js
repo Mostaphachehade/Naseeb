@@ -38,6 +38,8 @@ register({
     'home.statGiveaways': 'Giveaways hosted',
     'home.statEntries': 'Entries submitted',
     'home.statValue': 'AED in prizes listed',
+    'home.pageTitle': "Naseeb — Free-entry giveaways",
+    'home.metaDescription': "Naseeb hosts free-entry giveaways — no purchase necessary, ever. Browse open giveaways, enter with one tap, and see winners drawn at random.",
   },
   ar: {
     'home.promoLiveNow': 'مباشر الآن',
@@ -56,5 +58,7 @@ register({
     'home.statGiveaways': 'المسابقات المستضافة',
     'home.statEntries': 'المشاركات المُقدَّمة',
     'home.statValue': 'درهم إماراتي في الجوائز المعروضة',
+    'home.pageTitle': "نصيب — مسابقات مجانية المشاركة",
+    'home.metaDescription': "تستضيف نصيب مسابقات مجانية المشاركة — لا يُشترط الشراء إطلاقًا. تصفّح المسابقات المفتوحة، وشارك بنقرة واحدة، وشاهد الفائزين يُسحبون عشوائيًّا.",
   },
 });

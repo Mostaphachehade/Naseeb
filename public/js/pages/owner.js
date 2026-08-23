@@ -1,3 +1,8 @@
+  const t = (key, vars) => window.NaseebI18n.t(key, vars);
+  const iso = (value) => window.NaseebI18n.isolate(value);
+
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
+
   const ready = requireSession('/owner.html');
 
   // ---- Quick-host ----
@@ -91,19 +96,19 @@
       ]));
       const bookingRows = r.recent_bookings.map((b) => el('tr', {}, [
         td(b.business_name),
-        td('AED ' + Number(b.amount_aed).toLocaleString(), 'mono'),
+        td(t('owner.aedAmount', { amount: Number(b.amount_aed).toLocaleString(locale) }), 'mono'),
         td(`${b.starts_at} – ${b.ends_at}`),
       ]));
 
       mount(content, [
         el('div', { class: 'admin-dashboard u-8b9688e6' }, [
-          statCard('AED ' + r.total_revenue_aed.toLocaleString(), 'Total ad revenue'),
-          statCard(r.total_bookings, 'Paid bookings'),
-          statCard('AED ' + r.revenue_last_30_days_aed.toLocaleString(), 'Last 30 days'),
+          statCard(t('owner.aedAmount', { amount: iso(r.total_revenue_aed.toLocaleString(locale)) }), t('owner.statTotalAdRevenue')),
+          statCard(r.total_bookings, t('owner.statPaidBookings')),
+          statCard(t('owner.aedAmount', { amount: iso(r.revenue_last_30_days_aed.toLocaleString(locale)) }), t('owner.statLast30Days')),
         ]),
-        dataTable(['Month', 'Bookings', 'Revenue'], monthRows, 'No revenue yet.', 'u-7dde5e56'),
-        el('p', { class: 'u-5bf9ad33', text: 'Recent bookings' }),
-        dataTable(['Business', 'Amount', 'Dates'], bookingRows, 'No bookings yet.'),
+        dataTable([t('owner.colMonth'), t('owner.colBookings'), t('owner.colRevenue')], monthRows, t('owner.noRevenueYet'), 'u-7dde5e56'),
+        el('p', { class: 'u-5bf9ad33', text: t('owner.recentBookings') }),
+        dataTable([t('owner.colBusiness'), t('owner.colAmount'), t('owner.colDates')], bookingRows, t('owner.noBookingsYet')),
       ]);
     } catch (err) {
       mount(content, emptyNode(err.message));

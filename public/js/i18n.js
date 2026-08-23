@@ -134,6 +134,14 @@ const TRANSLATIONS = {
     'detail.prizeDelivery': "Prize delivery",
     'detail.whatWentWrong': "What went wrong?",
     'detail.sendToReview': "Send to review",
+    'detail.pageTitle': "Giveaway — Naseeb",
+    'detail.metaDescription': "Enter this free giveaway on Naseeb — no purchase necessary, ever.",
+    'winners.pageTitle': "Winners — Naseeb",
+    'winners.metaDescription': "Real people, real prizes, drawn at random. See who's won on Naseeb so far.",
+    'policy.status.draft': "DRAFT",
+    'policy.status.approved': "APPROVED",
+    'policy.status.effective': "EFFECTIVE",
+    'policy.notYetEffective': "not yet effective",
   },
   ar: {
     'nav.browse': 'تصفح',
@@ -247,6 +255,14 @@ const TRANSLATIONS = {
     'detail.prizeDelivery': "تسليم الجائزة",
     'detail.whatWentWrong': "ما الذي حدث؟",
     'detail.sendToReview': "إرسال للمراجعة",
+    'detail.pageTitle': "مسابقة — نصيب",
+    'detail.metaDescription': "شارك في هذه المسابقة المجانية على نصيب — لا يُشترط الشراء إطلاقًا.",
+    'winners.pageTitle': "الفائزون — نصيب",
+    'winners.metaDescription': "أشخاص حقيقيون وجوائز حقيقية تُسحب عشوائيًّا. اطّلع على من فاز على نصيب حتى الآن.",
+    'policy.status.draft': "مسودّة",
+    'policy.status.approved': "معتمدة",
+    'policy.status.effective': "سارية",
+    'policy.notYetEffective': "غير سارية بعد",
   },
 };
 
@@ -407,4 +423,11 @@ function setLang(lang) {
 
 applyI18n();
 
-window.NaseebI18n = { t, isolate, register, setLang, getLang, applyI18n };
+// Read-only access to a whole dictionary. Only errors.js uses it, to build
+// its English-sentence index; returning a copy so a page cannot reach in and
+// rewrite a translation at runtime.
+function dictionary(lang) {
+  return Object.assign({}, TRANSLATIONS[lang] || {});
+}
+
+window.NaseebI18n = { t, isolate, register, setLang, getLang, applyI18n, dictionary };

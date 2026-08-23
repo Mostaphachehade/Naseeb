@@ -47,6 +47,7 @@ register({
     'pricing.weDoNotKnow': 'We do not know, and we are not going to state a future price we have not decided. What we can say is what is true today: there is no paid hosting tier, no checkout for one, and nothing in the application flow charges anyone.',
     'pricing.couldMyHostAccess': 'Could my host access be taken away?',
     'pricing.yesAnAdministratorCan': 'Yes. An administrator can suspend hosting access, with a recorded reason. Suspension stops you publishing new giveaways or drawing winners; it does not delete your existing giveaways, entries or records, and any open prize claim moves to administrator handling so a winner is not left waiting.',
+    'pricing.perWeek': "{price} / week",
   },
   ar: {
     'pricing.whatThingsCostNaseeb': 'الأسعار — نصيب',
@@ -86,5 +87,6 @@ register({
     'pricing.weDoNotKnow': 'لا نعلم، ولن نذكر سعرًا مستقبليًّا لم نقرّره بعد. ما نستطيع قوله هو ما هو صحيح اليوم: لا توجد باقة استضافة مدفوعة، ولا بوابة دفع لها، ولا شيء في مسار التقديم يُحصّل مبلغًا من أحد.',
     'pricing.couldMyHostAccess': 'هل يمكن سحب صلاحية الاستضافة منّي؟',
     'pricing.yesAnAdministratorCan': 'نعم. يستطيع مشرف تعليق صلاحية الاستضافة، مع تسجيل السبب. ويمنعك التعليق من نشر مسابقات جديدة أو سحب فائزين؛ لكنه لا يحذف مسابقاتك أو مشاركاتك أو سجلّاتك القائمة، وينتقل أي طلب استلام جائزة مفتوح إلى إدارة المشرفين حتى لا يبقى فائز في الانتظار.',
+    'pricing.perWeek': "{price} / أسبوع",
   },
 });
