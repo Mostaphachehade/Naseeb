@@ -114,6 +114,14 @@ const INTENTIONALLY_UNTRANSLATED = {
   'owner.https': 'A URL shape shown as a hint in a web-address field, same reason as advertise.https.',
   'admin.https': 'A URL shape shown as a hint in a web-address field, same reason as advertise.https.',
   'admin.httpsTheAdvertiserS': 'An example web address for an advertiser link field. Typed in Latin script.',
+  'terms.202608172': 'A machine-readable policy version identifier, not prose. Translating it would break the version it names.',
+  'privacy.202608151': 'A machine-readable policy version identifier, same reason as terms.202608172.',
+  'privacy.render': 'A provider trade name. Transliterating it would make the company harder to look up, not easier.',
+  'privacy.resend': 'A provider trade name, same reason as privacy.render.',
+  'privacy.stripe': 'A provider trade name, same reason as privacy.render.',
+  'privacy.cloudinary': 'A provider trade name, same reason as privacy.render.',
+  'privacy.googleAnalytics': 'A provider trade name, same reason as privacy.render.',
+  'privacy.sentry': 'A provider trade name, same reason as privacy.render.',
 };
 
 test('i18n2: no Arabic entry is left as its English source', () => {
