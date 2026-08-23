@@ -356,3 +356,80 @@ test('i18n9: the language URL parameter is a dictionary key and nothing else', (
   const getBody = getFn.slice(0, getFn.indexOf('\n}') + 2);
   assert.ok(/LANGS\.indexOf\(lang\) === -1 \? 'en'/.test(getBody), 'getLang does not fall back for an unknown language');
 });
+
+// ---------------------------------------------------------------------------
+// i18n10: a key a page cannot reach
+// ---------------------------------------------------------------------------
+//
+// The dictionaries are one flat namespace at runtime, but a page only loads
+// some of them. dashboard.js called t('pricing.browseOpenGiveaways') — a real
+// key, correctly translated, in a file dashboard.html does not load. t() returns
+// the key when it has no entry, so the dashboard rendered the literal text
+// "pricing.browseOpenGiveaways" where a link label belonged.
+//
+// Every test above passed. The key exists, has both languages, contains Arabic
+// script, and is not identical to its English. Parity between dictionaries says
+// nothing about which dictionary a page has in front of it.
+//
+// So this resolves each page's keys against the dictionaries that page actually
+// loads. Both directions of the failure are caught: a key that exists nowhere,
+// and a key that exists in a file this page did not ask for.
+const PAGE_DICT_FOR = (() => {
+  const perFile = new Map();
+  for (const f of pageDicts) {
+    const src = fs.readFileSync(path.join(PAGE_DICT_DIR, f), 'utf8');
+    perFile.set(f, new Set(Object.keys(mergeFrom(src, 'en', {}))));
+  }
+  return perFile;
+})();
+
+const CORE_KEYS = new Set(Object.keys(parseDict(blockFor('en'))));
+
+test('i18n10: every key a page script uses is in a dictionary that page loads', () => {
+  const offenders = [];
+
+  for (const name of pages) {
+    const html = fs.readFileSync(path.join(PUBLIC, name), 'utf8');
+
+    // The dictionaries this page pulls in, plus the shared core.
+    const available = new Set(CORE_KEYS);
+    for (const m of html.matchAll(/<script src="\/js\/i18n\/([^"]+)"><\/script>/g)) {
+      const keys = PAGE_DICT_FOR.get(m[1]);
+      if (keys) keys.forEach((k) => available.add(k));
+    }
+
+    // The scripts this page runs, plus any data-i18n in its own markup.
+    const used = new Map();
+    for (const m of html.matchAll(/data-i18n(?:-content)?="([^"]+)"/g)) {
+      used.set(m[1], name);
+    }
+    // data-i18n-lines resolves to <key>Line1 and <key>Line2, not to <key>.
+    // Resolving it as written would report a key the runtime never looks up.
+    for (const m of html.matchAll(/data-i18n-lines="([^"]+)"/g)) {
+      used.set(`${m[1]}Line1`, name);
+      used.set(`${m[1]}Line2`, name);
+    }
+    for (const m of html.matchAll(/<script src="\/js\/pages\/([^"]+)"><\/script>/g)) {
+      const scriptPath = path.join(PUBLIC, 'js', 'pages', m[1]);
+      if (!fs.existsSync(scriptPath)) continue;
+      const src = fs.readFileSync(scriptPath, 'utf8');
+      // t('key') and t('key', {...}). A key built at runtime by concatenation
+      // cannot be resolved statically and is skipped rather than guessed at —
+      // the policy pages do that deliberately, with their own fallback.
+      for (const m2 of src.matchAll(/\bt\('([a-zA-Z0-9_.]+)'/g)) used.set(m2[1], m[1]);
+    }
+
+    for (const [key, where] of used) {
+      if (available.has(key)) continue;
+      offenders.push(`${name}: ${key} (used in ${where})`);
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    `${offenders.length} key(s) are used on a page whose dictionaries do not define them. t() returns`
+    + ' the key itself in that case, so the literal key renders on screen. Either load the dictionary'
+    + ` that has it, or add the key to one this page already loads.\n  ${offenders.join('\n  ')}`
+  );
+});

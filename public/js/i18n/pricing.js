@@ -48,6 +48,7 @@ register({
     'pricing.couldMyHostAccess': 'Could my host access be taken away?',
     'pricing.yesAnAdministratorCan': 'Yes. An administrator can suspend hosting access, with a recorded reason. Suspension stops you publishing new giveaways or drawing winners; it does not delete your existing giveaways, entries or records, and any open prize claim moves to administrator handling so a winner is not left waiting.',
     'pricing.perWeek': "{price} / week",
+    'pricing.metaDescription': "Entering a giveaway on Naseeb is free. Hosting is a closed beta you apply for, and it is free while the beta lasts. Advertising is the only thing you can pay for.",
   },
   ar: {
     'pricing.whatThingsCostNaseeb': 'الأسعار — نصيب',
@@ -88,5 +89,6 @@ register({
     'pricing.couldMyHostAccess': 'هل يمكن سحب صلاحية الاستضافة منّي؟',
     'pricing.yesAnAdministratorCan': 'نعم. يستطيع مشرف تعليق صلاحية الاستضافة، مع تسجيل السبب. ويمنعك التعليق من نشر مسابقات جديدة أو سحب فائزين؛ لكنه لا يحذف مسابقاتك أو مشاركاتك أو سجلّاتك القائمة، وينتقل أي طلب استلام جائزة مفتوح إلى إدارة المشرفين حتى لا يبقى فائز في الانتظار.',
     'pricing.perWeek': "{price} / أسبوع",
+    'pricing.metaDescription': "المشاركة في مسابقة على نصيب مجانية. والاستضافة نسخة تجريبية مغلقة تُقدّم طلبًا للانضمام إليها، وهي مجانية ما دامت النسخة التجريبية قائمة. والإعلان هو الشيء الوحيد الذي يمكنك الدفع مقابله.",
   },
 });

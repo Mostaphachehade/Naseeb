@@ -222,13 +222,13 @@
     try {
       const applications = await api('/admin/host-applications');
       if (applications.length === 0) {
-        mount(content, emptyNode('No applications yet.'));
+        mount(content, emptyNode(t('admin.noApplicationsYet')));
         return;
       }
       mount(content, dataTable(
-        ['Type', 'Who', 'Status', 'Submitted', 'Decided', 'Actions'],
+        [t('admin.colType'), t('admin.colWho'), t('admin.colStatus'), t('admin.colSubmitted'), t('admin.colDecided'), t('admin.colActions')],
         applications.flatMap(appRow),
-        'No applications yet.'
+        t('admin.noApplicationsYet')
       ));
     } catch (err) {
       mount(content, emptyNode(err.message));
@@ -299,13 +299,13 @@
     try {
       const inquiries = await api('/admin/ad-inquiries');
       if (inquiries.length === 0) {
-        mount(content, emptyNode('No ad inquiries yet.'));
+        mount(content, emptyNode(t('admin.noAdInquiriesYet')));
         return;
       }
       mount(content, dataTable(
-        ['Business', 'Contact', 'Message', 'Submitted', 'Actions'],
+        [t('owner.colBusiness'), t('admin.colContact'), t('admin.colMessage'), t('admin.colSubmitted'), t('admin.colActions')],
         inquiries.map(adInquiryRow),
-        'No ad inquiries yet.'
+        t('admin.noAdInquiriesYet')
       ));
     } catch (err) {
       mount(content, emptyNode(err.message));
@@ -412,13 +412,13 @@
     try {
       const ads = await api('/admin/ads');
       if (ads.length === 0) {
-        mount(content, emptyNode('No ads yet. Add one above.'));
+        mount(content, emptyNode(t('admin.noAdsYet')));
         return;
       }
       mount(content, dataTable(
-        ['Banner', 'Business', 'Destination', 'Clicks', 'Status', 'Actions'],
+        [t('admin.colBanner'), t('owner.colBusiness'), t('admin.colDestination'), t('admin.colClicks'), t('admin.colStatus'), t('admin.colActions')],
         ads.map(adRow),
-        'No ads yet. Add one above.'
+        t('admin.noAdsYet')
       ));
     } catch (err) {
       mount(content, emptyNode(err.message));
@@ -1861,13 +1861,13 @@
     try {
       const rows = await api('/admin/integrity/queue');
       if (!rows.length) {
-        mount(content, emptyNode('Nothing to review. Entries appear here when a signal fires, a case is opened, or a decision has been made.'));
+        mount(content, emptyNode(t('admin.nothingToReviewLong')));
         return;
       }
       mount(content, dataTable(
-        ['Giveaway / entry', 'Status', 'Signals', 'Entered', 'Case', 'Actions'],
+        [t('admin.colGiveawayEntry'), t('admin.colStatus'), t('admin.colSignals'), t('admin.colEntered'), t('admin.colCase'), t('admin.colActions')],
         rows.flatMap(integrityRow),
-        'Nothing to review.'
+        t('admin.nothingToReview')
       ));
     } catch (err) {
       mount(content, emptyNode(err.message));

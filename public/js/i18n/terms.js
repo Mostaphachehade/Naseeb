@@ -131,6 +131,7 @@ register({
     'terms.aContactAddressFor': "A contact address for legal notices, and the identity of the entity behind Naseeb, are",
     'terms.untilTheyArePublished': ". Until they are published, please use the contact details on our",
     'terms.forAnythingUrgent': "for anything urgent.",
+    'terms.metaDescription': "The terms that govern using Naseeb to enter or host free giveaways.",
   },
   ar: {
     'terms.termsOfServiceNaseeb': 'شروط الخدمة — نصيب',
@@ -241,5 +242,6 @@ register({
     'terms.aContactAddressFor': "عنوان الاتصال للإخطارات القانونية، وهوية الكيان القائم على نصيب،",
     'terms.untilTheyArePublished': ". وإلى أن تُنشر، يُرجى استخدام بيانات الاتصال الواردة في",
     'terms.forAnythingUrgent': "لأي أمر عاجل.",
+    'terms.metaDescription': "الشروط التي تحكم استخدام نصيب للمشاركة في المسابقات المجانية أو استضافتها.",
   },
 });

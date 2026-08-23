@@ -39,7 +39,7 @@
     const save = el('button', {
       class: 'btn primary u-8a359a76',
       type: 'button',
-      text: 'Save name',
+      text: t('account.saveName'),
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
@@ -87,8 +87,12 @@
   function eligibilityCard() {
     const e = state.eligibility;
     if (!e.needs_attestation) {
-      return card('Eligibility', [
-        el('p', { text: `You confirmed you are 18 or older on ${new Date(e.attested_at).toLocaleDateString()}.` }),
+      return card(t('account.eligibility'), [
+        el('p', {
+          text: t('account.youConfirmedOn', {
+            when: new Date(e.attested_at).toLocaleDateString(locale),
+          }),
+        }),
         el('p', { class: 'hint', text: e.limitation }),
       ]);
     }
@@ -96,21 +100,19 @@
     const box = el('input', { id: 'age-confirm', type: 'checkbox' });
     const note = feedback();
 
-    return card('Eligibility', [
-      el('p', {
-        text: 'Your account was created before we started asking this, so we have no answer on file. Please confirm before entering a giveaway or hosting one.',
-      }),
+    return card(t('account.eligibility'), [
+      el('p', { text: t('account.createdBeforeAttestation') }),
       el('label', { class: 'u-age-attest', htmlFor: 'age-confirm' }, [box, el('span', { text: e.wording })]),
       el('p', { class: 'hint', text: e.limitation }),
       el('button', {
         class: 'btn primary u-8a359a76',
         type: 'button',
-        text: 'Confirm',
+        text: t('account.confirm'),
         on: {
           click: async (evt) => {
             const btn = evt.currentTarget;
             if (!box.checked) {
-              show(note, 'Tick the box to confirm.', false);
+              show(note, t('account.tickTheBox'), false);
               return;
             }
             btn.disabled = true;

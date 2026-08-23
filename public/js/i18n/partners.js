@@ -73,6 +73,7 @@ register({
     'partners.andItIsFree': ", and it is free while the beta lasts — see",
     'partners.putYourBrandIn': "Put your brand in front of an audience that's already there to enter and win. See",
     'partners.chatOnWhatsapp': "Chat on WhatsApp",
+    'partners.metaDescription': "Naseeb is a free-entry giveaway platform for the UAE. Entry is always free; hosts fund their own prizes as a marketing cost. For brands, agencies and corporate partners.",
   },
   ar: {
     'partners.partnersNaseeb': 'شركاؤنا — نصيب',
@@ -136,5 +137,6 @@ register({
     'partners.andItIsFree': "، وهي مجانية ما دامت النسخة التجريبية قائمة — انظر",
     'partners.putYourBrandIn': "اعرض علامتك أمام جمهور حاضر أصلًا للمشاركة والفوز. انظر",
     'partners.chatOnWhatsapp': "تواصل عبر WhatsApp",
+    'partners.metaDescription': "نصيب منصّة مسابقات مجانية المشاركة في الإمارات. المشاركة مجانية دائمًا، ويموّل المضيفون جوائزهم كتكلفة تسويقية. مخصّصة للعلامات التجارية والوكالات والشركاء من الشركات.",
   },
 });

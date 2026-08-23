@@ -144,6 +144,7 @@ register({
     'privacy.untilTheyArePublished': ". Until they are published, use the contact details on our",
     'privacy.thisPolicyCarriesA': "This policy carries a version, a revision date and a status, shown at the top. It is currently a",
     'privacy.withNoEffectiveDate': "with no effective date: it has not been approved, has never been presented to anyone for acceptance, and does not bind anyone. Approving it and making it effective are two separate, deliberate steps, and neither happens automatically.",
+    'privacy.metaDescription': "What Naseeb collects, why, and how it's used.",
   },
   ar: {
     'privacy.privacyPolicyNaseeb': 'سياسة الخصوصية — نصيب',
@@ -275,5 +276,6 @@ register({
     'privacy.untilTheyArePublished': ". وإلى أن تُنشر، استخدم بيانات الاتصال الواردة في",
     'privacy.thisPolicyCarriesA': "تحمل هذه السياسة رقم نسخة وتاريخ مراجعة وحالة، تظهر في الأعلى. وهي حاليًّا",
     'privacy.withNoEffectiveDate': "بلا تاريخ نفاذ: فهي لم تُعتمد، ولم تُعرض قط على أحد للموافقة، ولا تُلزم أحدًا. واعتمادها وجعلها سارية خطوتان منفصلتان ومقصودتان، ولا تحدث أيّ منهما تلقائيًّا.",
+    'privacy.metaDescription': "ما تجمعه نصيب، ولماذا، وكيف يُستخدَم.",
   },
 });

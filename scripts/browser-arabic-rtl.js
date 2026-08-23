@@ -164,7 +164,13 @@ async function main() {
             // anything general enough to cover these would also excuse a real
             // untranslated sentence, which is the failure this exists to catch.
             const IGNORE = /(Naseeb|Stripe|Render|Resend|Cloudinary|Neon|Sentry|Google|Analytics|Signals|PostgreSQL|bcrypt|IPv\d|AES|GCM|GCGRA|WhatsApp|AED|https?|www|draft|CN|LLC|docs|HOST_ACCESS|md)/gi;
-            const latin = (text.replace(IGNORE, ' ').match(/[A-Za-z]{3,}/g) || []);
+            // Email addresses and bare hostnames are values, not copy. A
+            // member's own address is shown on their account page and is
+            // Latin whatever language the page is in; splitting it into
+            // words and calling each one an untranslated string would make
+            // the check unusable on the one page it matters most.
+            const VALUES = /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|[\w-]+\.(?:test|com|ae|org|net|io)/g;
+            const latin = (text.replace(VALUES, ' ').replace(IGNORE, ' ').match(/[A-Za-z]{3,}/g) || []);
             return {
               lang: doc.lang,
               dir: doc.dir,
@@ -188,8 +194,14 @@ async function main() {
                 })
                 .filter(Boolean)
                 // Deepest first: a wide child makes every ancestor wide too, and
-                // the ancestors are not the bug.
-                .filter(({ node }) => !node.querySelector('*'))
+                // the ancestors are not the bug. Sorted rather than filtered to
+                // leaves — an element can overflow because of its own margin or
+                // transform while every child sits inside it, and filtering to
+                // leaves reported "no single element" for exactly that case.
+                .sort((a, b) => {
+                  const depth = (n) => { let d = 0; for (let x = n; x; x = x.parentElement) d += 1; return d; };
+                  return depth(b.node) - depth(a.node) || b.over - a.over;
+                })
                 .slice(0, 5)
                 .map(({ over, node }) => {
                   const id = node.id ? `#${node.id}` : '';

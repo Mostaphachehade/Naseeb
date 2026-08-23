@@ -83,6 +83,7 @@ register({
     'create.itClosesAtWhichever': "It closes at whichever comes first: the",
     'create.orThe': ", or the",
     'create.andWillCoordinateDelivery': "and will coordinate delivery or fulfilment. If a winner has a problem, they will come to us. This workflow is not yet operating, and no campaign can be published until it is.",
+    'create.metaDescription': "Submit a premium prize to Naseeb. Every prize is reviewed and approved before publication, and entry is always free.",
   },
   ar: {
     'create.hostAGiveawayNaseeb': 'استضف مسابقة — نصيب',
@@ -155,5 +156,6 @@ register({
     'create.itClosesAtWhichever': "وتُغلق عند أيّهما أقرب: بلوغ",
     'create.orThe': "، أو انقضاء",
     'create.andWillCoordinateDelivery': "وستتولّى تنسيق التسليم أو التنفيذ. وإذا واجه الفائز مشكلة فسيلجأ إلينا. وهذا المسار لا يعمل بعد، ولا يمكن نشر أي حملة قبل تشغيله.",
+    'create.metaDescription': "قدّم جائزة مميّزة إلى نصيب. تُراجَع كل جائزة وتُعتمَد قبل النشر، والمشاركة مجانية دائمًا.",
   },
 });

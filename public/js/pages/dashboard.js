@@ -109,7 +109,7 @@
             if (note) card.appendChild(note);
             return card;
           })
-        : emptyWithLink(t('dashboard.emptyEnteredBefore'), '/index.html', t('pricing.browseOpenGiveaways'), t('dashboard.emptyAfter')));
+        : emptyWithLink(t('dashboard.emptyEnteredBefore'), '/index.html', t('dashboard.browseOpenGiveaways'), t('dashboard.emptyAfter')));
     } catch (err) {
       mount(enteredGrid, errorNode(err.message));
     }
