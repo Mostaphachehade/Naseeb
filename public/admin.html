@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Admin — Naseeb</title>
+<title data-i18n="admin.adminNaseeb">Admin — Naseeb</title>
 <meta name="robots" content="noindex" />
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to content</a>
+<a href="#main" class="skip-link" data-i18n="common.skipToContent">Skip to content</a>
 
 <header class="site">
   <div class="wrap">
@@ -23,80 +23,80 @@
 <main id="main">
   <div class="wrap">
     <nav class="admin-nav">
-      <a href="#overview">Overview</a>
-      <a href="#applications">Applications</a>
-      <a href="#integrity">Entry integrity</a>
-      <a href="#rescue">Suspended-host claims</a>
-      <a href="#privacy">Privacy requests</a>
-      <a href="#email-notifications">Email delivery</a>
-      <a href="#ad-inquiries">Ad inquiries</a>
-      <a href="#ads-section">Ads</a>
-      <a href="#giveaways">Giveaways</a>
-      <a href="#hosts">Hosts</a>
+      <a href="#overview" data-i18n="admin.overview">Overview</a>
+      <a href="#applications" data-i18n="admin.applications">Applications</a>
+      <a href="#integrity" data-i18n="admin.entryIntegrity">Entry integrity</a>
+      <a href="#rescue" data-i18n="admin.suspendedHostClaims">Suspended-host claims</a>
+      <a href="#privacy" data-i18n="admin.privacyRequests">Privacy requests</a>
+      <a href="#email-notifications" data-i18n="admin.emailDelivery">Email delivery</a>
+      <a href="#ad-inquiries" data-i18n="admin.adInquiries">Ad inquiries</a>
+      <a href="#ads-section" data-i18n="admin.ads">Ads</a>
+      <a href="#giveaways" data-i18n="admin.giveaways">Giveaways</a>
+      <a href="#hosts" data-i18n="admin.hosts">Hosts</a>
     </nav>
 
     <div class="section-head" id="overview">
       <div>
-        <h2>Overview</h2>
-        <p>What needs attention right now.</p>
+        <h2 data-i18n="admin.overview2">Overview</h2>
+        <p data-i18n="admin.whatNeedsAttentionRight">What needs attention right now.</p>
       </div>
     </div>
-    <div id="stats-content" class="admin-dashboard"><p>Loading…</p></div>
+    <div id="stats-content" class="admin-dashboard"><p data-i18n="common.loading">Loading…</p></div>
 
     <div class="section-head" id="applications">
       <div>
-        <h2>Host applications</h2>
-        <p>Everyone who's applied to host on a paid plan, newest unreviewed first.</p>
+        <h2 data-i18n="admin.hostApplications">Host applications</h2>
+        <p data-i18n="admin.everyoneWhoSApplied">Everyone who's applied to host on a paid plan, newest unreviewed first.</p>
       </div>
     </div>
-    <label class="visually-hidden" for="applications-search">Search host applications</label>
-        <input class="admin-search" type="search" id="applications-search" placeholder="Search by name, business, or email…" />
-    <div id="content" class="u-1e0e3812"><p>Loading…</p></div>
+    <label class="visually-hidden" for="applications-search" data-i18n="admin.searchHostApplications">Search host applications</label>
+        <input class="admin-search" type="search" id="applications-search" placeholder="Search by name, business, or email…" / data-i18n-attr="placeholder:admin.searchByNameBusiness">
+    <div id="content" class="u-1e0e3812"><p data-i18n="common.loading">Loading…</p></div>
 
     <div class="section-head" id="ad-inquiries">
       <div>
-        <h2>Ad inquiries</h2>
-        <p>Everyone who's asked about advertising, newest unreviewed first.</p>
+        <h2 data-i18n="admin.adInquiries2">Ad inquiries</h2>
+        <p data-i18n="admin.everyoneWhoSAsked">Everyone who's asked about advertising, newest unreviewed first.</p>
       </div>
     </div>
-    <div id="ad-inquiries-content" class="u-1e0e3812"><p>Loading…</p></div>
+    <div id="ad-inquiries-content" class="u-1e0e3812"><p data-i18n="common.loading">Loading…</p></div>
 
     <div class="section-head" id="ads-section">
       <div>
-        <h2>Ads</h2>
-        <p>Manage the single homepage banner slot. Only one ad can be active at a time.</p>
+        <h2 data-i18n="admin.ads2">Ads</h2>
+        <p data-i18n="admin.manageTheSingleHomepage">Manage the single homepage banner slot. Only one ad can be active at a time.</p>
       </div>
     </div>
 
     <form class="card narrow u-66f3f8de" id="ad-create-form">
-      <label for="ad_business_name">Business name</label>
+      <label for="ad_business_name" data-i18n="admin.businessName">Business name</label>
       <input id="ad_business_name" required />
 
-      <label>Media type</label>
+      <label data-i18n="admin.mediaType">Media type</label>
       <div class="segmented" id="ad-media-type-toggle">
-        <button type="button" class="segmented-option active" data-value="image" aria-pressed="true">Image</button>
-        <button type="button" class="segmented-option" data-value="video" aria-pressed="false">Video</button>
+        <button type="button" class="segmented-option active" data-value="image" aria-pressed="true" data-i18n="admin.image">Image</button>
+        <button type="button" class="segmented-option" data-value="video" aria-pressed="false" data-i18n="admin.video">Video</button>
       </div>
 
-      <label for="ad_image_file" id="ad-file-label">Banner image</label>
+      <label for="ad_image_file" id="ad-file-label" data-i18n="admin.bannerImage">Banner image</label>
       <div id="ad-image-upload-row" class="u-7a0acf60 is-hidden">
         <input type="file" id="ad_image_file" accept="image/*" />
         <span class="hint" id="ad-upload-status"></span>
         <img id="ad-image-preview" alt="" class="u-c18f7c35 is-hidden" />
         <video id="ad-video-preview" class="u-c18f7c35 is-hidden" controls muted></video>
       </div>
-      <label for="ad_image_url">Image URL</label>
-        <input id="ad_image_url" type="url" placeholder="https://…" required />
-      <p class="hint" id="ad-image-url-hint">Paste an image URL, or upload one above. Wide banner shape works best (e.g. 1200×240).</p>
+      <label for="ad_image_url" data-i18n="admin.imageUrl">Image URL</label>
+        <input id="ad_image_url" type="url" placeholder="https://…" required / data-i18n-attr="placeholder:admin.https">
+      <p class="hint" id="ad-image-url-hint" data-i18n="admin.pasteAnImageUrl">Paste an image URL, or upload one above. Wide banner shape works best (e.g. 1200×240).</p>
 
-      <label for="ad_target_url">Destination link</label>
-      <input id="ad_target_url" type="url" placeholder="https://the-advertiser's-site.com" required />
+      <label for="ad_target_url" data-i18n="admin.destinationLink">Destination link</label>
+      <input id="ad_target_url" type="url" placeholder="https://the-advertiser's-site.com" required / data-i18n-attr="placeholder:admin.httpsTheAdvertiserS">
 
-      <button class="btn primary" type="submit">Add ad</button>
+      <button class="btn primary" type="submit" data-i18n="admin.addAd">Add ad</button>
       <p class="form-error" id="ad-create-error"></p>
     </form>
 
-    <div id="ads-content" class="u-1e0e3812"><p>Loading…</p></div>
+    <div id="ads-content" class="u-1e0e3812"><p data-i18n="common.loading">Loading…</p></div>
 
     <!-- Prize claims needing a person: disputes, and claim windows that ran
          out. Deliberately shows the minimum — what it is, how old, and what
@@ -110,11 +110,11 @@
          row is a deliberate act and fetches the detail separately. -->
     <div class="section-head" id="integrity">
       <div>
-        <h2>Entry integrity</h2>
-        <p>The platform enforces one entry per verified account per giveaway. It cannot tell whether two verified accounts are two people, and it does not collect identity documents to find out — so anything beyond that constraint is a judgement you make, with a reason, on the record. Disqualifying an entry never deletes it.</p>
+        <h2 data-i18n="admin.entryIntegrity2">Entry integrity</h2>
+        <p data-i18n="admin.thePlatformEnforcesOne">The platform enforces one entry per verified account per giveaway. It cannot tell whether two verified accounts are two people, and it does not collect identity documents to find out — so anything beyond that constraint is a judgement you make, with a reason, on the record. Disqualifying an entry never deletes it.</p>
       </div>
     </div>
-    <div id="integrity-content" class="u-1e0e3812"><p>Loading…</p></div>
+    <div id="integrity-content" class="u-1e0e3812"><p data-i18n="common.loading">Loading…</p></div>
 
     <!-- Opened automatically inside the suspension transaction. A winner is
          never expected to notice that their host went away, and is never asked
@@ -123,11 +123,11 @@
          reason, and records that it happened. -->
     <div class="section-head" id="rescue">
       <div>
-        <h2>Suspended-host claims</h2>
-        <p>Unfinished claims whose host we suspended. You can take the steps the host would have taken — preparing delivery, then marking it shipped or arranged. You cannot claim for the winner and you cannot confirm receipt for them: only the winner can say a prize arrived.</p>
+        <h2 data-i18n="admin.suspendedHostClaims2">Suspended-host claims</h2>
+        <p data-i18n="admin.unfinishedClaimsWhoseHost">Unfinished claims whose host we suspended. You can take the steps the host would have taken — preparing delivery, then marking it shipped or arranged. You cannot claim for the winner and you cannot confirm receipt for them: only the winner can say a prize arrived.</p>
       </div>
     </div>
-    <div id="rescue-content" class="u-1e0e3812"><p>Loading…</p></div>
+    <div id="rescue-content" class="u-1e0e3812"><p data-i18n="common.loading">Loading…</p></div>
 
     <!-- Privacy requests. The queue shows the minimum needed to triage: a
          reference, a type, an age and an account reference. It deliberately does
@@ -137,11 +137,11 @@
          that does not yet exist. -->
     <div class="section-head" id="privacy">
       <div>
-        <h2>Privacy requests</h2>
-        <p>Access, correction, deletion and objection requests from account holders. Every decision needs notes, and the sentence the requester reads comes from a fixed list — your notes are never shown to them. Closing a deletion request does not delete anything.</p>
+        <h2 data-i18n="admin.privacyRequests2">Privacy requests</h2>
+        <p data-i18n="admin.accessCorrectionDeletionAnd">Access, correction, deletion and objection requests from account holders. Every decision needs notes, and the sentence the requester reads comes from a fixed list — your notes are never shown to them. Closing a deletion request does not delete anything.</p>
       </div>
     </div>
-    <div id="privacy-content" class="u-1e0e3812"><p>Loading…</p></div>
+    <div id="privacy-content" class="u-1e0e3812"><p data-i18n="common.loading">Loading…</p></div>
 
     <!-- The email-change outbox. Both messages in an email change are
          security-critical, so a delivery that gave up has to be visible rather
@@ -150,45 +150,45 @@
          that kind in the outbox to show. -->
     <div class="section-head" id="email-notifications">
       <div>
-        <h2>Email change delivery</h2>
-        <p>Verification links to a new address, and the warning to the old one after a change completes. Failed deliveries are listed first. Retrying is deliberate and needs a reason — it is recorded against the notification.</p>
+        <h2 data-i18n="admin.emailChangeDelivery">Email change delivery</h2>
+        <p data-i18n="admin.verificationLinksToA">Verification links to a new address, and the warning to the old one after a change completes. Failed deliveries are listed first. Retrying is deliberate and needs a reason — it is recorded against the notification.</p>
       </div>
     </div>
-    <div id="email-notifications-content" class="u-1e0e3812"><p>Loading…</p></div>
+    <div id="email-notifications-content" class="u-1e0e3812"><p data-i18n="common.loading">Loading…</p></div>
 
     <div class="section-head" id="claims">
       <div>
-        <h2>Prize claims needing review</h2>
-        <p>Disputes raised by a winner or host, and claims whose window expired. An expired claim is never redrawn or cancelled automatically — someone won, and it takes a person to decide what happens next.</p>
+        <h2 data-i18n="admin.prizeClaimsNeedingReview">Prize claims needing review</h2>
+        <p data-i18n="admin.disputesRaisedByA">Disputes raised by a winner or host, and claims whose window expired. An expired claim is never redrawn or cancelled automatically — someone won, and it takes a person to decide what happens next.</p>
       </div>
     </div>
-    <div id="claims-content" class="u-8b9688e6"><p>Loading…</p></div>
+    <div id="claims-content" class="u-8b9688e6"><p data-i18n="common.loading">Loading…</p></div>
 
     <div class="section-head u-b1ecc496">
       <div>
-        <h3>Drawn giveaways with no claim</h3>
-        <p>Giveaways drawn before this workflow existed, or whose claim was never created. Issuing a claim emails the winner the draw already chose — it never picks a different one.</p>
+        <h3 data-i18n="admin.drawnGiveawaysWithNo">Drawn giveaways with no claim</h3>
+        <p data-i18n="admin.giveawaysDrawnBeforeThis">Giveaways drawn before this workflow existed, or whose claim was never created. Issuing a claim emails the winner the draw already chose — it never picks a different one.</p>
       </div>
     </div>
-    <div id="missing-claims-content" class="u-1e0e3812"><p>Loading…</p></div>
+    <div id="missing-claims-content" class="u-1e0e3812"><p data-i18n="common.loading">Loading…</p></div>
 
     <div class="section-head" id="giveaways">
       <div>
-        <h2>Giveaways</h2>
-        <p>Every giveaway on the platform. Cancel one if it's spam, abusive, or a mistake — cancelling blocks new entries the same way a host cancelling their own would.</p>
+        <h2 data-i18n="admin.giveaways2">Giveaways</h2>
+        <p data-i18n="admin.everyGiveawayOnThe">Every giveaway on the platform. Cancel one if it's spam, abusive, or a mistake — cancelling blocks new entries the same way a host cancelling their own would.</p>
       </div>
     </div>
-    <div id="giveaways-content" class="u-1e0e3812"><p>Loading…</p></div>
+    <div id="giveaways-content" class="u-1e0e3812"><p data-i18n="common.loading">Loading…</p></div>
 
     <div class="section-head" id="hosts">
       <div>
-        <h2>Hosts</h2>
-        <p>Every registered account. Toggle the verified badge after you've actually checked a business (trade license, etc.) — it's shown publicly next to their name on giveaways.</p>
+        <h2 data-i18n="admin.hosts2">Hosts</h2>
+        <p data-i18n="admin.everyRegisteredAccountToggle">Every registered account. Toggle the verified badge after you've actually checked a business (trade license, etc.) — it's shown publicly next to their name on giveaways.</p>
       </div>
     </div>
-    <label class="visually-hidden" for="hosts-search">Search hosts</label>
-        <input class="admin-search" type="search" id="hosts-search" placeholder="Search by name or email…" />
-    <div id="users-content" class="u-1e0e3812"><p>Loading…</p></div>
+    <label class="visually-hidden" for="hosts-search" data-i18n="admin.searchHosts">Search hosts</label>
+        <input class="admin-search" type="search" id="hosts-search" placeholder="Search by name or email…" / data-i18n-attr="placeholder:admin.searchByNameOr">
+    <div id="users-content" class="u-1e0e3812"><p data-i18n="common.loading">Loading…</p></div>
   </div>
 </main>
 
@@ -196,6 +196,7 @@
 
 <script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/i18n/admin.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/pages/admin.js"></script>
 </body>

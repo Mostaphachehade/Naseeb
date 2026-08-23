@@ -111,6 +111,9 @@ const INTENTIONALLY_UNTRANSLATED = {
   'advertise.https': 'A URL shape shown as a hint in a web-address field. Rendering "https" in Arabic would be a worse hint.',
   'advertise.httpsYourBusinessSite': 'An example web address. Addresses are typed in Latin script; a translated example would not be typeable.',
   'create.https': 'A URL shape shown as a hint in a web-address field, same reason as advertise.https.',
+  'owner.https': 'A URL shape shown as a hint in a web-address field, same reason as advertise.https.',
+  'admin.https': 'A URL shape shown as a hint in a web-address field, same reason as advertise.https.',
+  'admin.httpsTheAdvertiserS': 'An example web address for an advertiser link field. Typed in Latin script.',
 };
 
 test('i18n2: no Arabic entry is left as its English source', () => {
