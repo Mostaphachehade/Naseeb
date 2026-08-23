@@ -54,8 +54,39 @@ function parseDict(block) {
   return out;
 }
 
+// Per-page dictionaries live in public/js/i18n/*.js and call register({en, ar}).
+// They are part of the same namespace, so parity has to be judged across all of
+// them together — a key defined in a page dictionary is not "missing", and a key
+// translated there must still have both languages.
+const PAGE_DICT_DIR = path.join(PUBLIC, 'js', 'i18n');
+const pageDicts = fs.existsSync(PAGE_DICT_DIR)
+  ? fs.readdirSync(PAGE_DICT_DIR).filter((f) => f.endsWith('.js')).sort()
+  : [];
+
+function mergeFrom(source, lang, into) {
+  // Indentation differs between i18n.js (two spaces inside TRANSLATIONS) and a
+  // page dictionary (two spaces inside register({...})). Match either rather
+  // than assuming, because a matcher that silently finds nothing would report
+  // every page key as missing — which is exactly what it did.
+  const m = source.match(new RegExp(`\\n\\s*${lang}:\\s*\\{`));
+  if (!m) return into;
+  const start = m.index;
+  let depth = 0;
+  let i = source.indexOf('{', start);
+  for (; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1;
+    else if (source[i] === '}') { depth -= 1; if (!depth) break; }
+  }
+  return Object.assign(into, parseDict(source.slice(start, i)));
+}
+
 const EN = parseDict(blockFor('en'));
 const AR = parseDict(blockFor('ar'));
+pageDicts.forEach((f) => {
+  const src = fs.readFileSync(path.join(PAGE_DICT_DIR, f), 'utf8');
+  mergeFrom(src, 'en', EN);
+  mergeFrom(src, 'ar', AR);
+});
 const pages = fs.readdirSync(PUBLIC).filter((f) => f.endsWith('.html')).sort();
 
 const normalise = (s) => String(s).replace(/\s+/g, ' ').replace(/[’‘]/g, "'").replace(/[“”]/g, '"').trim();
