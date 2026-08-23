@@ -1,5 +1,3 @@
-  const t = (key, vars) => window.NaseebI18n.t(key, vars);
-  const iso = (value) => window.NaseebI18n.isolate(value);
   const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
 
   // The account centre.
@@ -72,7 +70,7 @@
         el('strong', { text: t('account.emailLabel') }),
         // An address is a Latin run inside an Arabic line; without isolation the
         // trailing punctuation ends up at the wrong end of it.
-        iso(state.account.email),
+        isolate(state.account.email),
         state.account.email_verified ? t('account.verifiedSuffix') : t('account.notVerifiedSuffix'),
       ]),
       el('p', {

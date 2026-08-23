@@ -1,5 +1,3 @@
-  const t = (key, vars) => window.NaseebI18n.t(key, vars);
-  const iso = (value) => window.NaseebI18n.isolate(value);
 
   const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
 
@@ -102,9 +100,9 @@
 
       mount(content, [
         el('div', { class: 'admin-dashboard u-8b9688e6' }, [
-          statCard(t('owner.aedAmount', { amount: iso(r.total_revenue_aed.toLocaleString(locale)) }), t('owner.statTotalAdRevenue')),
+          statCard(t('owner.aedAmount', { amount: isolate(r.total_revenue_aed.toLocaleString(locale)) }), t('owner.statTotalAdRevenue')),
           statCard(r.total_bookings, t('owner.statPaidBookings')),
-          statCard(t('owner.aedAmount', { amount: iso(r.revenue_last_30_days_aed.toLocaleString(locale)) }), t('owner.statLast30Days')),
+          statCard(t('owner.aedAmount', { amount: isolate(r.revenue_last_30_days_aed.toLocaleString(locale)) }), t('owner.statLast30Days')),
         ]),
         dataTable([t('owner.colMonth'), t('owner.colBookings'), t('owner.colRevenue')], monthRows, t('owner.noRevenueYet'), 'u-7dde5e56'),
         el('p', { class: 'u-5bf9ad33', text: t('owner.recentBookings') }),

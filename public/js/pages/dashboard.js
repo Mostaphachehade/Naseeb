@@ -1,4 +1,3 @@
-  const t = (key) => window.NaseebI18n.t(key);
 
   // Awaited, because whether somebody is signed in is now a question for the
   // server rather than a synchronous read of browser storage.

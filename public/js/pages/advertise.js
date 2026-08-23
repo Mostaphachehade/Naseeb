@@ -18,12 +18,16 @@
       checkoutEnabled = availability.checkoutEnabled === true;
       nextAvailableDate = availability.nextAvailableDate;
       applyQuote(availability);
-      const formatted = new Date(nextAvailableDate + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      // The page's language, not the browser's: toLocaleDateString(undefined)
+      // reads the operating system's locale and puts an English date in the
+      // middle of an Arabic sentence.
+      const locale = getLang() === 'ar' ? 'ar-AE' : 'en-GB';
+      const formatted = new Date(nextAvailableDate + 'T00:00:00').toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
       document.getElementById('next-available').textContent = formatted;
       document.getElementById('form-start-date').textContent = formatted;
     } catch (err) {
       checkoutEnabled = false;
-      document.getElementById('next-available').textContent = 'now';
+      document.getElementById('next-available').textContent = t('advertise.now');
     }
     applyCheckoutState();
   }
@@ -76,10 +80,10 @@
 
     notice.classList.remove('is-hidden');
     form.classList.add('is-hidden');
-    document.getElementById('pricing-badge').textContent = 'Booked by inquiry';
-    document.getElementById('inquiry-heading').textContent = 'Book the banner slot';
+    document.getElementById('pricing-badge').textContent = t('advertise.bookedByInquiry');
+    document.getElementById('inquiry-heading').textContent = t('advertise.bookTheBannerSlot');
     document.getElementById('inquiry-subheading').textContent =
-      "Tell us your dates and what you'd like to run. We'll confirm availability and invoice you directly.";
+      t('advertise.tellUsYourDates');
   }
 
   document.getElementById('weeks').addEventListener('change', renderTotal);
@@ -89,7 +93,7 @@
     if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
       cloudinaryConfig = config;
       document.getElementById('image-upload-row').classList.remove('is-hidden');
-      document.getElementById('image-url-hint').textContent = 'Upload a file above, or paste an image URL.';
+      document.getElementById('image-url-hint').textContent = t('advertise.uploadOrPasteUrl');
     }
   }).catch(() => {});
 
@@ -97,7 +101,7 @@
     const file = e.target.files[0];
     if (!file || !cloudinaryConfig) return;
     const statusEl = document.getElementById('upload-status');
-    statusEl.textContent = 'Uploading…';
+    statusEl.textContent = t('advertise.uploading');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
@@ -107,15 +111,15 @@
         body: formData,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
+      if (!res.ok) throw new Error(data.error?.message || t('advertise.uploadFailed'));
       const preview = document.getElementById('image-preview');
       if (!NaseebDom.setMediaSrc(preview, data.secure_url)) {
-        statusEl.textContent = 'Upload returned an image address we do not accept.';
+        statusEl.textContent = t('advertise.uploadAddressRejected');
         return;
       }
       document.getElementById('image_url').value = data.secure_url;
       preview.classList.remove('is-hidden');
-      statusEl.textContent = 'Uploaded.';
+      statusEl.textContent = t('advertise.uploaded');
     } catch (err) {
       statusEl.textContent = err.message;
     }

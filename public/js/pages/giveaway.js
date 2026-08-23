@@ -9,16 +9,27 @@
   let currentGiveaway = null;
 
   async function load() {
+    // Without an id there is nothing to fetch. Asking anyway sent
+    // /api/giveaways/null, took a 404, and logged a console error for a request
+    // this page already knew could not succeed — noise that makes a real failure
+    // harder to see.
+    if (!id) {
+      document.getElementById('title').textContent = t('detail.notFound');
+      document.getElementById('description').textContent = t('errors.giveawayDoesNotExist');
+      return;
+    }
     try {
       const g = await api(`/giveaways/${id}`);
       currentGiveaway = g;
 
-      document.title = `${g.title} — Naseeb`;
+      // Isolated: a title in the other direction otherwise drags the dash and
+      // the brand to the wrong end of the tab label.
+      document.title = t('detail.documentTitle', { title: isolate(g.title) });
       document.getElementById('title').textContent = g.title;
       // The host's display name is host-controlled. It is a text node beside the
       // badge element, not a string concatenated into markup.
       mount(document.getElementById('hosted-by'), [
-        t('detail.hostedBy', { name: g.host_name }),
+        t('detail.hostedBy', { name: isolate(g.host_name) }),
         g.host_verified ? verifiedBadge() : null,
       ]);
       document.getElementById('description').textContent = g.description;

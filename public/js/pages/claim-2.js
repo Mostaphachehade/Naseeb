@@ -4,8 +4,6 @@
   // direction: inside an Arabic sentence an untreated Latin title reorders the
   // punctuation around it, and a name carrying its own direction marks can
   // reorder the rest of the line.
-  const t = (key, vars) => window.NaseebI18n.t(key, vars);
-  const iso = (value) => window.NaseebI18n.isolate(value);
 
   // Already captured and erased by the inline script above.
   const claimToken = window.__claimToken;
@@ -43,10 +41,10 @@
     consentVersion = claim.consent_version;
     document.getElementById('giveaway-title').textContent = claim.title;
     document.getElementById('prize-description').textContent = claim.prize_description;
-    document.getElementById('prize-line').textContent = t('claim.confirmYourClaimFor', { title: iso(claim.title) });
+    document.getElementById('prize-line').textContent = t('claim.confirmYourClaimFor', { title: isolate(claim.title) });
     document.getElementById('host-line').textContent = t('claim.hostedByFundedBy', {
-      host: iso(claim.host_name),
-      funder: iso(claim.funded_by),
+      host: isolate(claim.host_name),
+      funder: isolate(claim.funded_by),
     });
     document.getElementById('consent-host').textContent = claim.host_name;
     show('claim-panel');

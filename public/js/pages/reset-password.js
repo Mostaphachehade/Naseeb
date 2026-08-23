@@ -1,4 +1,3 @@
-  const t = (key) => window.NaseebI18n.t(key);
 
   const token = new URLSearchParams(window.location.search).get('token');
   if (!token) {

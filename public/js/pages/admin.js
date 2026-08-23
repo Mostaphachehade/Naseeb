@@ -1,5 +1,3 @@
-  const t = (key, vars) => window.NaseebI18n.t(key, vars);
-  const iso = (value) => window.NaseebI18n.isolate(value);
 
   // Cosmetic only. Every route this page calls re-reads users.is_admin from
   // Postgres on the request, so reaching this page without being an
@@ -24,7 +22,7 @@
         {
           num: s.active_ad ? s.active_ad.click_count : '—',
           label: s.active_ad
-            ? t('admin.statClicksFor', { business: iso(s.active_ad.business_name) })
+            ? t('admin.statClicksFor', { business: isolate(s.active_ad.business_name) })
             : t('admin.statNoActiveAd'),
         },
       ];

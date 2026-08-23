@@ -150,7 +150,20 @@ async function main() {
             // Latin runs of three or more letters, ignoring the things that are
             // meant to stay Latin: brand names, provider names, URLs, emails and
             // technical identifiers.
-            const IGNORE = /(Naseeb|Stripe|Render|Resend|Cloudinary|Neon|Sentry|Google|Analytics|PostgreSQL|AES|GCM|GCGRA|WhatsApp|AED|https?|www|draft|CN|LLC)/gi;
+            // Each addition is a name or an identifier that means something
+            // only in Latin script, not a word the Arabic failed to translate:
+            //   bcrypt        — the algorithm, named in the privacy policy
+            //   IPv4 / IPv6   — protocol names; "بروتوكول الإنترنت الإصدار ٤"
+            //                   would be a translation of the expansion, not of
+            //                   the identifier a reader would search for
+            //   Signals       — from "Google Signals", a product name that the
+            //                   Google alternation above only half-covers
+            //   docs / HOST_ACCESS / md — a repository path quoted verbatim in
+            //                   owner.html; a translated file path points nowhere
+            // Kept as an explicit alternation rather than a looser pattern:
+            // anything general enough to cover these would also excuse a real
+            // untranslated sentence, which is the failure this exists to catch.
+            const IGNORE = /(Naseeb|Stripe|Render|Resend|Cloudinary|Neon|Sentry|Google|Analytics|Signals|PostgreSQL|bcrypt|IPv\d|AES|GCM|GCGRA|WhatsApp|AED|https?|www|draft|CN|LLC|docs|HOST_ACCESS|md)/gi;
             const latin = (text.replace(IGNORE, ' ').match(/[A-Za-z]{3,}/g) || []);
             return {
               lang: doc.lang,
@@ -162,6 +175,29 @@ async function main() {
               scrollW: doc.scrollWidth,
               clientW: doc.clientWidth,
               textLen: text.length,
+              // Which elements actually stick out. "scrollWidth 397 >
+              // clientWidth 390" says a page is seven pixels too wide and gives
+              // nobody anywhere to start; naming the element turns it into a
+              // one-line fix. Reported whether or not the page overflows, so
+              // the ledger records the near-misses too.
+              overflowing: Array.from(document.querySelectorAll('body *'))
+                .map((node) => {
+                  const box = node.getBoundingClientRect();
+                  const over = Math.round(box.right - doc.clientWidth);
+                  return over > 1 ? { over, node } : null;
+                })
+                .filter(Boolean)
+                // Deepest first: a wide child makes every ancestor wide too, and
+                // the ancestors are not the bug.
+                .filter(({ node }) => !node.querySelector('*'))
+                .slice(0, 5)
+                .map(({ over, node }) => {
+                  const id = node.id ? `#${node.id}` : '';
+                  const cls = node.className && typeof node.className === 'string'
+                    ? `.${node.className.trim().split(/\s+/).join('.')}`
+                    : '';
+                  return `${node.tagName.toLowerCase()}${id}${cls} +${over}px`;
+                }),
             };
           });
 
@@ -181,7 +217,8 @@ async function main() {
           // Horizontal overflow, both languages. A 2px tolerance for subpixel
           // rounding; anything more is a layout that spills sideways.
           if (probe.scrollW > probe.clientW + 2) {
-            fail(where, `horizontal overflow: scrollWidth ${probe.scrollW} > clientWidth ${probe.clientW}`);
+            fail(where, `horizontal overflow: scrollWidth ${probe.scrollW} > clientWidth ${probe.clientW}`
+              + (probe.overflowing.length ? ` — widest: ${probe.overflowing.join(', ')}` : ' — no single element is wider than the viewport, so the overflow comes from a margin, a negative offset or a transform'));
           }
 
           if (consoleErrors.length) fail(where, `${consoleErrors.length} console error(s): ${consoleErrors[0]}`);

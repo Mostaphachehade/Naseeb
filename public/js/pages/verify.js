@@ -3,7 +3,6 @@
   // Arabic page that renders correctly and then replaces its own text with
   // English the moment a request resolves is worse than one that was never
   // translated, because the reader watches it happen.
-  const t = (key) => window.NaseebI18n.t(key);
 
   async function run() {
     const content = document.getElementById('content');

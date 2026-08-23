@@ -142,6 +142,7 @@ const TRANSLATIONS = {
     'policy.status.approved': "APPROVED",
     'policy.status.effective': "EFFECTIVE",
     'policy.notYetEffective': "not yet effective",
+    'detail.documentTitle': "{title} — Naseeb",
   },
   ar: {
     'nav.browse': 'تصفح',
@@ -263,6 +264,7 @@ const TRANSLATIONS = {
     'policy.status.approved': "معتمدة",
     'policy.status.effective': "سارية",
     'policy.notYetEffective': "غير سارية بعد",
+    'detail.documentTitle': "{title} — نصيب",
   },
 };
 

@@ -1,5 +1,3 @@
-  const t = (key, vars) => window.NaseebI18n.t(key, vars);
-  const iso = (value) => window.NaseebI18n.isolate(value);
   // Dates follow the page's language, not the operating system's.
   const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
 
@@ -45,7 +43,7 @@
     // The reason is the server's own fixed wording, isolated because it can
     // carry a direction of its own inside an Arabic sentence.
     return reason
-      ? el('p', { class: 'reason', text: t('hostapply.reasonGiven', { reason: iso(reason) }) })
+      ? el('p', { class: 'reason', text: t('hostapply.reasonGiven', { reason: isolate(reason) }) })
       : null;
   }
 

@@ -1,6 +1,5 @@
   (async () => {
-    const t = (key) => window.NaseebI18n.t(key);
-    const content = document.getElementById('content');
+      const content = document.getElementById('content');
     const token = window.__emailChangeToken;
     // Held in memory only for the length of this request, then dropped.
     window.__emailChangeToken = null;
