@@ -42,7 +42,13 @@ const TRANSLATIONS = {
     // so nothing here needs an innerHTML to render it.
     'hero.headlineLine1': 'Every ticket is free.',
     'hero.headlineLine2': 'Every draw is real.',
-    'hero.lede': "Naseeb hosts giveaways funded by the people running them, not by entry fees. Enter with one tap, no card required, and see exactly how the winner is picked.",
+    // Kept in step with index.html deliberately. This entry used to say the
+    // giveaways were "funded by the people running them", which stopped being
+    // true when the premium-prize model was adopted — and because the
+    // dictionary overwrites the element's text at runtime, the newer copy in
+    // the HTML never reached a single visitor. test/i18n-parity.test.js now
+    // fails if the two disagree.
+    'hero.lede': 'Naseeb features carefully selected premium prizes intended to create genuine excitement, happiness, and memorable experiences. Every prize is reviewed and approved by Naseeb before publication. Entry is free — no card, no purchase, ever — and every campaign closes at 100 eligible entries or 30 days, whichever comes first.',
     'hero.browseBtn': 'Browse giveaways',
     'hero.hostBtn': 'Host your own',
 
@@ -134,7 +140,7 @@ const TRANSLATIONS = {
     'hero.eyebrow': 'لا يُشترط الشراء',
     'hero.headlineLine1': 'كل تذكرة مجانية.',
     'hero.headlineLine2': 'كل سحب حقيقي.',
-    'hero.lede': 'تستضيف نصيب مسابقات يموّلها القائمون عليها، وليس رسوم المشاركة. شارك بضغطة واحدة، بلا بطاقة دفع، وشاهد بنفسك كيف يُختار الفائز.',
+    'hero.lede': 'تقدّم نصيب جوائز مميّزة مختارة بعناية تهدف إلى صنع حماس حقيقي وسعادة وتجارب لا تُنسى. تراجع نصيب كل جائزة وتعتمدها قبل النشر. المشاركة مجانية — بلا بطاقة دفع وبلا أي عملية شراء على الإطلاق — وتُغلق كل حملة عند بلوغ 100 مشاركة مؤهَّلة أو بعد 30 يوماً، أيّهما أقرب.',
     'hero.browseBtn': 'تصفح المسابقات',
     'hero.hostBtn': 'استضف مسابقتك',
 
@@ -211,6 +217,30 @@ function t(key, vars) {
   return str;
 }
 
+// Bidirectional isolation.
+//
+// An email address, a URL, a ticket reference or a price dropped into an Arabic
+// sentence is a run of left-to-right characters inside a right-to-left
+// paragraph, and the Unicode bidi algorithm will reorder the punctuation around
+// it. "Contact ops@example.com." becomes ".ops@example.com" with the full stop
+// leading — the address still reads correctly, the sentence does not.
+//
+// U+2068 FIRST STRONG ISOLATE / U+2069 POP DIRECTIONAL ISOLATE wrap a run so its
+// direction is resolved on its own and cannot leak into the surrounding text.
+// Applied at render time to VALUES, never to translated copy: the copy already
+// has a direction, the value is what does not.
+const FSI = '⁨';
+const PDI = '⁩';
+
+function isolate(value) {
+  if (value === null || value === undefined) return '';
+  const s = String(value);
+  if (!s) return '';
+  // Strip any isolate characters already present so hostile input cannot open
+  // an isolate it never closes and swallow the rest of the page's text.
+  return FSI + s.replace(/[⁦-⁩‪-‮]/g, '') + PDI;
+}
+
 function applyI18n() {
   const lang = getLang();
   document.documentElement.lang = lang;
@@ -218,6 +248,28 @@ function applyI18n() {
   document.querySelectorAll('[data-i18n]').forEach((node) => {
     node.textContent = t(node.getAttribute('data-i18n'));
   });
+
+  // Attributes a person actually reads: placeholder, aria-label, title, alt.
+  // `data-i18n-attr="placeholder:form.emailPlaceholder; aria-label:nav.menu"`.
+  // Kept to that allowlist on purpose — this must never be able to write href,
+  // src, or an event handler attribute out of a dictionary entry.
+  const TRANSLATABLE_ATTRS = new Set(['placeholder', 'aria-label', 'title', 'alt']);
+  document.querySelectorAll('[data-i18n-attr]').forEach((node) => {
+    node.getAttribute('data-i18n-attr').split(';').forEach((pair) => {
+      const [attr, key] = pair.split(':').map((s) => s && s.trim());
+      if (!attr || !key) return;
+      if (!TRANSLATABLE_ATTRS.has(attr)) return;
+      node.setAttribute(attr, t(key));
+    });
+  });
+
+  // Document metadata. Title and description are read by people — in a browser
+  // tab, in a share preview, in a screen reader's document summary.
+  document.querySelectorAll('meta[data-i18n-content]').forEach((node) => {
+    node.setAttribute('content', t(node.getAttribute('data-i18n-content')));
+  });
+  const titleEl = document.querySelector('title[data-i18n]');
+  if (titleEl) document.title = t(titleEl.getAttribute('data-i18n'));
   // data-i18n-html is gone. It read a key out of an attribute and assigned the
   // dictionary entry with innerHTML — the two entries that needed it are now
   // split into text parts, and the two elements that used it declare their
@@ -231,14 +283,35 @@ function applyI18n() {
   });
 }
 
+// Page dictionaries.
+//
+// 700-odd strings in one file, loaded on every page, would be a payload most
+// visitors never read a tenth of. Each page's own script — which every page
+// already loads, so this costs no extra request — registers its strings, and
+// re-applies. Shared nav, footer and form vocabulary stay in this file because
+// every page genuinely uses them.
+function register(dict) {
+  if (dict && dict.en) Object.assign(TRANSLATIONS.en, dict.en);
+  if (dict && dict.ar) Object.assign(TRANSLATIONS.ar, dict.ar);
+  applyI18n();
+}
+
 // A full reload (rather than re-rendering in place) is deliberate: nav,
 // footer, and every card/badge on the page are built from JS template
 // strings that call t() directly, not just static data-i18n text — a
 // reload is simpler and more robust than re-invoking every render
 // function in the right order.
+//
+// location.reload() keeps the current URL exactly as it is, which is the whole
+// of the redirect story: the language switch cannot navigate anywhere, so it
+// cannot be pointed at another origin. Nothing here reads a `redirect`, `next`
+// or `returnTo` parameter, and nothing here should ever start.
 function setLang(lang) {
+  if (lang !== 'en' && lang !== 'ar') return;
   localStorage.setItem('naseeb_lang', lang);
   location.reload();
 }
 
 applyI18n();
+
+window.NaseebI18n = { t, isolate, register, setLang, getLang, applyI18n };
