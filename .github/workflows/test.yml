@@ -344,3 +344,57 @@ jobs:
           path: .accessibility/
           retention-days: 7
           if-no-files-found: ignore
+
+  # Arabic and RTL evidence.
+  #
+  # The parity test proves the dictionaries agree. It cannot prove what a page
+  # LOOKS like in Arabic — a fully translated page can still lay out
+  # left-to-right, leak English into a journey, or overflow at 390px. This loads
+  # every page in both languages at both viewports and checks what the browser
+  # actually produced.
+  arabic-rtl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: naseeb
+          POSTGRES_PASSWORD: naseeb
+          POSTGRES_DB: naseeb_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgresql://naseeb:naseeb@localhost:5432/naseeb_test
+      DATABASE_SSL: 'false'
+      APP_URL: http://localhost:3000
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.pw-browsers
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install pinned Chromium
+        run: npx --yes playwright@1.55.0 install --with-deps chromium
+      - name: Prepare the isolated schema
+        run: node scripts/reset-test-db.js
+      - name: Arabic and RTL sweep
+        run: npm run test:arabic-rtl
+      - name: Upload RTL report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arabic-rtl-report
+          path: .arabic-rtl/
+          retention-days: 7
+          if-no-files-found: ignore

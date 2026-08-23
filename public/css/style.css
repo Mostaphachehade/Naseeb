@@ -807,7 +807,9 @@ footer.site a:hover { color: var(--gold-bright); }
 .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid rgba(11,59,54,0.1); }
 .admin-table { width: 100%; border-collapse: collapse; background: #fff; }
 .admin-table th {
-  text-align: left;
+  /* Logical, not physical: an Arabic admin table aligns its headers to the
+     right on its own, with no [dir="rtl"] override needed to undo this one. */
+  text-align: start;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -840,7 +842,7 @@ footer.site a:hover { color: var(--gold-bright); }
 }
 .pill-badge.company { background: var(--gold-bright); }
 
-.verified-badge { vertical-align: -2px; margin-left: 4px; }
+.verified-badge { vertical-align: -2px; margin-inline-start: 4px; }
 
 /* ---------- Ad banner ---------- */
 .ad-banner-wrap { margin-bottom: 40px; }
@@ -937,7 +939,7 @@ footer.site a:hover { color: var(--gold-bright); }
 .promo-notch.l { left: -7px; }
 .promo-notch.r { right: -7px; }
 .promo-perf { position: absolute; top: 84px; left: 12px; right: 12px; border-top: 1.5px dashed rgba(11,59,54,0.22); }
-.promo-ticket-body { padding: 14px 14px 16px; text-align: left; }
+.promo-ticket-body { padding: 14px 14px 16px; text-align: start; }
 .promo-ticket-label { font-family: 'IBM Plex Mono', monospace; font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); opacity: 0.6; }
 .promo-ticket-title { font-family: 'Fraunces', serif; font-size: 0.94rem; line-height: 1.25; color: var(--ink-deep); margin: 4px 0 8px; }
 .promo-ticket-value { display: inline-flex; align-items: center; gap: 5px; background: var(--gold); color: var(--ink-deep); font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 0.62rem; padding: 4px 9px; border-radius: 100px; }
@@ -1004,4 +1006,5 @@ footer.site a:hover { color: var(--gold-bright); }
 [dir="rtl"] .skip-link { left: auto; right: 12px; }
 [dir="rtl"] .hero::after { right: auto; left: -60px; transform: translateY(-50%) rotate(-8deg); }
 [dir="rtl"] .hero-promo-frame { right: auto; left: 20px; }
-[dir="rtl"] .verified-badge { margin-left: 0; margin-right: 4px; }
+/* .verified-badge now uses margin-inline-start, which flips on its own. The
+   override that used to live here was deleted rather than left as a no-op. */

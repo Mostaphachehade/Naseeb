@@ -17,3 +17,4 @@ npm-debug.log*
 pgdump-*/
 .accessibility/
 .rehearsal/
+.arabic-rtl/
