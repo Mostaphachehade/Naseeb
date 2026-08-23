@@ -93,7 +93,7 @@
             when: new Date(e.attested_at).toLocaleDateString(locale),
           }),
         }),
-        el('p', { class: 'hint', text: e.limitation }),
+        el('p', { class: 'hint', attrs: { 'data-lang-exempt': 'attestation-wording' }, text: e.limitation }),
       ]);
     }
 
@@ -102,8 +102,23 @@
 
     return card(t('account.eligibility'), [
       el('p', { text: t('account.createdBeforeAttestation') }),
-      el('label', { class: 'u-age-attest', htmlFor: 'age-confirm' }, [box, el('span', { text: e.wording })]),
-      el('p', { class: 'hint', text: e.limitation }),
+      // The declaration itself stays in English, and is marked as deliberately
+      // so rather than left to look like an oversight.
+      //
+      // server/lib/eligibility.js holds the exact sentence and records which
+      // VERSION of it a person agreed to, precisely so that the words read and
+      // the words recorded cannot drift apart. Rendering an Arabic sentence
+      // while recording the English version would break that on purpose: the
+      // audit trail would say somebody agreed to a sentence they never saw.
+      //
+      // An Arabic declaration needs its own version identifier and a decision on
+      // which language governs — a counsel question, recorded as B16/B19 in
+      // docs/UAE_COUNSEL_REVIEW.md — not a translation.
+      el('label', { class: 'u-age-attest', htmlFor: 'age-confirm', attrs: { 'data-lang-exempt': 'attestation-wording' } }, [
+        box,
+        el('span', { text: e.wording }),
+      ]),
+      el('p', { class: 'hint', attrs: { 'data-lang-exempt': 'attestation-wording' }, text: e.limitation }),
       el('button', {
         class: 'btn primary u-8a359a76',
         type: 'button',

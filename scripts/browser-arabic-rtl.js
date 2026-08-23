@@ -146,7 +146,26 @@ async function main() {
           const probe = await tab.evaluate(() => {
             const doc = document.documentElement;
             const main = document.querySelector('main') || document.body;
-            const text = (main.innerText || '').trim();
+
+            // Elements marked data-lang-exempt are English on purpose, and the
+            // marker carries the reason. The only one today is the age
+            // declaration: server/lib/eligibility.js records WHICH VERSION of an
+            // exact sentence a person agreed to, so showing an Arabic sentence
+            // while recording the English version would put a consent in the
+            // audit trail that the person never read. That needs its own version
+            // identifier and a decision on which language governs — see
+            // docs/UAE_COUNSEL_REVIEW.md B16 — not a translation.
+            //
+            // Excluded by marker rather than by adding its words to IGNORE,
+            // which would excuse "confirm", "age" and "verification" on every
+            // page instead of on this one element.
+            const exempt = Array.from(main.querySelectorAll('[data-lang-exempt]'));
+            const exemptText = exempt.map((n) => n.innerText || '');
+            let text = (main.innerText || '').trim();
+            exemptText.forEach((chunk) => {
+              const trimmed = chunk.trim();
+              if (trimmed) text = text.split(trimmed).join(' ');
+            });
             // Latin runs of three or more letters, ignoring the things that are
             // meant to stay Latin: brand names, provider names, URLs, emails and
             // technical identifiers.
@@ -181,6 +200,7 @@ async function main() {
               scrollW: doc.scrollWidth,
               clientW: doc.clientWidth,
               textLen: text.length,
+              exemptCount: exempt.length,
               // Which elements actually stick out. "scrollWidth 397 >
               // clientWidth 390" says a page is seven pixels too wide and gives
               // nobody anywhere to start; naming the element turns it into a

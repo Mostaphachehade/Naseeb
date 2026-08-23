@@ -474,7 +474,7 @@
     try {
       const giveaways = await api('/admin/giveaways');
       if (giveaways.length === 0) {
-        mount(content, emptyNode('No giveaways yet.'));
+        mount(content, emptyNode(t('admin.noGiveawaysYet')));
         return;
       }
       mount(content, dataTable(
@@ -613,7 +613,7 @@
     try {
       const users = await api('/admin/users');
       if (users.length === 0) {
-        mount(content, emptyNode('No accounts yet.'));
+        mount(content, emptyNode(t('admin.noAccountsYet')));
         return;
       }
       mount(content, dataTable(
@@ -867,7 +867,7 @@
     try {
       const rows = await api('/claims/admin/rescue-queue');
       if (rows.length === 0) {
-        mount(content, emptyNode('No suspended host has an unfinished claim.'));
+        mount(content, emptyNode(t('admin.noSuspendedHostClaim')));
         return;
       }
       mount(content, dataTable(
@@ -1707,7 +1707,7 @@
     try {
       const rows = await api('/admin/privacy-requests');
       if (!rows.length) {
-        mount(content, emptyNode('No privacy requests.'));
+        mount(content, emptyNode(t('admin.noPrivacyRequests')));
         return;
       }
       mount(content, dataTable(
@@ -1843,7 +1843,7 @@
     try {
       const rows = await api('/admin/email-change-notifications');
       if (!rows.length) {
-        mount(content, emptyNode('No email-change notifications.'));
+        mount(content, emptyNode(t('admin.noEmailChangeNotifications')));
         return;
       }
       mount(content, dataTable(

@@ -140,6 +140,11 @@ register({
     'admin.colSignals': "Signals",
     'admin.colEntered': "Entered",
     'admin.colCase': "Case",
+    'admin.noGiveawaysYet': "No giveaways yet.",
+    'admin.noAccountsYet': "No accounts yet.",
+    'admin.noSuspendedHostClaim': "No suspended host has an unfinished claim.",
+    'admin.noPrivacyRequests': "No privacy requests.",
+    'admin.noEmailChangeNotifications': "No email-change notifications.",
   },
   ar: {
     'owner.ownerNaseeb': 'المالك — نصيب',
@@ -265,5 +270,10 @@ register({
     'admin.colSignals': "المؤشّرات",
     'admin.colEntered': "تاريخ المشاركة",
     'admin.colCase': "الحالة المفتوحة",
+    'admin.noGiveawaysYet': "لا توجد مسابقات بعد.",
+    'admin.noAccountsYet': "لا توجد حسابات بعد.",
+    'admin.noSuspendedHostClaim': "لا يوجد مضيف موقوف لديه مطالبة غير مكتملة.",
+    'admin.noPrivacyRequests': "لا توجد طلبات خصوصية.",
+    'admin.noEmailChangeNotifications': "لا توجد إشعارات تغيير بريد إلكتروني.",
   },
 });

@@ -497,7 +497,17 @@ main { padding: 56px 0 96px; }
 .card.narrow { margin: 0 auto; }
 label { display: block; font-weight: 600; font-size: 0.88rem; margin: 18px 0 6px; color: var(--ink-deep); }
 label:first-of-type { margin-top: 0; }
-input, textarea {
+/* select is here, and was not.
+ *
+ * It was styled by nothing at all, so it took the browser default: sized to its
+ * widest option rather than to its container. On create.html at 390px that made
+ * it 397px wide and pushed the whole page into horizontal scrolling — a WCAG
+ * 1.4.10 reflow failure in English and Arabic alike, found by the RTL sweep
+ * rather than by looking at the form.
+ *
+ * It also just looked wrong: the one control on the page that did not match the
+ * fields above and below it. */
+input, select, textarea {
   width: 100%;
   padding: 12px 14px;
   border-radius: 8px;
@@ -507,7 +517,7 @@ input, textarea {
   background: var(--paper);
   color: var(--text);
 }
-input:focus, textarea:focus {
+input:focus, select:focus, textarea:focus {
   outline: 3px solid var(--gold-bright);
   outline-offset: 1px;
   border-color: var(--gold);
