@@ -1,0 +1,79 @@
+// Arabic for the public explanatory pages: About and What things cost.
+//
+// These two carry the platform's claims about itself — who pays for what, why
+// entry is free, what hosting access is and is not. The translation states the
+// same facts with the same hedging; where the English deliberately declines to
+// promise something, the Arabic declines too.
+//
+// LEGAL-ADJACENT. about.aboutRegulation mentions the GCGRA and says explicitly
+// that nothing on the page is legal advice. That paragraph, and its Arabic,
+// need UAE-counsel review as well as native review — see
+// docs/UAE_COUNSEL_REVIEW.md.
+//
+// STATUS: machine-drafted Modern Standard Arabic, PENDING NATIVE REVIEW.
+register({
+  en: {
+    'about.aboutNaseeb': 'About — Naseeb',
+    'about.aboutNaseeb2': 'About Naseeb',
+    'about.naseebMeansLuckWe': 'Naseeb means luck. We built a platform that keeps it honest.',
+    'about.aGiveawayShouldCome': "A giveaway should come down to chance, not who can pay the most. That's the whole idea behind Naseeb.",
+    'about.whyWeBuiltThis': 'Why we built this',
+    'about.mostGiveawaysOnlineQuietly': 'Most "giveaways" online quietly turn into something else — a ticket price, a "boost your odds" upsell, a purchase required to qualify. Naseeb exists because a giveaway should mean what the word says: something given, freely, to whoever wins a fair draw. So we built a platform where that\'s not just a policy, it\'s the only thing the software is capable of doing.',
+    'about.theRulesByDesign': 'The rules, by design',
+    'about.alwaysFreeToEnter': 'Always free to enter',
+    'about.thereIsNoField': "There is no field for a price or fee anywhere on the entry flow. It isn't hidden behind a setting — it doesn't exist in the code.",
+    'about.fundingDisclosed': 'Funding, disclosed',
+    'about.everyListingStatesWho': "Every listing states who's paying for the prize, shown publicly, so it's clear the cost sits with the host as a marketing expense.",
+    'about.oneEntryPerAccount': 'One entry per account',
+    'about.nobodyCanBuyOr': 'Nobody can buy or otherwise acquire better odds. The platform enforces one entry per verified account per giveaway — that is what it can check. It cannot verify that one account is one person, and it does not collect identity documents to try; entries obtained by holding several accounts breach the terms and can be reviewed and voided by an administrator.',
+    'about.whoPaysForWhat': 'Who pays for what',
+    'about.fourDifferentThingsAre': 'Four different things are often confused with each other, so to be explicit:',
+    'about.entrantsPayNothing': 'Entrants pay nothing.',
+    'about.hostsMayPayNaseeb': 'Hosts may pay Naseeb',
+    'about.advertisersMayPayNaseeb': 'Advertisers may pay Naseeb',
+    'about.hostsFundAndDeliver': 'Hosts fund and deliver their own prizes.',
+    'about.moneyThatReachesNaseeb': 'Money that reaches Naseeb comes from hosts and advertisers for services rendered to them. It never comes from entrants, and it is never the source of a prize.',
+    'about.whyFreeEntryIs': 'Why free entry is built in, not bolted on',
+    'about.paidEntryRafflesAnd': 'Paid-entry raffles and lotteries are regulated in most countries. In the UAE, commercial gaming is overseen by the General Commercial Gaming Regulatory Authority (GCGRA). Naseeb does not run a paid-entry model and has no intention of doing so: entrants never pay anything, and there is no field for an entry price anywhere in the code.',
+    'about.thatIsADescription': 'That is a description of how the platform is built. It is not a legal conclusion about your campaign or ours. Promotional giveaways can still involve permits, advertising rules, consumer-protection duties, prize-fulfilment obligations and data-protection requirements, and none of that is removed by entry being free.',
+    'about.thisIsNotLegal': 'This is not legal advice, and Naseeb has not been reviewed by UAE legal counsel.',
+    'about.getInTouch': 'Get in touch',
+    'about.questionsSupportOrPress': 'Questions, support, or press — WhatsApp is the fastest way to reach us.',
+    'about.readyToSeeIt': 'Ready to see it in action?',
+    'about.browseWhatSOpen': "Browse what's open right now, or host your own in a few minutes.",
+    'about.browseGiveaways': 'Browse giveaways',
+    'about.hostYourOwn': 'Host your own',
+  },
+  ar: {
+    'about.aboutNaseeb': 'من نحن — نصيب',
+    'about.aboutNaseeb2': 'عن نصيب',
+    'about.naseebMeansLuckWe': 'نصيب هو ما قُسِم لك. وقد بنينا منصّة تحفظ نزاهته.',
+    'about.aGiveawayShouldCome': 'المسابقة يجب أن تُحسم بالحظ، لا بمن يدفع أكثر. هذه هي الفكرة كلّها وراء نصيب.',
+    'about.whyWeBuiltThis': 'لماذا بنينا هذه المنصّة',
+    'about.mostGiveawaysOnlineQuietly': 'معظم «المسابقات» على الإنترنت تتحوّل بهدوء إلى شيء آخر: ثمن تذكرة، أو عرض لـ«مضاعفة فرصك»، أو عملية شراء لازمة للتأهّل. وُجدت نصيب لأن المسابقة ينبغي أن تعني ما تقوله الكلمة: شيء يُمنح، مجانًا، لمن يفوز في سحب عادل. لذلك بنينا منصّة لا يكون فيها ذلك سياسةً فحسب، بل الشيء الوحيد الذي يقدر البرنامج على فعله.',
+    'about.theRulesByDesign': 'القواعد، بحكم التصميم',
+    'about.alwaysFreeToEnter': 'المشاركة مجانية دائمًا',
+    'about.thereIsNoField': 'لا يوجد حقل لسعر أو رسم في أي موضع من مسار المشاركة. الأمر ليس مخفيًّا خلف إعداد — بل غير موجود في الشيفرة أصلًا.',
+    'about.fundingDisclosed': 'التمويل، معلَنًا',
+    'about.everyListingStatesWho': 'كل إعلان يذكر الجهة التي تدفع ثمن الجائزة، ويُعرض ذلك للعموم، ليكون واضحًا أن التكلفة على عاتق المستضيف كمصروف تسويقي.',
+    'about.oneEntryPerAccount': 'مشاركة واحدة لكل حساب',
+    'about.nobodyCanBuyOr': 'لا يستطيع أحد شراء فرص أفضل ولا الحصول عليها بأي طريقة أخرى. تفرض المنصّة مشاركة واحدة لكل حساب موثَّق في كل مسابقة — وهذا ما تستطيع التحقّق منه. لا يمكنها التحقّق من أن الحساب الواحد يعود لشخص واحد، وهي لا تجمع وثائق هوية لمحاولة ذلك؛ والمشاركات التي يحصل عليها صاحبها عبر امتلاك عدّة حسابات تخالف الشروط، ويمكن لمشرف مراجعتها وإبطالها.',
+    'about.whoPaysForWhat': 'من يدفع مقابل ماذا',
+    'about.fourDifferentThingsAre': 'كثيرًا ما تختلط أربعة أمور مختلفة ببعضها، ولذلك نوضّح صراحةً:',
+    'about.entrantsPayNothing': 'المشاركون لا يدفعون شيئًا.',
+    'about.hostsMayPayNaseeb': 'قد يدفع المستضيفون لنصيب',
+    'about.advertisersMayPayNaseeb': 'قد يدفع المعلنون لنصيب',
+    'about.hostsFundAndDeliver': 'المستضيفون يموّلون جوائزهم ويسلّمونها.',
+    'about.moneyThatReachesNaseeb': 'الأموال التي تصل إلى نصيب تأتي من المستضيفين والمعلنين مقابل خدمات قُدِّمت لهم. وهي لا تأتي من المشاركين أبدًا، وليست مصدرًا لأي جائزة إطلاقًا.',
+    'about.whyFreeEntryIs': 'لماذا المشاركة المجانية أصلٌ في البناء لا إضافة عليه',
+    'about.paidEntryRafflesAnd': 'السحوبات واليانصيب مدفوعة المشاركة خاضعة للتنظيم في معظم الدول. وفي دولة الإمارات العربية المتحدة، تشرف الهيئة العامة لتنظيم الألعاب التجارية (GCGRA) على الألعاب التجارية. لا تعمل نصيب بنموذج مشاركة مدفوعة ولا تنوي ذلك: المشاركون لا يدفعون شيئًا على الإطلاق، ولا يوجد حقل لسعر مشاركة في أي موضع من الشيفرة.',
+    'about.thatIsADescription': 'ما سبق وصفٌ لكيفية بناء المنصّة. وهو ليس استنتاجًا قانونيًّا بشأن حملتك أو حملتنا. فالمسابقات الترويجية قد تستلزم تصاريح، وقواعد إعلان، وواجبات حماية للمستهلك، والتزامات بتسليم الجوائز، ومتطلّبات لحماية البيانات، ولا يُلغي أيًّا من ذلك كون المشاركة مجانية.',
+    'about.thisIsNotLegal': 'هذا ليس استشارة قانونية، ولم تخضع نصيب لمراجعة مستشار قانوني في دولة الإمارات.',
+    'about.getInTouch': 'تواصل معنا',
+    'about.questionsSupportOrPress': 'للاستفسارات أو الدعم أو الصحافة — واتساب هو أسرع وسيلة للوصول إلينا.',
+    'about.readyToSeeIt': 'هل أنت مستعدّ لتراها على أرض الواقع؟',
+    'about.browseWhatSOpen': 'تصفّح ما هو مفتوح الآن، أو استضف مسابقتك خلال دقائق.',
+    'about.browseGiveaways': 'تصفّح المسابقات',
+    'about.hostYourOwn': 'استضف مسابقتك',
+  },
+});
