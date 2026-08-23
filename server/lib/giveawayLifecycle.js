@@ -48,7 +48,6 @@
 // Which is also why closure is **latched**: `entries_closed_at` is a fact
 // written once, not a count recomputed on every read.
 const crypto = require('crypto');
-const { v4: uuid } = require('uuid');
 const integrity = require('./entryIntegrity');
 const prizeStandard = require('./prizeStandard');
 
@@ -218,7 +217,7 @@ async function recordEvent(
         actor_user_id, actor_role, metadata)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
-      uuid(),
+      crypto.randomUUID(),
       giveawayId,
       eventType,
       fromStatus || null,

@@ -19,7 +19,7 @@
 // allowed is re-derived from the database on every single request: the host
 // must be suspended *now*, and the claim must be in an eligible state *now*.
 
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { pool } = require('../db');
 const {
   STATES,
@@ -86,7 +86,7 @@ async function ensureRescueForClaim(client, claimId, { reason, openedBy } = {}) 
      RETURNING id`,
     [
       claimId,
-      uuid(),
+      randomUUID(),
       reason ? String(reason).slice(0, 500) : null,
       openedBy || null,
       ACTIVE_STATE_LIST,

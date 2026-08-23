@@ -7,7 +7,7 @@
 // database is the isolated local cluster the suite always uses.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const Stripe = require('stripe');
 const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 
@@ -65,7 +65,7 @@ function nextWindow() {
 // slot_status 'held' with a hold well into the future mirrors what the checkout
 // route produces just before it sends a customer to Stripe.
 async function createPendingBooking({ amountAed = 1000, sessionId = null, paymentIntent = null } = {}) {
-  const id = uuid();
+  const id = randomUUID();
   const session = sessionId || unique('cs_test');
   const { start, end } = nextWindow();
   await pool.query(
@@ -413,7 +413,7 @@ test('an unknown client_reference_id is ignored, not applied to another booking'
   const booking = await createPendingBooking();
   const event = checkoutEvent({
     sessionId: booking.sessionId,
-    adId: uuid(), // a booking that does not exist
+    adId: randomUUID(), // a booking that does not exist
     amountTotal: 100000,
   });
 
@@ -435,7 +435,7 @@ test('an event arriving before the session id is stored is retried, not refused'
   // The checkout route inserts the booking and writes stripe_session_id a
   // moment later. A webhook that overtakes that write must not be permanently
   // refused as a mismatch.
-  const id = uuid();
+  const id = randomUUID();
   const { start, end } = nextWindow();
   await pool.query(
     `INSERT INTO ads

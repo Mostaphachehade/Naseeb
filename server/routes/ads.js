@@ -1,5 +1,5 @@
 const express = require('express');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { pool, isSlotProtectionActive } = require('../db');
 const { adCheckoutLimiter } = require('../middleware/rateLimit');
 const { createCheckoutSession } = require('../lib/stripe');
@@ -158,7 +158,7 @@ router.post('/checkout', adCheckoutLimiter, async (req, res) => {
 
     const unitPriceFils = quote.pricePerWeekFils;
     const amountFils = totalFilsFor(unitPriceFils, weeksNum);
-    const id = uuid();
+    const id = randomUUID();
     const holdExpiresAt = holdExpiryFrom();
 
     // Reserving the dates and working out which dates they are has to be one

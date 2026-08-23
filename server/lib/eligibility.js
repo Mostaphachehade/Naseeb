@@ -14,7 +14,7 @@
 // attesting a fact about yourself are different acts: conflating them would mean
 // a future Terms revision silently re-asking an age question, or an age prompt
 // implying agreement to a document that is not even effective.
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 
 const STATUS = {
   // Every account that existed before this phase, and the honest answer for
@@ -131,5 +131,5 @@ module.exports = {
   blocksAction,
   recordAttestation,
   selfView,
-  _uuid: () => uuid(),
+  _uuid: () => randomUUID(),
 };

@@ -1,5 +1,5 @@
 const express = require('express');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { pool } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 const { getAllSettings, setSetting } = require('../lib/settings');
@@ -553,7 +553,7 @@ router.post('/ads', requireAdmin, async (req, res) => {
     }
     const normalizedTargetUrl = checkedTarget.url;
 
-    const id = uuid();
+    const id = randomUUID();
     await pool.query(
       'INSERT INTO ads (id, business_name, image_url, target_url, media_type) VALUES ($1, $2, $3, $4, $5)',
       [id, business_name.trim(), checkedMedia.url, normalizedTargetUrl, normalizedMediaType]

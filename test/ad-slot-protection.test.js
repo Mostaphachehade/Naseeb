@@ -21,7 +21,7 @@ const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
 const { spawn } = require('child_process');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 const {
   ensureSlotExclusionConstraint,
@@ -117,7 +117,7 @@ async function createHistoricalOverlap() {
   const startsAt = '2088-03-01';
   const endsAt = '2088-03-14';
   for (let i = 0; i < 2; i += 1) {
-    const id = uuid();
+    const id = randomUUID();
     await pool.query(
       `INSERT INTO ads
          (id, business_name, image_url, target_url, media_type, contact_email,

@@ -11,7 +11,7 @@ configureTestEnv();
 process.env.CLAIM_ENCRYPTION_KEY = `v1:${require('crypto').randomBytes(32).toString('base64')}`;
 
 const request = require('supertest');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const app = require('../server/app');
 const { pool, init } = require('../server/db');
@@ -60,7 +60,7 @@ function detail(text) {
 }
 
 async function makeUser(name, { admin = false } = {}) {
-  const id = uuid();
+  const id = randomUUID();
   const email = `demo-${name.toLowerCase().replace(/\W+/g, '-')}-${Date.now()}@example.com`;
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin)
@@ -79,14 +79,14 @@ async function main() {
   const admin = await makeUser('Naseeb Admin', { admin: true });
   const stranger = await makeUser('Unrelated Person');
 
-  const giveawayId = uuid();
+  const giveawayId = randomUUID();
   await pool.query(
     `INSERT INTO giveaways (id, host_id, title, description, prize_description, funded_by, entry_deadline, status)
      VALUES ($1, $2, 'Espresso machine giveaway (demo)', 'A fabricated demo giveaway',
              'One espresso machine', 'Marketing budget (fabricated)', $3, 'drawn')`,
     [giveawayId, host.id, new Date(Date.now() - 86400000).toISOString()]
   );
-  const entryId = uuid();
+  const entryId = randomUUID();
   await pool.query(
     'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)',
     [entryId, giveawayId, winner.id]

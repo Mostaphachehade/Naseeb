@@ -25,7 +25,6 @@
 //   4. Every decision is one transaction, takes its locks in a fixed order, is
 //      safe to repeat, and refuses a decision made from a stale screen.
 const crypto = require('crypto');
-const { v4: uuid } = require('uuid');
 
 const STATUS = {
   ELIGIBLE: 'eligible',
@@ -247,7 +246,7 @@ async function recordEvent(client, { entry, toStatus, reasonCode, adminNotes, ac
         actor_user_id, actor_role, metadata)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
-      uuid(),
+      crypto.randomUUID(),
       entry.id,
       entry.giveaway_id,
       entry.integrity_status,
@@ -401,7 +400,7 @@ async function recordCaseEvent(client, { caseRow, toStatus, resolution, adminNot
         admin_notes, actor_user_id, actor_role)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
-      uuid(),
+      crypto.randomUUID(),
       caseRow.id,
       caseRow.giveaway_id,
       caseRow.entry_id || null,
@@ -427,7 +426,7 @@ async function openCase(client, { giveawayId, entryId, adminNotes, actorUserId, 
      VALUES ($1, $2, $3, 'open', $4, $5, $6)
      ON CONFLICT DO NOTHING
      RETURNING *`,
-    [uuid(), giveawayId, entryId || null, Boolean(postDraw), notes, actorUserId || null]
+    [crypto.randomUUID(), giveawayId, entryId || null, Boolean(postDraw), notes, actorUserId || null]
   );
   if (inserted.rows[0]) {
     await recordCaseEvent(client, {
@@ -624,6 +623,6 @@ module.exports = {
   hasBlockingCase,
   entrantView,
   ENTRANT_STATUS_LABEL,
-  _uuid: () => uuid(),
+  _uuid: () => crypto.randomUUID(),
   _hash: (value) => crypto.createHash('sha256').update(String(value)).digest('hex'),
 };

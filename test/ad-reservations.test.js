@@ -9,7 +9,7 @@
 // outbound request recorded, and the session objects are fabricated.
 const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const Stripe = require('stripe');
 const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 const {
@@ -142,7 +142,7 @@ function farWindow(days = 13) {
 }
 
 async function insertBooking({ startsAt, endsAt, slotStatus, holdExpiresAt = null, paymentStatus = 'pending' }) {
-  const id = uuid();
+  const id = randomUUID();
   await pool.query(
     `INSERT INTO ads
        (id, business_name, image_url, target_url, media_type, contact_email,
@@ -609,7 +609,7 @@ test('expiring and allocating at the same time cannot produce an overlap', async
 // ---------------------------------------------------------------------------
 
 test('a paid booking takes priority over a manually activated fallback ad', async () => {
-  const manualId = uuid();
+  const manualId = randomUUID();
   await pool.query(
     `INSERT INTO ads (id, business_name, image_url, target_url, media_type, active)
      VALUES ($1, 'Reservation Test Manual', 'https://example.com/m.jpg', 'https://example.com', 'image', TRUE)`,
@@ -646,7 +646,7 @@ test('a paid booking takes priority over a manually activated fallback ad', asyn
 test('manual fallback ads never take part in slot allocation', async () => {
   // They have no dates at all; a NULL range would otherwise read as unbounded
   // and collide with everything.
-  const manualId = uuid();
+  const manualId = randomUUID();
   await pool.query(
     `INSERT INTO ads (id, business_name, image_url, target_url, media_type, active)
      VALUES ($1, 'Reservation Test Manual2', 'https://example.com/m.jpg', 'https://example.com', 'image', TRUE)`,
@@ -678,8 +678,8 @@ test('the migration reports pre-existing overlaps and refuses to touch them', as
     await client.query(`ALTER TABLE ads DROP CONSTRAINT ${SLOT_CONSTRAINT_NAME}`);
 
     const { startsAt, endsAt } = farWindow();
-    const legacyA = uuid();
-    const legacyB = uuid();
+    const legacyA = randomUUID();
+    const legacyB = randomUUID();
     for (const id of [legacyA, legacyB]) {
       await client.query(
         `INSERT INTO ads

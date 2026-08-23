@@ -9,7 +9,7 @@ const crypto = require('node:crypto');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 
 const {
   api,
@@ -94,7 +94,7 @@ async function seedEntries(giveawayId, n, { startTicket = 1, status = 'eligible'
   const ids = [];
   for (let i = 0; i < n; i += 1) {
     const user = await makeUser(`entrant-${giveawayId.slice(0, 6)}-${i}`);
-    const entryId = uuid();
+    const entryId = randomUUID();
     ids.push({ entryId, userId: user.id });
     await pool.query(
       `INSERT INTO entries (id, giveaway_id, user_id, ticket_number, integrity_status,

@@ -16,7 +16,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { api, pool, ensureInit, signIn, anon, seedGiveaway, closePool } = require('../testHelpers');
 
@@ -92,7 +92,7 @@ const FABRICATED_DELIVERY = {
 };
 
 async function createUser(tag, { admin = false, hostStatus = HOST_STATUS.NOT_REQUESTED } = {}) {
-  const id = uuid();
+  const id = randomUUID();
   const email = `test-rescue-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status, age_attestation_status, age_attestation_version)
@@ -120,7 +120,7 @@ async function drawnGiveawayWithClaim(tag) {
   });
   createdGiveawayIds.push(giveawayId);
 
-  const entryId = uuid();
+  const entryId = randomUUID();
   await pool.query('INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)', [
     entryId,
     giveawayId,
@@ -265,7 +265,7 @@ test('the database itself refuses a second open queue row for one claim', async 
     pool.query(
       `INSERT INTO claim_rescue_queue (id, claim_id, giveaway_id, host_user_id)
        VALUES ($1, $2, $3, $4)`,
-      [uuid(), scene.claim.id, scene.giveawayId, scene.host.id]
+      [randomUUID(), scene.claim.id, scene.giveawayId, scene.host.id]
     ),
     (err) => err.code === '23505',
     'the uniqueness of an open rescue must not depend on application code alone'

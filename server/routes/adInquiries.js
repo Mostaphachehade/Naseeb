@@ -1,5 +1,5 @@
 const express = require('express');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { pool } = require('../db');
 const { adInquiryLimiter } = require('../middleware/rateLimit');
 const { sendEmail, escapeHtmlForEmail } = require('../lib/email');
@@ -31,7 +31,7 @@ router.post('/', adInquiryLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Message must be 2000 characters or fewer.' });
     }
 
-    const id = uuid();
+    const id = randomUUID();
     await pool.query(
       `INSERT INTO ad_inquiries (id, business_name, contact_email, contact_phone, message)
        VALUES ($1, $2, $3, $4, $5)`,

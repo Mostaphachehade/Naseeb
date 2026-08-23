@@ -23,7 +23,6 @@
 //     survive the retention period even if the rows do;
 //   - rotating the secret breaks linkage immediately and everywhere.
 const crypto = require('crypto');
-const { v4: uuid } = require('uuid');
 
 const SIGNALS = {
   // Several accounts, all created recently, entering from the same coarse
@@ -232,7 +231,7 @@ async function recordEntrySignals(client, { entryId, giveawayId, userId, ip, now
       `INSERT INTO entry_risk_signals
          (id, entry_id, giveaway_id, signal_code, severity, network_hmac, window_id, detail, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [uuid(), entryId, giveawayId, row.code, row.severity, key.hash, key.windowId,
+      [crypto.randomUUID(), entryId, giveawayId, row.code, row.severity, key.hash, key.windowId,
        JSON.stringify(row.detail), expiresAt]
     );
     recorded.push(row.code);

@@ -31,8 +31,7 @@
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.3.0",
     "pg": "^8.11.5",
-    "stripe": "^22.5.0",
-    "uuid": "^9.0.1"
+    "stripe": "^22.5.0"
   },
   "devDependencies": {
     "axe-core": "4.10.2",

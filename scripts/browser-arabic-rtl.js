@@ -64,6 +64,9 @@ const VIEWPORTS = [
 const made = { users: [] };
 const failures = [];
 const rows = [];
+// Declared out here because the summary below reports it after the try/finally
+// that produces it; a `const` inside the try would be out of scope by then.
+let isolation = null;
 
 function fail(where, message) { failures.push(`${where}: ${message}`); }
 
@@ -192,7 +195,7 @@ async function main() {
 
     // Bidi isolation and hostile-control handling, checked against the real
     // helper rather than a reimplementation of it.
-    const isolation = await (async () => {
+    isolation = await (async () => {
       const context = await browser.newContext();
       await context.addInitScript("localStorage.setItem('naseeb_lang','ar');");
       const tab = await context.newPage();
@@ -227,8 +230,15 @@ async function main() {
       const tab = await context.newPage();
       await tab.goto(`${BASE}/pricing.html?keep=1#section`, { waitUntil: 'domcontentloaded', timeout: 20000 });
       const before = tab.url();
-      await tab.evaluate(() => window.NaseebI18n.setLang('ar'));
-      await tab.waitForLoadState('domcontentloaded').catch(() => {});
+      // setLang reloads, so arm the load listener before triggering it and let
+      // the reload land before reading anything. The only tolerated failure is
+      // the reload tearing down the context the call was made in; anything else
+      // is a real error and still throws.
+      const reloaded = tab.waitForEvent('load', { timeout: 20000 });
+      await tab.evaluate(() => { window.NaseebI18n.setLang('ar'); }).catch((err) => {
+        if (!/Execution context was destroyed/.test(String(err && err.message))) throw err;
+      });
+      await reloaded;
       const after = tab.url();
       const rejected = await tab.evaluate(() => {
         window.NaseebI18n.setLang('https://example.invalid/');

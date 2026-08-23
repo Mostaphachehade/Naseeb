@@ -16,7 +16,6 @@
 // only the new address receives, the old address told what is happening, and
 // every session ended when it completes.
 const crypto = require('crypto');
-const { v4: uuid } = require('uuid');
 const outbox = require('./emailChangeOutbox');
 
 const REQUEST_TYPES = ['access', 'correction', 'deletion', 'objection'];
@@ -325,7 +324,7 @@ async function startEmailChange(client, { userId, newEmail, now = new Date() }) 
   );
 
   const expiresAt = new Date(now.getTime() + EMAIL_TOKEN_TTL_HOURS * 3600000);
-  const id = uuid();
+  const id = crypto.randomUUID();
 
   // Created with NO token. `token_hash` is NULL until a delivery worker mints
   // one immediately before sending it, so between this line and the first send
@@ -531,7 +530,7 @@ async function createRequest(client, { userId, requestType, message, now = new D
 
   const blockers = requestType === 'deletion' ? await deletionBlockers(client, userId) : [];
 
-  const id = uuid();
+  const id = crypto.randomUUID();
   const reference = newReference();
   await client.query(
     `INSERT INTO privacy_requests
@@ -544,7 +543,7 @@ async function createRequest(client, { userId, requestType, message, now = new D
     `INSERT INTO privacy_request_events
        (id, request_id, user_id, from_status, to_status, actor_user_id, actor_role)
      VALUES ($1, $2, $3, NULL, 'submitted', $3, 'user')`,
-    [uuid(), id, userId]
+    [crypto.randomUUID(), id, userId]
   );
 
   const row = await client.query('SELECT * FROM privacy_requests WHERE id = $1', [id]);
@@ -701,7 +700,7 @@ async function decideRequest(client, {
             categories_retained, summary, executed_by, executed_by_job)
          VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10)`,
         [
-          uuid(), request.id, request.user_id, execution.kind,
+          crypto.randomUUID(), request.id, request.user_id, execution.kind,
           JSON.stringify(execution.erased),
           JSON.stringify(execution.anonymised),
           JSON.stringify(execution.retained),
@@ -717,7 +716,7 @@ async function decideRequest(client, {
     `INSERT INTO privacy_request_events
        (id, request_id, user_id, from_status, to_status, outcome_code, admin_notes, actor_user_id, actor_role)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'admin')`,
-    [uuid(), request.id, request.user_id, request.status, toStatus, outcomeCode || null, notes, actorUserId]
+    [crypto.randomUUID(), request.id, request.user_id, request.status, toStatus, outcomeCode || null, notes, actorUserId]
   );
 
   const closed = CLOSED_STATUSES.includes(toStatus);
