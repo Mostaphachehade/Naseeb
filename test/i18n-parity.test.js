@@ -99,23 +99,52 @@ test('i18n1: every English key has an Arabic counterpart, and vice versa', () =>
   assert.ok(Object.keys(EN).length > 0, 'the English dictionary is empty');
 });
 
+// Keys whose Arabic is DELIBERATELY identical to the English.
+//
+// An explicit list, not a length heuristic. Every entry needs a reason, and
+// adding one is a decision somebody makes and a reviewer can see — which is the
+// point: the alternative is loosening the test until untranslated strings slip
+// through unnoticed.
+//
+// Mirrored in the untranslated allowlist in docs/ARABIC_RTL.md.
+const INTENTIONALLY_UNTRANSLATED = {
+  'advertise.https': 'A URL shape shown as a hint in a web-address field. Rendering "https" in Arabic would be a worse hint.',
+  'advertise.httpsYourBusinessSite': 'An example web address. Addresses are typed in Latin script; a translated example would not be typeable.',
+};
+
 test('i18n2: no Arabic entry is left as its English source', () => {
   // A key copied across untranslated renders as English inside an Arabic
-  // sentence. Short shared tokens are exempt: a brand name or an acronym can
-  // legitimately be identical in both.
+  // sentence, which is the failure this catches.
   const suspicious = Object.keys(EN).filter((k) => {
+    if (k in INTENTIONALLY_UNTRANSLATED) return false;
     const en = normalise(EN[k]);
     const ar = normalise(AR[k]);
     if (!en || !ar) return false;
     if (en.length < 12) return false;
     return en === ar;
   });
-  assert.deepEqual(suspicious, [], `Arabic identical to English: ${suspicious.join(', ')}`);
+  assert.deepEqual(suspicious, [],
+    `Arabic identical to English. Translate it, or add it to INTENTIONALLY_UNTRANSLATED with a reason: ${suspicious.join(', ')}`);
+});
+
+test('i18n2b: every allowlisted key still exists and is still identical', () => {
+  // An allowlist that outlives its entries is how an exception becomes a hole.
+  // If a key is translated later, or removed, it must leave the list.
+  const stale = Object.keys(INTENTIONALLY_UNTRANSLATED).filter((k) => {
+    if (!(k in EN) || !(k in AR)) return true;          // gone
+    return normalise(EN[k]) !== normalise(AR[k]);        // now translated
+  });
+  assert.deepEqual(stale, [],
+    `allowlisted keys that are no longer untranslated or no longer exist: ${stale.join(', ')}`);
 });
 
 test('i18n3: every Arabic entry actually contains Arabic script', () => {
   const arabic = /[؀-ۿ]/;
   const notArabic = Object.keys(AR).filter((k) => {
+    // The same allowlist governs this check. A key that is deliberately not
+    // translated will not contain Arabic script, and exempting it here rather
+    // than in a second list keeps one place to look.
+    if (k in INTENTIONALLY_UNTRANSLATED) return false;
     const v = String(AR[k]);
     // Entries that are purely a placeholder, a number or punctuation are fine.
     if (!/[A-Za-z؀-ۿ]/.test(v)) return false;

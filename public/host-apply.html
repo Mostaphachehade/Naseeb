@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Apply to host — Naseeb</title>
+<title data-i18n="hostapply.applyToHostNaseeb">Apply to host — Naseeb</title>
 <meta name="description" content="Hosting on Naseeb is a closed beta. Apply as an individual or a company and an administrator will review your request." />
 <meta name="robots" content="noindex" />
 <meta name="theme-color" content="#0B3B36" />
@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="/css/pages.css" />
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to content</a>
+<a href="#main" class="skip-link" data-i18n="common.skipToContent">Skip to content</a>
 
 <header class="site">
   <div class="wrap">
@@ -26,47 +26,47 @@
   <div class="wrap u-de0aa912">
     <div class="section-head" id="form-head">
       <div>
-        <h2>Apply to host</h2>
-        <p>Hosting is a closed beta. Tell us who you are, and an administrator will review your request.</p>
+        <h2 data-i18n="hostapply.applyToHost">Apply to host</h2>
+        <p data-i18n="hostapply.hostingIsAClosed">Hosting is a closed beta. Tell us who you are, and an administrator will review your request.</p>
       </div>
     </div>
 
     <div id="status-panel"></div>
 
     <form class="card narrow u-34caecf2 is-hidden" id="apply-form">
-      <label>Who's applying?</label>
+      <label data-i18n="hostapply.whoSApplying">Who's applying?</label>
       <div class="segmented" id="applicant-type-toggle">
-        <button type="button" class="segmented-option active" data-value="individual" aria-pressed="true">An individual</button>
-        <button type="button" class="segmented-option" data-value="company" aria-pressed="false">A company / business</button>
+        <button type="button" class="segmented-option active" data-value="individual" aria-pressed="true" data-i18n="hostapply.anIndividual">An individual</button>
+        <button type="button" class="segmented-option" data-value="company" aria-pressed="false" data-i18n="hostapply.aCompanyBusiness">A company / business</button>
       </div>
 
       <div id="company-fields" class="u-c8be1ccb is-hidden">
-        <label for="business_name">Business name</label>
-        <input id="business_name" placeholder="e.g. Al Fahim Marketing LLC" />
+        <label for="business_name" data-i18n="hostapply.businessName">Business name</label>
+        <input id="business_name" placeholder="e.g. Al Fahim Marketing LLC" / data-i18n-attr="placeholder:hostapply.eGAlFahim">
 
-        <label for="trade_license">Trade license number (optional)</label>
-        <input id="trade_license" placeholder="e.g. CN-1234567" />
+        <label for="trade_license" data-i18n="hostapply.tradeLicenseNumberOptional">Trade license number (optional)</label>
+        <input id="trade_license" placeholder="e.g. CN-1234567" / data-i18n-attr="placeholder:hostapply.eGCn1234567">
       </div>
 
-      <label for="full_name" id="full_name-label">Full name</label>
+      <label for="full_name" id="full_name-label" data-i18n="common.fullName">Full name</label>
       <input id="full_name" required />
 
-      <label for="contact_phone">Phone (optional)</label>
-      <input id="contact_phone" type="tel" placeholder="e.g. +971 50 123 4567" />
-      <p class="hint">We use the email address on your account, so there is nothing to type here.</p>
+      <label for="contact_phone" data-i18n="hostapply.phoneOptional">Phone (optional)</label>
+      <input id="contact_phone" type="tel" placeholder="e.g. +971 50 123 4567" / data-i18n-attr="placeholder:hostapply.eG97150">
+      <p class="hint" data-i18n="hostapply.weUseTheEmail">We use the email address on your account, so there is nothing to type here.</p>
 
-      <label for="message">What are you planning to give away? (optional)</label>
-      <textarea id="message" placeholder="Tell us about the giveaway you have in mind, or ask a question."></textarea>
+      <label for="message" data-i18n="hostapply.whatAreYouPlanning">What are you planning to give away? (optional)</label>
+      <textarea id="message" placeholder="Tell us about the giveaway you have in mind, or ask a question." data-i18n-attr="placeholder:hostapply.tellUsAboutThe"></textarea>
 
       <div class="compliance-box">
-        <strong>What submitting this does, and does not do.</strong>
+        <strong data-i18n="hostapply.whatSubmittingThisDoes">What submitting this does, and does not do.</strong>
         It charges you nothing — there is no payment step here and no paid hosting tier to be charged for.
         It grants you nothing: your account moves to "waiting for review", and only an administrator's
         decision can turn that into host access. We have not set a review deadline and are not promising one.
         You cannot publish a giveaway while an application is open.
       </div>
 
-      <button class="btn primary" type="submit">Submit application</button>
+      <button class="btn primary" type="submit" data-i18n="hostapply.submitApplication">Submit application</button>
       <p class="form-error" id="error"></p>
     </form>
   </div>
@@ -76,6 +76,7 @@
 
 <script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/i18n/host-advertise.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/pages/host-apply.js"></script>
 </body>
