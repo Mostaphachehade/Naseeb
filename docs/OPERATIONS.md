@@ -1001,6 +1001,35 @@ remains `false` regardless — see §3.
 
 ---
 
+## 10a. A deadlock the suite caught, and what it says about the pattern
+
+`test/prize-claims-amendments.test.js` failed once, intermittently, with two
+concurrent "resend claim link" requests returning `[200, 500]` and the server log
+line `Claim operation failed: deadlock detected`.
+
+The reissue route writes three things — the claim's tokens, its notification
+outbox row, and `invitation_sent_at` — and took its first lock several statements
+in, on whichever of those it reached first. Two administrators clicking resend at
+the same moment could acquire them in opposite orders, and Postgres resolves that
+the only way it can: it kills one transaction.
+
+`lockClaimById` already existed for exactly this reason, and the comment on it
+describes the failure. The reissue route and both rescue routes had never been
+moved onto it. All three now take the claim's row lock as their first statement,
+so the second request waits and then reads what the first actually did.
+
+**The rule this generalises to:** a transaction that will write a claim takes the
+claim's row lock first, before it touches tokens, notifications, events or
+anything else that hangs off it. Lock the parent, then the children, always in
+that order. A deadlock is not a database problem to be retried around — it is two
+code paths disagreeing about an order, and the fix is to write the order down.
+
+Worth noting how it was found: not by review, and not reliably. It appeared in
+one CI run out of several and would have appeared in production as a rare 500
+with no reproduction. An intermittent test failure is evidence, not noise.
+
+---
+
 ## 11a. Where the runtime evidence comes from
 
 This development machine has no PostgreSQL, no Docker and no `psql`, and the

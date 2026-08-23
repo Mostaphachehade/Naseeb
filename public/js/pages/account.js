@@ -1,5 +1,3 @@
-  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
-
   // The account centre.
   //
   // Everything rendered here is the signed-in person's own data, and every node
@@ -7,6 +5,11 @@
   // uses. That matters more here than anywhere: this page shows text the account
   // holder typed, text an administrator wrote back, and an email address.
   const ready = requireSession('/account.html');
+
+  // Dates follow the page's language, not the operating system's:
+  // toLocaleDateString(undefined) asks the browser and gets the OS locale, which
+  // put an English date in the middle of an Arabic line.
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
 
   const content = document.getElementById('account-content');
   const dataContent = document.getElementById('data-content');

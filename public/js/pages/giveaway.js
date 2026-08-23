@@ -1,9 +1,12 @@
-  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
 // Wrapped in an async IIFE because this file awaits the session bootstrap at
 // the top. It was written inside an inline <script>, where a top-level await
 // is a syntax error too — the browser check added in this phase is what
 // finally surfaced it.
 (async () => {
+  // Dates follow the page's language, not the operating system's:
+  // toLocaleDateString(undefined) asks the browser and gets the OS locale, which
+  // put an English date in the middle of an Arabic line.
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
   const id = new URLSearchParams(window.location.search).get('id');
   await sessionReady;
   const user = getUser();

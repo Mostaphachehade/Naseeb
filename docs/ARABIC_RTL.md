@@ -197,6 +197,7 @@ one makes a language addressable, the other changes a preference.
 | `i18n7` | Bidi isolation strips embedded control characters |
 | `i18n8` | No page carries visible text that no dictionary can reach |
 | `i18n9` | The language URL parameter is a dictionary key and nothing else |
+| `i18n10` | Every key a page script uses is in a dictionary that page loads |
 
 `i18n8` is the one that matters. Every other test compares dictionary against
 dictionary, and all of them passed while fifteen Arabic pages rendered English
@@ -218,6 +219,30 @@ Reads every error literal out of `server/` and fails when one has no entry in
 directory had missed, in double-quoted and backtick literals. `se2` checks the
 opposite direction: an entry left behind after its message was reworded
 translates nothing while making the file look complete.
+
+### Keys a page cannot reach — `i18n10`
+
+The dictionaries are one flat namespace at runtime, but a page only loads some of
+them. `dashboard.js` called `t('pricing.browseOpenGiveaways')` — a real key,
+correctly translated, in a file `dashboard.html` does not load. `t()` returns the
+key when it has no entry, so the dashboard rendered the literal text
+`pricing.browseOpenGiveaways` where a link label belonged, and every test above
+passed on it.
+
+`i18n10` resolves each page's keys against the dictionaries that page actually
+loads. Writing it immediately found five more: `create`, `partners`, `pricing`,
+`privacy` and `terms` all carried `data-i18n-content` on their meta description
+pointing at a key nobody had written, so their descriptions would have rendered
+as `terms.metaDescription` in a search result and a share card.
+
+### Dates
+
+Every `toLocaleDateString` call takes the page's language explicitly.
+`toLocaleDateString(undefined, …)` asks the browser, and the browser answers with
+the operating system's locale — so an Arabic page on an English laptop printed
+"15 August 2026" in the middle of an Arabic sentence, and an English page on an
+Arabic laptop printed the reverse. Neither is a translation bug the dictionaries
+can see.
 
 ### In a real browser — `scripts/browser-arabic-rtl.js`, CI job `arabic-rtl`
 

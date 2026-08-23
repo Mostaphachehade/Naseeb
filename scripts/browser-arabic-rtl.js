@@ -77,7 +77,13 @@ async function makeUser({ name, admin }) {
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status)
      VALUES ($1, $2, $3, $4, TRUE, $5, 'approved')`,
-    [id, `RTL ${name}`, email, hash, Boolean(admin)]
+    // Named in Arabic on purpose. A Latin display name is rendered verbatim on
+    // the admin table — it is a person's own text, not copy — and the Latin-run
+    // check then reports "admin" and "member" as untranslated English on every
+    // run. Excusing those two words in IGNORE would excuse them on all 23 pages;
+    // naming the fixture in Arabic removes the false positive without weakening
+    // anything.
+    [id, name === 'admin' ? 'مشرف الاختبار' : 'عضو الاختبار', email, hash, Boolean(admin)]
   );
   made.users.push(id);
   return { id, email };
@@ -182,7 +188,7 @@ async function main() {
             // Kept as an explicit alternation rather than a looser pattern:
             // anything general enough to cover these would also excuse a real
             // untranslated sentence, which is the failure this exists to catch.
-            const IGNORE = /(Naseeb|Stripe|Render|Resend|Cloudinary|Neon|Sentry|Google|Analytics|Signals|PostgreSQL|bcrypt|IPv\d|AES|GCM|GCGRA|WhatsApp|AED|https?|www|draft|CN|LLC|docs|HOST_ACCESS|md|JSON|RTL)/gi;
+            const IGNORE = /(Naseeb|Stripe|Render|Resend|Cloudinary|Neon|Sentry|Google|Analytics|Signals|PostgreSQL|bcrypt|IPv\d|AES|GCM|GCGRA|WhatsApp|AED|https?|www|draft|CN|LLC|docs|HOST_ACCESS|md|JSON)/gi;
             // Email addresses and bare hostnames are values, not copy. A
             // member's own address is shown on their account page and is
             // Latin whatever language the page is in; splitting it into

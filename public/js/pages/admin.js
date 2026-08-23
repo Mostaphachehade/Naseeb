@@ -1,9 +1,12 @@
-  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
-
   // Cosmetic only. Every route this page calls re-reads users.is_admin from
   // Postgres on the request, so reaching this page without being an
   // administrator produces a screen full of 403s rather than an admin panel.
   const ready = requireSession('/admin.html');
+
+  // Dates follow the page's language, not the operating system's:
+  // toLocaleDateString(undefined) asks the browser and gets the OS locale, which
+  // put an English date in the middle of an Arabic line.
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
 
 
   async function loadStats() {
@@ -209,7 +212,11 @@
         a.message ? el('p', { class: 'u-f06aec11', text: a.message }) : null,
         el('p', { class: 'u-acb85f03' }, [
           'Account host status: ',
-          el('strong', { text: a.host_status || 'no account' }),
+          el('strong', {
+            text: a.host_status
+              ? (HOST_STATUS_LABELS[a.host_status] ? t(HOST_STATUS_LABELS[a.host_status]) : a.host_status)
+              : t('admin.noAccount'),
+          }),
         ]),
         decisionBlock,
       ]));
@@ -530,7 +537,8 @@
     // somebody reached for it. See docs/PRIVACY_AND_RIGHTS.md §8.
 
     return el('tr', {}, [
-      tdNode([u.name, u.is_admin ? ' ' : null, u.is_admin ? pill('admin', 'company') : null]),
+      // The display name is a person's own text: isolated, never translated.
+      tdNode([isolate(u.name), u.is_admin ? ' ' : null, u.is_admin ? pill(t('admin.roleAdmin'), 'company') : null]),
       td(u.email),
       td(u.giveaways_hosted, 'mono'),
       td(shortDate(u.created_at)),
@@ -540,17 +548,20 @@
     ]);
   }
 
+  // Keys, resolved at render time. A map of finished labels built at module
+  // scope is evaluated before applyI18n() has run and would freeze this column
+  // in whichever language loaded first.
   const HOST_STATUS_LABELS = {
-    not_requested: 'Never applied',
-    pending: 'Waiting for review',
-    approved: 'Approved',
-    rejected: 'Not approved',
-    suspended: 'Suspended',
+    not_requested: 'admin.hostStatusNeverApplied',
+    pending: 'admin.hostStatusWaiting',
+    approved: 'admin.hostStatusApproved',
+    rejected: 'admin.hostStatusNotApproved',
+    suspended: 'admin.hostStatusSuspended',
   };
 
   function hostStatusCell(u) {
     return [
-      pill(HOST_STATUS_LABELS[u.host_status] || u.host_status || '—'),
+      pill(HOST_STATUS_LABELS[u.host_status] ? t(HOST_STATUS_LABELS[u.host_status]) : (u.host_status || '—')),
       u.host_status_changed_at ? el('br') : null,
       u.host_status_changed_at
         ? el('span', {
@@ -568,8 +579,8 @@
   function hostActions(u) {
     const status = u.host_status === 'approved' ? 'suspended' : 'approved';
     const label = u.host_status === 'approved'
-      ? 'Suspend hosting'
-      : u.host_status === 'suspended' ? 'Reinstate' : 'Grant hosting';
+      ? t('admin.suspendHosting')
+      : u.host_status === 'suspended' ? t('admin.reinstate') : t('admin.grantHosting');
 
     return el('button', {
       // `on-light`: this ghost button sits on the white admin table, where
