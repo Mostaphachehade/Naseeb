@@ -57,7 +57,7 @@
           <!-- Filled from /api/ads/availability. No price is hard-coded on this
                page: the server is the only place the rate exists. -->
           <div class="u-dcd89071"><span id="week-price">—</span><span class="u-0377156e" data-i18n="advertise.week"> / week</span></div>
-          <p class="hint u-b0816963">Next available: <strong id="next-available">—</strong></p>
+          <p class="hint u-b0816963"><span data-i18n="advertise.nextAvailable">Next available:</span> <strong id="next-available">—</strong></p>
         </div>
         <span class="pill-badge company" id="pricing-badge" data-i18n="advertise.payOnlineLiveAutomatically">Pay online, live automatically</span>
       </div>
@@ -93,7 +93,7 @@
         <select id="weeks"></select>
 
         <div class="compliance-box">
-          You'll pay <strong id="total-price">—</strong> now via Stripe. Your banner is scheduled starting <strong id="form-start-date">—</strong> and runs automatically — no manual follow-up needed.
+          <span data-i18n="advertise.youLlPay">You'll pay</span> <strong id="total-price">—</strong> <span data-i18n="advertise.nowViaStripeYour">now via Stripe. Your banner is scheduled starting</span> <strong id="form-start-date">—</strong> <span data-i18n="advertise.andRunsAutomaticallyNo">and runs automatically — no manual follow-up needed.</span>
         </div>
 
         <!-- Shown when the owner changes the price mid-session. The customer is

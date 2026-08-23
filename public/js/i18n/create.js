@@ -76,6 +76,13 @@ register({
     'create.eG1500': 'e.g. 1500',
     'create.https': 'https://…',
     'create.eGMarketingBudget': 'e.g. Marketing budget of [your business/name]',
+    'create.youSubmitThePrize': "You submit the prize.",
+    'create.naseebReviewsEverySubmission': "— Naseeb reviews every submission first.",
+    'create.onceApprovedTheCampaign': "Once approved, the campaign is published and runs for",
+    'create.fromThatMoment': "from that moment.",
+    'create.itClosesAtWhichever': "It closes at whichever comes first: the",
+    'create.orThe': ", or the",
+    'create.andWillCoordinateDelivery': "and will coordinate delivery or fulfilment. If a winner has a problem, they will come to us. This workflow is not yet operating, and no campaign can be published until it is.",
   },
   ar: {
     'create.hostAGiveawayNaseeb': 'استضف مسابقة — نصيب',
@@ -141,5 +148,12 @@ register({
     // URL shape, intentionally untranslated — see docs/ARABIC_RTL.md.
     'create.https': 'https://…',
     'create.eGMarketingBudget': 'مثال: ميزانية التسويق لدى [اسم منشأتك]',
+    'create.youSubmitThePrize': "أنت تقدّم الجائزة.",
+    'create.naseebReviewsEverySubmission': "— تراجع نصيب كل طلب أولًا.",
+    'create.onceApprovedTheCampaign': "بعد الاعتماد، تُنشر الحملة وتستمر لمدة",
+    'create.fromThatMoment': "من تلك اللحظة.",
+    'create.itClosesAtWhichever': "وتُغلق عند أيّهما أقرب: بلوغ",
+    'create.orThe': "، أو انقضاء",
+    'create.andWillCoordinateDelivery': "وستتولّى تنسيق التسليم أو التنفيذ. وإذا واجه الفائز مشكلة فسيلجأ إلينا. وهذا المسار لا يعمل بعد، ولا يمكن نشر أي حملة قبل تشغيله.",
   },
 });

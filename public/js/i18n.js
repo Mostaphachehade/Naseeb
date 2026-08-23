@@ -68,6 +68,7 @@ const TRANSLATIONS = {
     // the HTML never reached a single visitor. test/i18n-parity.test.js now
     // fails if the two disagree.
     'hero.lede': 'Naseeb features carefully selected premium prizes intended to create genuine excitement, happiness, and memorable experiences. Every prize is reviewed and approved by Naseeb before publication. Entry is free — no card, no purchase, ever — and every campaign closes at 100 eligible entries or one calendar month, whichever comes first.',
+    'hero.membershipNote': 'Entering will need an active, verified Naseeb membership. Naseeb will coordinate delivery with the winner and be their point of contact.',
     'hero.browseBtn': 'Browse giveaways',
     'hero.hostBtn': 'Host your own',
 
@@ -128,6 +129,11 @@ const TRANSLATIONS = {
     'time.closed': 'Entries closed',
     'time.daysHoursLeft': '{d}d {h}h left',
     'time.hoursMinsLeft': '{h}h {m}m left',
+    'detail.loading': "LOADING…",
+    'detail.loading2': "Loading…",
+    'detail.prizeDelivery': "Prize delivery",
+    'detail.whatWentWrong': "What went wrong?",
+    'detail.sendToReview': "Send to review",
   },
   ar: {
     'nav.browse': 'تصفح',
@@ -177,6 +183,7 @@ const TRANSLATIONS = {
     'hero.headlineLine1': 'كل تذكرة مجانية.',
     'hero.headlineLine2': 'كل سحب حقيقي.',
     'hero.lede': 'تقدّم نصيب جوائز مميّزة مختارة بعناية تهدف إلى صنع حماس حقيقي وسعادة وتجارب لا تُنسى. تراجع نصيب كل جائزة وتعتمدها قبل النشر. المشاركة مجانية — بلا بطاقة دفع وبلا أي عملية شراء على الإطلاق — وتُغلق كل حملة عند بلوغ 100 مشاركة مؤهَّلة أو بعد شهر ميلادي واحد، أيّهما أقرب.',
+    'hero.membershipNote': 'تتطلّب المشاركة عضوية نصيب سارية وموثَّقة. وتتولّى نصيب تنسيق تسليم الجائزة مع الفائز وتكون جهة التواصل معه.',
     'hero.browseBtn': 'تصفح المسابقات',
     'hero.hostBtn': 'استضف مسابقتك',
 
@@ -235,11 +242,61 @@ const TRANSLATIONS = {
     'time.closed': 'المشاركة مغلقة',
     'time.daysHoursLeft': 'باقي {d} يوم و{h} ساعة',
     'time.hoursMinsLeft': 'باقي {h} ساعة و{m} دقيقة',
+    'detail.loading': "جارٍ التحميل…",
+    'detail.loading2': "جارٍ التحميل…",
+    'detail.prizeDelivery': "تسليم الجائزة",
+    'detail.whatWentWrong': "ما الذي حدث؟",
+    'detail.sendToReview': "إرسال للمراجعة",
   },
 };
 
+const LANGS = ['en', 'ar'];
+
+// The language is also addressable, as ?lang=ar.
+//
+// Without that, Arabic has no URL. The switch stores a preference and reloads,
+// so every page lives at exactly one address and renders in whichever language
+// that particular browser last chose. An Arabic page cannot then be linked to,
+// cannot be shared, and cannot be offered to a search engine as the alternate
+// of the English one — and an hreflang alternate pointing at a URL that serves
+// English to everybody else is worse than no hreflang at all.
+//
+// The value is compared against a literal list of the two languages and
+// discarded if it does not match. It is never assigned to location, href, src
+// or anything else that navigates: a language parameter that reaches one of
+// those is how this kind of convenience turns into an open redirect. It is only
+// ever a dictionary key.
+function langFromUrl() {
+  try {
+    const requested = new URLSearchParams(location.search).get('lang');
+    return LANGS.indexOf(requested) === -1 ? null : requested;
+  } catch {
+    return null;
+  }
+}
+
 function getLang() {
-  return localStorage.getItem('naseeb_lang') || 'en';
+  const fromUrl = langFromUrl();
+  if (fromUrl) {
+    // Persisted so the choice survives the next link click. A shared Arabic
+    // link that reverts to English on the second page is not a language, it is
+    // a single translated page.
+    try {
+      localStorage.setItem('naseeb_lang', fromUrl);
+    } catch {
+      // Private browsing refuses writes. The parameter still applies to this page.
+    }
+  }
+  let stored = null;
+  try {
+    stored = localStorage.getItem('naseeb_lang');
+  } catch {
+    stored = null;
+  }
+  const lang = fromUrl || stored;
+  // Anything else in storage — stale, hand-edited, or from a future language
+  // that no longer exists — falls back rather than being used as a lookup key.
+  return LANGS.indexOf(lang) === -1 ? 'en' : lang;
 }
 
 function t(key, vars) {

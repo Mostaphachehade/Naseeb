@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to content</a>
+<a href="#main" class="skip-link" data-i18n="common.skipToContent">Skip to content</a>
 
 <header class="site">
   <div class="wrap">
@@ -22,8 +22,8 @@
 
 <section class="detail-hero">
   <div class="wrap">
-    <span class="eyebrow mono" id="status-eyebrow">LOADING…</span>
-    <h1 id="title" class="u-ad7e3130">Loading…</h1>
+    <span class="eyebrow mono" id="status-eyebrow"><span data-i18n="detail.loading">LOADING…</span></span>
+    <h1 id="title" class="u-ad7e3130"><span data-i18n="detail.loading2">Loading…</span></h1>
     <p class="lede" id="hosted-by"></p>
   </div>
 </section>
@@ -60,7 +60,7 @@
                workflow is switched off — a dead button is worse than none. -->
           <div id="claim-panel" class="u-680b5a65 is-hidden">
             <div class="u-39a6b632">
-              <strong id="claim-state-label">Prize delivery</strong>
+              <strong id="claim-state-label"><span data-i18n="detail.prizeDelivery">Prize delivery</span></strong>
               <span class="pill-badge" id="claim-state-pill"></span>
             </div>
             <p class="hint u-2fd7789b" id="claim-state-help"></p>
@@ -73,9 +73,9 @@
             <div id="claim-actions" class="u-b7e103a1"></div>
 
             <div id="claim-dispute-box" class="u-674ae4aa is-hidden">
-              <label for="claim-dispute-reason" class="u-6646d472">What went wrong?</label>
+              <label for="claim-dispute-reason" class="u-6646d472"><span data-i18n="detail.whatWentWrong">What went wrong?</span></label>
               <textarea id="claim-dispute-reason" maxlength="500" placeholder="A short description — an administrator will read this."></textarea>
-              <button class="btn ghost u-b1ecc496" id="claim-dispute-submit">Send to review</button>
+              <button class="btn ghost u-b1ecc496" id="claim-dispute-submit"><span data-i18n="detail.sendToReview">Send to review</span></button>
             </div>
 
             <p class="form-error" id="claim-error"></p>

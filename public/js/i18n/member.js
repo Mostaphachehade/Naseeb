@@ -44,6 +44,8 @@ register({
     'claim.confirmClaimAndShare': 'Confirm claim and share details',
     'claim.yourDetailsAreEncrypted': "Your details are encrypted before they're stored, and only this giveaway's host can see them.",
     'claim.eGBuildingName': 'e.g. building name, best time to deliver',
+    'claim.iAgreeThatNaseeb': "I agree that Naseeb may share the delivery details above with",
+    'claim.theHostOfThis': ", the host of this giveaway, so they can send me my prize. They will not receive my email address or account details. I understand I can raise a problem through Naseeb if the prize doesn't arrive, and that these delivery details are deleted after the prize is confirmed delivered.",
   },
   ar: {
     'account.yourAccountNaseeb': 'حسابك — نصيب',
@@ -80,5 +82,7 @@ register({
     'claim.confirmClaimAndShare': 'تأكيد الاستلام ومشاركة البيانات',
     'claim.yourDetailsAreEncrypted': 'تُشفَّر بياناتك قبل تخزينها، ولا يستطيع الاطّلاع عليها سوى مستضيف هذه المسابقة.',
     'claim.eGBuildingName': 'مثال: اسم المبنى، أنسب وقت للتسليم',
+    'claim.iAgreeThatNaseeb': "أوافق على أن تشارك نصيب بيانات التسليم الواردة أعلاه مع",
+    'claim.theHostOfThis': "، مضيف هذه المسابقة، ليتمكّن من إرسال جائزتي إليّ. ولن يحصل على بريدي الإلكتروني أو بيانات حسابي. وأُدرك أنه يمكنني الإبلاغ عن مشكلة عبر نصيب إذا لم تصل الجائزة، وأن بيانات التسليم هذه تُحذف بعد تأكيد تسليم الجائزة.",
   },
 });

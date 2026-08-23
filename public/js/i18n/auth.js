@@ -43,6 +43,8 @@ register({
     '404.thisTicketDoesnT': "This ticket doesn't exist.",
     '404.thePageYouRe': "The page you're looking for isn't here — it may have been moved, or the giveaway may have ended.",
     '404.backToOpenGiveaways': 'Back to open giveaways',
+    'auth.newHere': "New here?",
+    'auth.alreadyHaveAnAccount': "Already have an account?",
   },
   ar: {
     'login.signInNaseeb': 'تسجيل الدخول — نصيب',
@@ -79,5 +81,7 @@ register({
     '404.thisTicketDoesnT': 'هذه التذكرة غير موجودة.',
     '404.thePageYouRe': 'الصفحة التي تبحث عنها ليست هنا — ربما نُقلت، أو ربما انتهت المسابقة.',
     '404.backToOpenGiveaways': 'العودة إلى المسابقات المفتوحة',
+    'auth.newHere': "جديد هنا؟",
+    'auth.alreadyHaveAnAccount': "لديك حساب بالفعل؟",
   },
 });

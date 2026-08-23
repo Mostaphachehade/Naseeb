@@ -32,7 +32,7 @@
 </script>
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to content</a>
+<a href="#main" class="skip-link" data-i18n="common.skipToContent">Skip to content</a>
 
 <header class="site">
   <div class="wrap">
@@ -46,7 +46,7 @@
     <span class="eyebrow" data-i18n="hero.eyebrow">No purchase necessary</span>
     <h1 data-i18n-lines="hero.headline">Every ticket is free.<br>Every draw is real.</h1>
     <p class="lede" data-i18n="hero.lede">Naseeb features carefully selected premium prizes intended to create genuine excitement, happiness, and memorable experiences. Every prize is reviewed and approved by Naseeb before publication. Entry is free — no card, no purchase, ever — and every campaign closes at 100 eligible entries or one calendar month, whichever comes first.</p>
-    <p class="lede on-dark-soft">Entering will need an active, verified Naseeb membership. Naseeb will coordinate delivery with the winner and be their point of contact.</p>
+    <p class="lede on-dark-soft" data-i18n="hero.membershipNote">Entering will need an active, verified Naseeb membership. Naseeb will coordinate delivery with the winner and be their point of contact.</p>
     <div class="hero-actions">
       <a href="#listings" class="btn primary" data-i18n="hero.browseBtn">Browse giveaways</a>
       <a href="/host-apply.html" class="btn ghost" data-i18n="hero.hostBtn">Host your own</a>
@@ -57,25 +57,25 @@
     <div class="promo-confetti" id="promo-confetti"></div>
 
     <div class="promo-scene" data-pscene="1">
-      <span class="promo-eyebrow">Live now</span>
-      <h3 class="promo-s1-head">Zero cost.<br><span class="em">Real prize.</span></h3>
-      <p class="promo-s1-sub">No card. No catch. Ever.</p>
+      <span class="promo-eyebrow" data-i18n="home.promoLiveNow">Live now</span>
+      <h3 class="promo-s1-head"><span data-i18n="home.promoZeroCost">Zero cost.</span><br><span class="em" data-i18n="home.promoRealPrize">Real prize.</span></h3>
+      <p class="promo-s1-sub" data-i18n="home.promoNoCard">No card. No catch. Ever.</p>
     </div>
 
     <div class="promo-scene" data-pscene="2">
-      <span class="promo-eyebrow">This week's giveaway</span>
+      <span class="promo-eyebrow" data-i18n="home.promoThisWeek">This week's giveaway</span>
       <div class="promo-ticket">
         <div class="promo-ticket-art u-703ebe53" id="promo-ticket-img"></div>
         <div class="promo-notch l"></div>
         <div class="promo-notch r"></div>
         <div class="promo-perf"></div>
         <div class="promo-ticket-body">
-          <span class="promo-ticket-label" id="promo-ticket-label">Open now</span>
+          <span class="promo-ticket-label" id="promo-ticket-label" data-i18n="home.promoOpenNow">Open now</span>
           <h4 class="promo-ticket-title" id="promo-ticket-title"></h4>
           <span class="promo-ticket-value" id="promo-ticket-value"></span>
         </div>
       </div>
-      <p class="promo-s2-caption">Funded by the host. Free for you to enter.</p>
+      <p class="promo-s2-caption" data-i18n="home.promoFundedByHost">Funded by the host. Free for you to enter.</p>
     </div>
 
     <div class="promo-scene" data-pscene="3">
@@ -85,23 +85,23 @@
         <span class="promo-pulse d3"></span>
         <span class="promo-countdown-num" id="promo-countdown-num"></span>
       </div>
-      <p class="promo-countdown-caption">Days left to enter</p>
-      <p class="promo-s3-fine">One entry per account. Winner picked at random.</p>
+      <p class="promo-countdown-caption" data-i18n="home.promoDaysLeft">Days left to enter</p>
+      <p class="promo-s3-fine" data-i18n="home.promoOneEntry">One entry per account. Winner picked at random.</p>
     </div>
 
     <div class="promo-scene" data-pscene="4">
-      <h3 class="promo-s4-head">Enter free.<br><span class="em">Win real.</span></h3>
-      <a class="promo-cta-btn" id="promo-cta-inner">See the giveaway</a>
-      <p class="promo-s4-fine">No purchase. No catch. Just enter.</p>
+      <h3 class="promo-s4-head"><span data-i18n="home.promoEnterFree">Enter free.</span><br><span class="em" data-i18n="home.promoWinReal">Win real.</span></h3>
+      <a class="promo-cta-btn" id="promo-cta-inner" data-i18n="home.promoSeeGiveaway">See the giveaway</a>
+      <p class="promo-s4-fine" data-i18n="home.promoNoPurchase">No purchase. No catch. Just enter.</p>
     </div>
   </div>
 </section>
 
 <section class="stats-bar">
   <div class="wrap">
-    <div class="stat"><span class="num" id="stat-giveaways">—</span><span class="label">Giveaways hosted</span></div>
-    <div class="stat"><span class="num" id="stat-entries">—</span><span class="label">Entries submitted</span></div>
-    <div class="stat"><span class="num" id="stat-value">—</span><span class="label">AED in prizes listed</span></div>
+    <div class="stat"><span class="num" id="stat-giveaways">—</span><span class="label" data-i18n="home.statGiveaways">Giveaways hosted</span></div>
+    <div class="stat"><span class="num" id="stat-entries">—</span><span class="label" data-i18n="home.statEntries">Entries submitted</span></div>
+    <div class="stat"><span class="num" id="stat-value">—</span><span class="label" data-i18n="home.statValue">AED in prizes listed</span></div>
   </div>
 </section>
 
@@ -150,6 +150,7 @@
 
 <script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/i18n/home.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/pages/index.js"></script>
 </body>

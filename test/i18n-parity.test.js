@@ -242,3 +242,117 @@ test('i18n7: bidi isolation strips embedded control characters', () => {
   assert.ok(/⁦-⁩/.test(body), 'isolate does not strip U+2066..U+2069');
   assert.ok(/‪-‮/.test(body), 'isolate does not strip U+202A..U+202E');
 });
+
+// ---------------------------------------------------------------------------
+// i18n8: visible text that no dictionary can reach
+// ---------------------------------------------------------------------------
+//
+// The tests above compare the two dictionaries against each other. All of them
+// pass on a page written entirely in untranslated English, because a sentence
+// with no data-i18n is not a key, and a key is the only thing they can see.
+//
+// That is how the Arabic pages came to be "complete" and still render English:
+// 132 text nodes across 15 pages carried no attribute at all. Some were whole
+// paragraphs; most were the second half of a sentence whose <strong> lead-in was
+// tagged and whose body was not, which is exactly the shape that survives a
+// reading of the file.
+//
+// So this walks the markup with an element stack and asks a different question:
+// is there any visible text whose nearest enclosing element cannot be
+// translated? Text following a closing tag belongs to the element that contains
+// it, not to the tag before it — attributing it to the wrong element is what
+// made the first version of this check miss most of the 132.
+const VOID_ELEMENTS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img',
+  'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+
+// Text that is deliberately identical in both languages. Kept as an explicit
+// list rather than a rule, so adding one is a decision somebody makes on
+// purpose — the alternative is a pattern loose enough to excuse a real
+// omission.
+const UNTRANSLATED_TEXT = new Set([
+  // The brand, in the header link on every page. A transliteration would be a
+  // second name for the same product.
+  'Naseeb',
+]);
+
+function visibleTextWithoutKeys(html) {
+  const src = html
+    .replace(/<script[\s\S]*?<\/script>/g, '')
+    .replace(/<style[\s\S]*?<\/style>/g, '')
+    .replace(/<head[\s\S]*?<\/head>/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!DOCTYPE[^>]*>/gi, '');
+
+  const orphans = [];
+  const stack = [];
+  const re = /<\/?([a-zA-Z][\w-]*)([^>]*?)\/?>|([^<]+)/g;
+  let m;
+  while ((m = re.exec(src))) {
+    const [full, tag, attrs, text] = m;
+    if (text !== undefined) {
+      const trimmed = text.replace(/\s+/g, ' ').trim();
+      if (!trimmed || !/[A-Za-z]{2}/.test(trimmed)) continue;
+      if (UNTRANSLATED_TEXT.has(trimmed)) continue;
+      const parent = stack[stack.length - 1];
+      // data-i18n replaces textContent; data-i18n-lines replaces the whole
+      // element including the <br> between its lines.
+      if (parent && /data-i18n(?:-lines)?\s*=/.test(parent.attrs)) continue;
+      orphans.push(trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed);
+      continue;
+    }
+    const name = tag.toLowerCase();
+    if (full.startsWith('</')) {
+      for (let i = stack.length - 1; i >= 0; i -= 1) {
+        if (stack[i].tag === name) { stack.length = i; break; }
+      }
+    } else if (!VOID_ELEMENTS.has(name) && !full.endsWith('/>')) {
+      stack.push({ tag: name, attrs });
+    }
+  }
+  return orphans;
+}
+
+test('i18n8: no page carries visible text that no dictionary can reach', () => {
+  const offenders = [];
+  for (const name of pages) {
+    const orphans = visibleTextWithoutKeys(fs.readFileSync(path.join(PUBLIC, name), 'utf8'));
+    orphans.forEach((o) => offenders.push(`${name}: ${o}`));
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    `${offenders.length} visible text node(s) have no data-i18n, so they render in English`
+    + ' whatever language is selected. Wrap the run in <span data-i18n="…"> and add the key'
+    + ' to both dictionaries — or, if it is genuinely the same in both languages, add it to'
+    + ` UNTRANSLATED_TEXT above with a reason.\n  ${offenders.join('\n  ')}`
+  );
+});
+
+test('i18n9: the language URL parameter is a dictionary key and nothing else', () => {
+  // ?lang=ar exists so Arabic has an address — an hreflang alternate pointing
+  // at a URL that renders English to everyone else is worse than none. But a
+  // language parameter is also the classic shape of an open redirect, so the
+  // value must reach a comparison and never a navigation.
+  const fn = I18N.slice(I18N.indexOf('function langFromUrl'));
+  const body = fn.slice(0, fn.indexOf('\n}') + 2);
+
+  assert.ok(/LANGS\.indexOf\(requested\)/.test(body), 'langFromUrl does not check the value against LANGS');
+  assert.ok(!/location\.(href|assign|replace)/.test(body), 'langFromUrl touches location');
+  assert.ok(!/window\.open|innerHTML|document\.write/.test(body), 'langFromUrl reaches a sink');
+
+  // The allowed set is the two languages and nothing else, so a third value
+  // cannot be smuggled in by extending LANGS to include a URL or a path.
+  const langs = /const LANGS = \[([^\]]*)\];/.exec(I18N);
+  assert.ok(langs, 'LANGS is not declared');
+  assert.deepEqual(
+    langs[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean),
+    ['en', 'ar'],
+    'LANGS holds something other than the two language codes'
+  );
+
+  // getLang must fall back rather than use an unknown stored value as a key.
+  const getFn = I18N.slice(I18N.indexOf('function getLang'));
+  const getBody = getFn.slice(0, getFn.indexOf('\n}') + 2);
+  assert.ok(/LANGS\.indexOf\(lang\) === -1 \? 'en'/.test(getBody), 'getLang does not fall back for an unknown language');
+});

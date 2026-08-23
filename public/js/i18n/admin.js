@@ -95,6 +95,7 @@ register({
     'admin.https': 'https://…',
     'admin.httpsTheAdvertiserS': "https://the-advertiser's-site.com",
     'admin.searchByNameOr': 'Search by name or email…',
+    'owner.siteSettingsAdRevenue': "Site settings, ad revenue, and a fast way to publish a giveaway yourself.",
   },
   ar: {
     'owner.ownerNaseeb': 'المالك — نصيب',
@@ -175,5 +176,6 @@ register({
     'admin.https': 'https://…',
     'admin.httpsTheAdvertiserS': "https://the-advertiser's-site.com",
     'admin.searchByNameOr': 'ابحث بالاسم أو البريد الإلكتروني…',
+    'owner.siteSettingsAdRevenue': "إعدادات الموقع، وإيرادات الإعلانات، وطريقة سريعة لنشر مسابقة بنفسك.",
   },
 });

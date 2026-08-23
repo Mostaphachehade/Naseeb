@@ -62,6 +62,11 @@ register({
     'advertise.https': 'https://…',
     'advertise.httpsYourBusinessSite': 'https://your-business-site.com',
     'advertise.eGAVideo': 'e.g. a video ad, a 3-month campaign, something else',
+    'advertise.nextAvailable': "Next available:",
+    'advertise.youLlPay': "You'll pay",
+    'advertise.nowViaStripeYour': "now via Stripe. Your banner is scheduled starting",
+    'advertise.andRunsAutomaticallyNo': "and runs automatically — no manual follow-up needed.",
+    'hostapply.itChargesYouNothing': "It charges you nothing — there is no payment step here and no paid hosting tier to be charged for. It grants you nothing: your account moves to \"waiting for review\", and only an administrator's decision can turn that into host access. We have not set a review deadline and are not promising one. You cannot publish a giveaway while an application is open.",
   },
   ar: {
     'hostapply.applyToHostNaseeb': 'طلب استضافة — نصيب',
@@ -113,5 +118,10 @@ register({
     'advertise.https': 'https://…',
     'advertise.httpsYourBusinessSite': 'https://your-business-site.com',
     'advertise.eGAVideo': 'مثال: إعلان فيديو، حملة لثلاثة أشهر، أو شيء آخر',
+    'advertise.nextAvailable': "أقرب موعد متاح:",
+    'advertise.youLlPay': "ستدفع",
+    'advertise.nowViaStripeYour': "الآن عبر Stripe. وتُجدوَل لافتتك ابتداءً من",
+    'advertise.andRunsAutomaticallyNo': "وتعمل تلقائيًا — دون حاجة إلى أي متابعة يدوية.",
+    'hostapply.itChargesYouNothing': "لا يُحمّلك أي رسوم — فلا توجد هنا خطوة دفع ولا باقة استضافة مدفوعة تُحصَّل عنها رسوم. ولا يمنحك شيئًا: ينتقل حسابك إلى حالة «في انتظار المراجعة»، ولا يحوّل ذلك إلى صلاحية استضافة إلا قرار من المشرف. ولم نحدّد مهلة للمراجعة ولا نَعِد بواحدة. ولا يمكنك نشر مسابقة ما دام لديك طلب مفتوح.",
   },
 });
