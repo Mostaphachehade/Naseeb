@@ -103,8 +103,26 @@ This is the section to read before trusting anything above.
 - [ ] **Session-expiry communication** (WCAG 2.2.1, 2.2.6) not assessed.
 - [ ] **Error-summary and focus-movement after a failed submission** not
       assessed. `aria-live` regions were counted, not exercised.
-- [ ] **Arabic/RTL pages** not swept. Arabic currently covers 3 of 23 pages; the
-      sweep runs in English. See `docs/ARABIC_RTL.md`.
+- [ ] **The axe sweep still runs in English only.** Arabic now covers all 23
+      pages and has a browser sweep of its own — CI job `arabic-rtl`, 92
+      page/language/viewport combinations — but that suite checks direction,
+      language leakage, overflow and console errors, **not accessibility**. axe
+      has never been run against an RTL rendering, so RTL-specific failures
+      (reading order announced by a screen reader, focus order across a flipped
+      layout, a `dir` mismatch between an element and its content) are
+      unverified. See `docs/ARABIC_RTL.md`.
+- [ ] **Accessible names in Arabic** not checked. `data-i18n-attr` translates
+      `aria-label`, `title` and `alt`, and `i18n1`/`i18n3` prove those entries
+      exist and contain Arabic script. Whether they *read* as sensible accessible
+      names to an Arabic screen-reader user is a native-review question.
+- [ ] **One responsive defect is known and unfixed.** `create.html` at 390px
+      overflows horizontally by 7px, in English as well as Arabic, and no single
+      element is wider than the viewport — so it comes from a margin, a negative
+      offset or a transform. It is reported by the `arabic-rtl` job on every run
+      rather than suppressed. WCAG 1.4.10 requires content to reflow without
+      horizontal scrolling at 320px CSS width; this is a smaller failure than
+      that threshold tests for, but it is the same class of defect and it is
+      real.
 
 **A screen-reader pass and a manual keyboard walkthrough are prerequisites for
 public launch, and neither has happened.** They are listed as owner actions in

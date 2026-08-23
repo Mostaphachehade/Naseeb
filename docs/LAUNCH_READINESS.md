@@ -45,7 +45,10 @@ Verified in code and by the automated suite. These are done.
 | Cancellation notifies entrants durably | gl21–gl23 |
 | Nine maintenance jobs, bounded + advisory-locked | `server/lib/maintenance.js`; `test/operations.test.js` op5–op14 |
 | Test suite cannot reach production | `testEnv.js`; `test/test-db-guard.test.js` |
-| `noindex, nofollow, noarchive` in pre-launch | verified live on `/`, `/terms.html`, `/privacy.html` |
+| `noindex, nofollow, noarchive` in pre-launch | verified live on `/`, `/terms.html`, `/privacy.html`; `test/seo.test.js` seo9 |
+| One deadline, derived from one scalar | `test/deadline-integrity.test.js` dl1–dl6 |
+| Database TLS posture pinned against a silent downgrade | `test/database-tls-posture.test.js` tls1–tls7 |
+| No visible text a dictionary cannot reach | `test/i18n-parity.test.js` i18n8, i18n10 |
 
 **Not yet complete in engineering** — tracked in this phase, not yet done:
 
@@ -61,14 +64,26 @@ Verified in code and by the automated suite. These are done.
       keyboard traps are unverified rather than verified-and-passing.
 - [ ] Zoom and reflow at 200% and 400%, touch-target size, and focus appearance
       (WCAG 2.4.11) not assessed.
-- [ ] Arabic parity. Key parity is 81/81, but only **31 `data-i18n` attributes on
-      3 of 23 pages**. Twenty pages have no Arabic at all.
+- [x] **Arabic and RTL across all 23 pages.** Markup, page scripts, `<title>`,
+      meta descriptions and the 101 sentences the server sends when it refuses
+      something. Evidence: `test/i18n-parity.test.js` (10 checks),
+      `test/server-error-i18n.test.js` (5), and CI job `arabic-rtl` — 92
+      page/language/viewport combinations in a real browser.
+      **The Arabic itself is machine-drafted and has had no native review**, and
+      the Arabic Terms and Privacy Policy are a draft of a draft. See
+      `docs/ARABIC_RTL.md` §2 for what that does and does not establish.
 - [x] Automated accessibility coverage (axe-core) across all pages — CI job
       `accessibility`, 46 page-viewport pairs.
 - [x] End-to-end giveaway rehearsal — CI job `rehearsal`, 21/21 requirements,
       reporting separately what it walked and what existing suites prove.
-- [ ] SEO metadata prepared behind the deployment-state switch: canonical
-      **0 of 23**, description **16 of 23**, JSON-LD on index only.
+- [x] **SEO prepared behind the deployment-state switch.** Canonical URLs and
+      en/ar/x-default alternates on all 12 indexable pages, page-level `noindex`
+      on the other 11, unique title and description on all 23, OG and Twitter
+      metadata, and `robots.txt`/`sitemap.xml` generated from the deployment
+      state instead of committed as files. The homepage `Organization` node is
+      **removed** — it asserted a UAE business that does not exist. Evidence:
+      `test/seo.test.js` (9 checks). `noindex, nofollow, noarchive` is unchanged
+      and still tied to `isPublicLaunch()`. See `docs/SEO.md`.
 
 ---
 
@@ -91,6 +106,14 @@ Only the owner can close these.
       `RESEND_API_KEY` and `EMAIL_FROM` or they cannot send.
 - [ ] **Remove `JWT_SECRET`** once the rollback window has closed. Nothing reads
       it; it is retained only for rollback compatibility.
+- [ ] **Pin `sslmode=verify-full` in `DATABASE_URL`.** Today the deployed URL's
+      `sslmode` — whatever it is — silently overrides the `ssl` option the code
+      builds, and if it is `require`, `prefer` or `verify-ca` then certificate
+      verification will switch itself off the first time `pg` reaches v9. No code
+      change will accompany that. `verify-full` means the same thing before and
+      after. Only the owner can edit this variable; the process warns at startup
+      when the mode is one that will change meaning. See
+      `test/database-tls-posture.test.js`.
 - [ ] **Decide the fate of the suspended Singapore service** `srv-d966lc9kh4rs73da92rg`.
 - [ ] **Confirm the Neon snapshot** `snap-ancient-resonance-atixc2sh` still exists.
       The Neon connector exposes no snapshot-listing tool, so this cannot be
@@ -180,11 +203,14 @@ Do not touch any of these until sections 1–4 are closed.
 
 ## Known technical warnings
 
+All three are now resolved. Kept here with their reasoning, because the reasoning
+is the part that will matter the next time one of them comes back.
+
 | Warning | Disposition |
 | --- | --- |
-| `npm audit`: 1 moderate, `uuid` | **Not reachable.** The advisory affects v3/v5/v6 when `buf` is supplied; the codebase imports only `v4`, in 10 files, never with `buf`. The offered fix is `uuid@14`, a semver-major bump. Documented, not applied. |
-| `pg-connection-string` SSL-mode deprecation | Driven by `sslmode` in `DATABASE_URL`. Fixing it means editing that variable, which is out of scope this phase. Note `server/db.js` uses `rejectUnauthorized: false`; tightening it is a production-boundary decision. Deferred to owner. |
-| GitHub Actions forced onto Node 24 | `actions/checkout@v4`, `setup-node@v4`, `upload-artifact@v4`. CI-only, no runtime impact. Narrow version bump pending. |
+| `npm audit`: 1 moderate, `uuid` | **Resolved by removing the dependency.** The advisory affects v3/v5/v6 when `buf` is supplied; every one of the 79 call sites was a zero-argument `v4()`, so the vulnerable path was unreachable — a reason not to panic, not a reason to keep it. `npm audit fix --force` wanted `uuid@14`, a breaking major, to fix code we never call. Node 22 has `crypto.randomUUID()`, which 60 other call sites already used. `uuid` is out of `package.json` and the lockfile. `npm audit` reports 0. |
+| `pg-connection-string` SSL-mode deprecation | **Resolved by making the posture legible and testable.** The warning reads as a complaint about weak SSL and is the opposite: today `sslmode=require` means `verify-full`, chain and hostname both checked. It warns about pg v9, where `require` will mean encrypt-and-verify-nothing. Following it up found something the warning does not say: an `sslmode` in the URL **replaces** the `ssl` option `server/db.js` builds, so `rejectUnauthorized: false` never applies in a deployment that pins one. The dangerous moment is therefore `npm update`, not a deployment. `server/db.js` now reports the mode at startup when it is one that will change meaning, and `test/database-tls-posture.test.js` pins both the precedence and the verification so the flip is a red build. **Owner action remains:** pin `sslmode=verify-full` in the deployed `DATABASE_URL` — see §2. |
+| GitHub Actions forced onto Node 24 | **Resolved.** `actions/checkout`, `setup-node` and `upload-artifact` bumped v4 → v5, the first major that runs natively on Node 24, verified against each action's own `action.yml`. |
 
 ---
 
@@ -205,3 +231,18 @@ Automated accessibility checks do **not** prove WCAG conformance. axe-core
 catches a minority of failures. Manual keyboard and screen-reader verification is
 recorded separately in `docs/ACCESSIBILITY.md`, including what could not be
 verified.
+
+Automated Arabic checks do **not** prove the Arabic is good. `i18n1`–`i18n10`
+prove the dictionaries agree, that no visible text escapes them, and that no page
+uses a key it cannot reach. None of them can read Arabic. Register, idiom and
+terminology are unverified, and the choice of مسابقة for "giveaway" is an open
+question rather than a settled one — `docs/ARABIC_RTL.md` §2.
+
+Automated SEO checks do **not** prove the site will rank, or even that it will be
+indexed correctly. `seo1`–`seo9` prove the metadata is internally consistent and
+asserts nothing unverified. Whether a crawler agrees is observable only after
+`DEPLOYMENT_STATE` changes, in that deployment — `docs/SEO.md` §7.
+
+The end-to-end rehearsal proves the mechanism, not the operation. It runs against
+a CI database with fabricated accounts and a stubbed mail provider. No real email
+was sent, no money moved, and no live fulfilment service was called.

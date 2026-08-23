@@ -277,7 +277,13 @@ async function main() {
     const routing = await (async () => {
       const context = await browser.newContext();
       const tab = await context.newPage();
-      await tab.goto(`${BASE}/pricing.html?keep=1#section`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      // 'load', not 'domcontentloaded'. domcontentloaded fires first, so a load
+      // listener armed after it can be satisfied by the ORIGINAL page's load
+      // event rather than the reload's — the wait below then returns while the
+      // reload is still in flight, and the next evaluate runs into a context
+      // being torn down under it. That is what "Execution context was destroyed"
+      // meant here, and it is a race, so it passed on some runs.
+      await tab.goto(`${BASE}/pricing.html?keep=1#section`, { waitUntil: 'load', timeout: 20000 });
       const before = tab.url();
       // setLang reloads, so arm the load listener before triggering it and let
       // the reload land before reading anything. The only tolerated failure is
