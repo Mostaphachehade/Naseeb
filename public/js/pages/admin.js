@@ -267,7 +267,7 @@
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
-          if (!confirm('Delete this inquiry? This cannot be undone.')) return;
+          if (!confirm(t('admin.deleteThisInquiry'))) return;
           btn.disabled = true;
           try {
             await api(`/admin/ad-inquiries/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
@@ -384,7 +384,7 @@
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
-          if (!confirm('Delete this ad? This cannot be undone.')) return;
+          if (!confirm(t('admin.deleteThisAd'))) return;
           btn.disabled = true;
           try {
             await api(`/admin/ads/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
@@ -494,7 +494,12 @@
       // Named per row. A column header is not an accessible name: somebody
       // moving through the table cell by cell hears "checkbox, not checked"
       // with no indication of WHOSE verified badge is about to be toggled.
-      'aria-label': `Verified business badge for ${u.name || u.email || 'this account'}`,
+      // aria: { label }, not 'aria-label'. el() routes 'aria' through
+      // setAttribute and THROWS on any other unrecognised key, so the direct
+      // form did not add an accessible name — it aborted the render of every
+      // row in this table. It was invisible because the admin table only builds
+      // for a signed-in administrator, which axe never is.
+      aria: { label: t('admin.verifiedBadgeFor', { who: isolate(u.name || u.email || t('admin.thisAccount')) }) },
       checked: Boolean(u.is_verified_business),
       on: {
         change: async (e) => {
@@ -571,7 +576,7 @@
       class: 'btn ghost on-light host-status-btn u-51820e15',
       text: label,
       // "Suspend hosting" is unambiguous only if you can see which row it is in.
-      'aria-label': `${label} — ${u.name || u.email || 'this account'}`,
+      aria: { label: t('admin.actionForAccount', { action: label, who: isolate(u.name || u.email || t('admin.thisAccount')) }) },
       on: {
         click: async (e) => {
           const btn = e.currentTarget;

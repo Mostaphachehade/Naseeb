@@ -994,6 +994,43 @@ remains `false` regardless — see §3.
 | 16 | Decide and register the operating entity. Naseeb is currently Mostapha Chehade personally, in Dubai, under development — with no company, trade licence, VAT registration or commercial operation | 👤⚖️ |
 | 17 | Stand up `support@`, `privacy@` and `legal@mynaseeb.ae` before any page points people at them. None is published today | 👤🖥️ |
 | 18 | Build the administrator review screen for the prize queue. The API exists (`GET /api/admin/giveaway-submissions`, approve/reject/cancel); the admin page has no controls for it yet | 👤 |
+| 19 | **Pin `sslmode=verify-full` in the deployed `DATABASE_URL`.** An `sslmode` in the connection string silently replaces the `ssl` option the code builds, and `require`, `prefer` and `verify-ca` will all switch from full verification to none when `pg` reaches v9 — during a routine dependency upgrade, with no code change to review. The process warns at startup when the mode is one that will change meaning; only the owner can edit the variable. See `test/database-tls-posture.test.js` | 👤🖥️ |
+| 20 | **Native review of the Arabic**, all twelve dictionary files. The translation is machine-drafted and unread by a native speaker. Register, idiom, numeral convention and the choice of مسابقة for "giveaway" are all open — `docs/ARABIC_RTL.md` §2, §8 | 👤 |
+| 21 | **A share image** (1200×630 PNG) before Open Graph cards carry one. Until it exists the cards are text-only, which is correct: a declared image that 404s is a broken preview rather than a missing one — `docs/SEO.md` §7 | 👤 |
+| 22 | **Re-check `robots.txt` and `/sitemap.xml` in the deployment**, after `DEPLOYMENT_STATE` changes. Both are generated from that state, and the only way to know a crawler agrees is to look at what it was served | 👤🖥️ |
+
+---
+
+## 11a. Where the runtime evidence comes from
+
+This development machine has no PostgreSQL, no Docker and no `psql`, and the
+application requires a database at startup. **Nothing runtime is executed
+locally** — not the suite, not the browser harnesses, not the app. Every runtime
+claim in these documents comes from GitHub Actions, against an ephemeral
+`postgres:16` service container, and every account in every one of them is
+fabricated.
+
+Six jobs, deliberately separate so a failure names itself rather than arriving as
+one red tick:
+
+| Job | What it exercises | Artifact |
+| --- | --- | --- |
+| `test` | Every `test/*.test.js`. Includes the file-reading ones that need no database: SEO metadata, i18n parity and key reachability, server-error translation coverage, deadline integrity, database TLS posture, legal copy | — |
+| `browser-security` | Hostile data in all 43 input fields, eleven payload families, in Chromium. `HOSTILE_SELFTEST=1` proves the detector still reports red | — |
+| `operations` | The nine maintenance jobs, their bounds and their advisory locks | — |
+| `rehearsal` | One giveaway from submission through approval, entry, closure, draw, claim and delivery — 21 requirements, reporting separately what it walked and what an existing suite proves | `.rehearsal/` |
+| `accessibility` | axe-core over 23 pages at two viewports, with proof the rules actually ran | `.accessibility/` |
+| `arabic-rtl` | 23 pages × 2 languages × 2 viewports: direction, English leakage, horizontal overflow, console errors, bidi isolation, and that the language switch cannot navigate | `.arabic-rtl/rtl-report.json` |
+
+The browser suites refuse a non-test database twice over: `configureTestEnv()`,
+and a second guard that rejects a Neon host outright. Neither reads production
+credentials, sends real email, charges anything, or calls a live fulfilment
+service.
+
+**A green tick is not conformance.** What each suite does *not* establish is
+recorded with it — `docs/ACCESSIBILITY.md` "Not verified", `docs/ARABIC_RTL.md`
+§2, `docs/SEO.md` §6, and the verification limits at the end of
+`docs/LAUNCH_READINESS.md`.
 
 ---
 

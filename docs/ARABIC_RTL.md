@@ -93,6 +93,7 @@ allowlist that outlives its entries is how an exception becomes a hole.
 | `advertise.httpsYourBusinessSite`, `admin.httpsTheAdvertiserS` | Example web addresses. Addresses are typed in Latin script; a translated example is not typeable. |
 | `terms.202608172`, `privacy.202608151` | Machine-readable policy version identifiers. Translating one breaks the version it names. |
 | `privacy.render`, `privacy.resend`, `privacy.stripe`, `privacy.cloudinary`, `privacy.googleAnalytics`, `privacy.sentry` | Provider trade names. Transliterating a company makes it harder to look up, not easier. |
+| `admin.actionForAccount` | Two placeholders and a dash. There are no words in it — the action and the account name are each substituted at render time, and each is translated or isolated on its own. |
 
 The browser sweep has a second, separate list for the same reason: words that
 appear *inside* an otherwise Arabic sentence and are meant to. It lives in
@@ -102,6 +103,17 @@ URL fragments, and the technical identifiers `bcrypt`, `IPv4`/`IPv6`, `Signals`
 `owner.html`. Both lists are explicit alternations rather than loose patterns,
 because anything general enough to cover them would also excuse a real
 untranslated sentence.
+
+**One element, not a key.** The age declaration on the account page is shown in
+English deliberately and marked `data-lang-exempt="attestation-wording"`. It is
+not a dictionary entry at all: `server/lib/eligibility.js` records *which version
+of an exact sentence* a person agreed to, so rendering an Arabic sentence while
+recording the English version would put a consent in the audit trail that nobody
+read. The browser sweep excludes it by that marker rather than by adding
+"confirm", "age" and "verification" to its ignore list, which would excuse those
+words on every page instead of on this one element. What an Arabic declaration
+would need — its own version identifier, a language recorded alongside it, and a
+decision on which governs — is `docs/UAE_COUNSEL_REVIEW.md` B19.
 
 **The brand itself.** `Naseeb` appears untranslated in the header link on every
 page and is allowlisted in `i18n8` as `UNTRANSLATED_TEXT`. A transliteration

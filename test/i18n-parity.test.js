@@ -122,6 +122,9 @@ const INTENTIONALLY_UNTRANSLATED = {
   'privacy.cloudinary': 'A provider trade name, same reason as privacy.render.',
   'privacy.googleAnalytics': 'A provider trade name, same reason as privacy.render.',
   'privacy.sentry': 'A provider trade name, same reason as privacy.render.',
+  'admin.actionForAccount': 'Two placeholders and a dash. There are no words in it to translate — '
+    + 'the action and the account name are both substituted at render time, and each is '
+    + 'translated or isolated on its own.',
 };
 
 test('i18n2: no Arabic entry is left as its English source', () => {
@@ -416,7 +419,14 @@ test('i18n10: every key a page script uses is in a dictionary that page loads', 
       // t('key') and t('key', {...}). A key built at runtime by concatenation
       // cannot be resolved statically and is skipped rather than guessed at —
       // the policy pages do that deliberately, with their own fallback.
-      for (const m2 of src.matchAll(/\bt\('([a-zA-Z0-9_.]+)'/g)) used.set(m2[1], m[1]);
+      for (const m2 of src.matchAll(/\bt\('([a-zA-Z0-9_.]+)'/g)) {
+        // A trailing dot means the literal is the PREFIX of a key built by
+        // concatenation — t('policy.status.' + policy.status). The whole key is
+        // not knowable from source, and the call sites that build one carry
+        // their own fallback for a key with no entry.
+        if (m2[1].endsWith('.')) continue;
+        used.set(m2[1], m[1]);
+      }
     }
 
     for (const [key, where] of used) {

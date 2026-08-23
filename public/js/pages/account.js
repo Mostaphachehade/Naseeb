@@ -307,17 +307,20 @@
 
   // ---- privacy requests ----------------------------------------------------
 
+  // Keys, resolved at render time. A map of finished sentences built at module
+  // scope would be evaluated before applyI18n() has run and would freeze the
+  // page in whatever language loaded first.
   const REQUEST_LABELS = {
-    access: 'Ask for a copy of my data',
-    correction: 'Ask for something to be corrected',
-    deletion: 'Ask for my data to be deleted',
-    objection: 'Object to how something is used',
+    access: 'account.requestAccess',
+    correction: 'account.requestCorrection',
+    deletion: 'account.requestDeletion',
+    objection: 'account.requestObjection',
   };
 
   function requestsCard() {
     const type = el('select', { id: 'request-type' });
     Object.keys(REQUEST_LABELS).forEach((key) => {
-      type.appendChild(el('option', { value: key, text: REQUEST_LABELS[key] }));
+      type.appendChild(el('option', { value: key, text: t(REQUEST_LABELS[key]) }));
     });
     const message = el('textarea', { id: 'request-message', maxLength: 4000, rows: 4 });
     const note = feedback();
@@ -326,10 +329,18 @@
       el('div', { class: 'u-request-row' }, [
         el('p', { class: 'u-1da9facb' }, [
           el('strong', { text: r.reference }),
-          ` · ${REQUEST_LABELS[r.type] || r.type} · ${r.status.replace(/_/g, ' ')}`,
+          // The status is the server's own machine value, shown as-is. Inventing
+          // a translation namespace for a set this file does not define would be
+          // a dictionary nobody maintains against a list nobody enumerated.
+          ` · ${REQUEST_LABELS[r.type] ? t(REQUEST_LABELS[r.type]) : r.type} · ${r.status.replace(/_/g, ' ')}`,
         ]),
-        el('p', { class: 'u-a2aae0fb', text: `Submitted ${new Date(r.submitted_at).toLocaleDateString()}` }),
-        r.your_message ? el('p', { class: 'u-a2aae0fb', text: `You wrote: ${r.your_message}` }) : null,
+        el('p', {
+          class: 'u-a2aae0fb',
+          text: t('account.submittedOn', { when: new Date(r.submitted_at).toLocaleDateString(locale) }),
+        }),
+        r.your_message
+          ? el('p', { class: 'u-a2aae0fb', text: t('account.youWrote', { message: isolate(r.your_message) }) })
+          : null,
         // The outcome sentence the server chose from its allowlist. Never an
         // administrator's working notes.
         r.outcome ? el('p', { class: 'js-mint-box', text: r.outcome }) : null,
@@ -393,11 +404,16 @@
   function renderPolicies() {
     const rows = Object.values(state.policies).map((p) =>
       el('p', { class: 'u-1da9facb' }, [
-        el('strong', { text: p.id === 'terms' ? 'Terms of Service' : 'Privacy Policy' }),
-        ` — ${p.status.toUpperCase()}, version ${p.version}. `,
-        p.acceptable
-          ? 'In force.'
-          : 'Not in force, and cannot be accepted. Nothing you do on this site records agreement to it.',
+        el('strong', { text: t(p.id === 'terms' ? 'footer.terms' : 'footer.privacy') }),
+        // The version identifier is isolated, not translated: it is the string
+        // that names the document, and a translated one names nothing.
+        t('account.policyStatusLine', {
+          status: t('policy.status.' + p.status) === 'policy.status.' + p.status
+            ? p.status.toUpperCase()
+            : t('policy.status.' + p.status),
+          version: isolate(p.version),
+        }),
+        p.acceptable ? t('account.policyInForce') : t('account.policyNotInForce'),
       ])
     );
 

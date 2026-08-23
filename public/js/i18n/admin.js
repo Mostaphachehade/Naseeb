@@ -214,6 +214,11 @@ register({
     'owner.uploaded': "Uploaded.",
     'owner.publishedLiveOnThe': "Published — live on the homepage now.",
     'owner.saved': "Saved.",
+    'admin.verifiedBadgeFor': "Verified business badge for {who}",
+    'admin.actionForAccount': "{action} — {who}",
+    'admin.thisAccount': "this account",
+    'admin.deleteThisAd': "Delete this ad? This cannot be undone.",
+    'admin.deleteThisInquiry': "Delete this inquiry? This cannot be undone.",
   },
   ar: {
     'owner.ownerNaseeb': 'المالك — نصيب',
@@ -413,5 +418,10 @@ register({
     'owner.uploaded': "تم الرفع.",
     'owner.publishedLiveOnThe': "نُشرت — وهي الآن مباشرة على الصفحة الرئيسية.",
     'owner.saved': "تم الحفظ.",
+    'admin.verifiedBadgeFor': "شارة النشاط التجاري الموثَّق لـ {who}",
+    'admin.actionForAccount': "{action} — {who}",
+    'admin.thisAccount': "هذا الحساب",
+    'admin.deleteThisAd': "هل تريد حذف هذا الإعلان؟ لا يمكن التراجع عن ذلك.",
+    'admin.deleteThisInquiry': "هل تريد حذف هذا الاستفسار؟ لا يمكن التراجع عن ذلك.",
   },
 });
