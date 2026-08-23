@@ -47,6 +47,11 @@ registered with `register({ en, ar })`:
 | `privacy.js` | `privacy.` |
 | `errors.js` | `errors.` |
 
+**1,155 keys per language, 2,310 in total.** The largest single file is
+`admin.js` at 215, which is the shape you would expect: the administrator surface
+has more distinct strings than any public page, and it is the one most likely to
+be left in English because the person maintaining it reads English.
+
 ---
 
 ## 2. What is **not** covered

@@ -65,7 +65,7 @@ Verified in code and by the automated suite. These are done.
 - [ ] Zoom and reflow at 200% and 400%, touch-target size, and focus appearance
       (WCAG 2.4.11) not assessed.
 - [x] **Arabic and RTL across all 23 pages.** Markup, page scripts, `<title>`,
-      meta descriptions and the 101 sentences the server sends when it refuses
+      meta descriptions and the 108 sentences the server sends when it refuses
       something. Evidence: `test/i18n-parity.test.js` (10 checks),
       `test/server-error-i18n.test.js` (5), and CI job `arabic-rtl` — 92
       page/language/viewport combinations in a real browser.
