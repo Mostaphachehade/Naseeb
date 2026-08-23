@@ -1,7 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimit');
@@ -128,7 +127,7 @@ router.post('/signup', authLimiter, async (req, res) => {
       return res.status(409).json({ error: 'An account with this email already exists.' });
     }
 
-    const id = uuid();
+    const id = crypto.randomUUID();
     const password_hash = bcrypt.hashSync(password, 10);
     const verificationToken = generateToken();
     const verificationExpires = new Date(Date.now() + VERIFY_TTL_MS);

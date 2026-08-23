@@ -3,18 +3,29 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Join Naseeb</title>
-<meta name="description" content="Join Naseeb free — enter giveaways with no purchase necessary, ever." />
-<meta property="og:title" content="Join Naseeb" />
-<meta property="og:description" content="Takes a minute. No payment details, ever." />
+<title data-i18n="signup.joinNaseeb">Join Naseeb</title>
+<meta name="description" data-i18n-content="signup.metaDescription" content="Join Naseeb free — enter giveaways with no purchase necessary, ever." />
+<link rel="canonical" href="https://www.mynaseeb.ae/signup.html" />
+<link rel="alternate" hreflang="en" href="https://www.mynaseeb.ae/signup.html" />
+<link rel="alternate" hreflang="ar" href="https://www.mynaseeb.ae/signup.html?lang=ar" />
+<link rel="alternate" hreflang="x-default" href="https://www.mynaseeb.ae/signup.html" />
 <meta property="og:type" content="website" />
+<meta property="og:site_name" content="Naseeb" />
+<meta property="og:url" content="https://www.mynaseeb.ae/signup.html" />
+<meta property="og:locale" content="en_AE" />
+<meta property="og:locale:alternate" content="ar_AE" />
+<meta property="og:title" content="Join Naseeb" />
+<meta property="og:description" content="Join Naseeb free — enter giveaways with no purchase necessary, ever." />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Join Naseeb" />
+<meta name="twitter:description" content="Join Naseeb free — enter giveaways with no purchase necessary, ever." />
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
 <link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to content</a>
+<a href="#main" class="skip-link" data-i18n="common.skipToContent">Skip to content</a>
 
 <header class="site">
   <div class="wrap">
@@ -25,31 +36,31 @@
 
 <main id="main">
   <div class="wrap u-29cd8c40">
-    <div class="section-head"><div><h2>Join free</h2><p>Takes a minute. No payment details, ever.</p></div></div>
+    <div class="section-head"><div><h2 data-i18n="nav.joinFree">Join free</h2><p data-i18n="signup.takesAMinuteNo">Takes a minute. No payment details, ever.</p></div></div>
     <form class="card narrow" id="signup-form">
-      <label for="name">Full name</label>
+      <label for="name" data-i18n="common.fullName">Full name</label>
       <input id="name" required />
 
-      <label for="email">Email</label>
+      <label for="email" data-i18n="common.email">Email</label>
       <input id="email" type="email" required />
 
-      <label for="password">Password</label>
+      <label for="password" data-i18n="common.password">Password</label>
       <input id="password" type="password" minlength="8" required />
-      <p class="hint">At least 8 characters.</p>
+      <p class="hint" data-i18n="common.min8">At least 8 characters.</p>
 
       <!-- Not pre-ticked, and required. A self-declaration: no date of birth is
            asked for and no document is collected. Wording is pending counsel
            review — see docs/PRIVACY_AND_RIGHTS.md. -->
       <label class="u-age-attest" for="age_confirmed">
         <input id="age_confirmed" type="checkbox" required />
-        <span>I confirm that I am 18 years of age or older.</span>
+        <span data-i18n="signup.iConfirmThatI">I confirm that I am 18 years of age or older.</span>
       </label>
-      <p class="hint">This is your own declaration. We do not ask for your date of birth or any identity document, and we cannot verify it.</p>
+      <p class="hint" data-i18n="signup.thisIsYourOwn">This is your own declaration. We do not ask for your date of birth or any identity document, and we cannot verify it.</p>
 
-      <button class="btn primary" type="submit">Create account</button>
+      <button class="btn primary" type="submit" data-i18n="signup.createAccount">Create account</button>
       <p class="form-error" id="error"></p>
     </form>
-    <p class="u-11d6131e">Already have an account? <a id="login-link" href="/login.html" class="u-0b87e9e0">Sign in</a></p>
+    <p class="u-11d6131e"><span data-i18n="auth.alreadyHaveAnAccount">Already have an account?</span> <a id="login-link" href="/login.html" class="u-0b87e9e0" data-i18n="nav.signIn">Sign in</a></p>
   </div>
 </main>
 
@@ -57,6 +68,8 @@
 
 <script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/i18n/errors.js"></script>
+<script src="/js/i18n/auth.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/pages/signup.js"></script>
 </body>

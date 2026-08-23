@@ -18,7 +18,6 @@ const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
 const express = require('express');
-const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const request = require('supertest');
 const { api, pool, ensureInit, signIn, anon, TEST_ORIGIN, seedGiveaway, closePool, markDrawn } = require('../testHelpers');
@@ -91,7 +90,7 @@ function nextIp() {
 }
 
 async function createUser(tag, { admin = false } = {}) {
-  const id = uuid();
+  const id = crypto.randomUUID();
   const email = `test-amend-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   await pool.query(
     // Approved to host: these tests exercise the claim workflow, not the
@@ -119,7 +118,7 @@ async function createDrawnGiveawayWithoutClaim() {
     closesAt: new Date(Date.now() - 86400000),
   });
   createdGiveawayIds.push(giveawayId);
-  const entryId = uuid();
+  const entryId = crypto.randomUUID();
   await pool.query(
     'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)',
     [entryId, giveawayId, winner.id]
@@ -464,7 +463,7 @@ test('drawing a winner never leaves an unhandled rejection when email fails', as
     createdGiveawayIds.push(giveawayId);
     await pool.query(
       'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)',
-      [uuid(), giveawayId, winner.id]
+      [crypto.randomUUID(), giveawayId, winner.id]
     );
 
     failAllEmails();

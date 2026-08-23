@@ -19,7 +19,6 @@
 // any JavaScript-readable storage.
 
 const crypto = require('crypto');
-const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 
 const SESSION_COOKIE = 'naseeb_session';
@@ -230,8 +229,8 @@ const REVOCATION = {
 // needs, not before.
 async function createSession(client, { userId }) {
   const token = issueToken();
-  const familyId = uuid();
-  const id = uuid();
+  const familyId = crypto.randomUUID();
+  const id = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + ttlMs());
 
   // The family carries the absolute expiry. Nothing ever moves it, so no amount
@@ -495,7 +494,7 @@ async function rotateSession(sessionId) {
     }
 
     const token = issueToken();
-    const newId = uuid();
+    const newId = crypto.randomUUID();
 
     // Three statements, in this order, and the order is load-bearing.
     //

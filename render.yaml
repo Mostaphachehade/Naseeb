@@ -26,7 +26,11 @@ services:
   - type: web
     name: naseeb
     runtime: node
-    plan: free
+    # Matches the live service, which is on Starter. This said `free` while the
+    # deployed service was Starter — harmless while no Blueprint is synced, but
+    # it made the cron note below claim cron was impossible on this account,
+    # which is not true. See docs/OPERATIONS.md §4.
+    plan: starter
 
     # `npm ci`, not `npm install`.
     #
@@ -241,16 +245,37 @@ services:
 # Failure is observable: each job exits non-zero on failure and prints one JSON
 # line with counts. Render surfaces a non-zero cron exit as a failed run.
 #
-# MANUAL DASHBOARD STEPS (nothing here creates them):
-#   1. Confirm the plan includes cron jobs.
-#   2. New + → Cron Job, same repo and branch, build command `npm ci`.
-#   3. Command: `node scripts/maintenance.js all`
-#   4. Schedule: `*/15 * * * *`
-#   5. Environment: link the same environment group as the web service so
-#      DATABASE_URL and the secrets are shared. Do NOT paste values.
-#   6. Repeat for the per-job schedules above if wanted.
+# Verified against Render's blueprint spec on 2026-08-21. Two corrections to
+# what this file used to say, both of which mattered:
 #
-# jobs:
+#   1. There is NO top-level `jobs:` key in a Render blueprint. Cron jobs are
+#      services — they belong in the `services:` list above with `type: cron`.
+#      The previous draft nested them under `jobs:`, so uncommenting it as
+#      written would have failed the Blueprint sync rather than created
+#      anything. Corrected below.
+#
+#   2. Cron is not blocked by "the free plan" here. Cron jobs cannot run on a
+#      Free instance at all, but this account's web service is on Starter, and
+#      a cron job is a SEPARATE billable service with its own instance type:
+#      minimum $1/month each, prorated by the second. So this is a cost
+#      decision for the owner, not a platform limitation. See
+#      docs/OPERATIONS.md §4 for the cost estimate.
+#
+# STILL DELIBERATELY COMMENTED. Committing this file provisions nothing — a
+# Blueprint has to be created and synced from the dashboard, CLI or API, and no
+# Blueprint is synced for this repository today. Leaving these commented means
+# even a future accidental sync cannot create billable resources. Activation is
+# two deliberate acts: uncomment, then sync.
+#
+# `fromGroup: naseeb-shared` assumes an environment group of that name exists
+# and carries DATABASE_URL, SESSION_SECRET, INTEGRITY_SIGNAL_SECRET,
+# CLAIM_ENCRYPTION_KEY, APP_URL, NODE_ENV, RESEND_API_KEY and EMAIL_FROM. It
+# does NOT exist yet — the web service holds its variables directly rather than
+# through a group. Creating it is an owner action; see docs/OPERATIONS.md §4.
+# The outbox jobs SEND EMAIL, so RESEND_API_KEY and EMAIL_FROM are not optional
+# for a cron service that runs `claim_outbox`, `email_change_outbox` or
+# `giveaway_outbox`.
+#
 #   - type: cron
 #     name: naseeb-maintenance
 #     runtime: node

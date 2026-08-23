@@ -22,7 +22,7 @@ process.env.RESEND_API_KEY = 're_fabricated_key_for_demo';
 const http = require('http');
 const { spawn } = require('child_process');
 const express = require('express');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
 
 const CHROMIUM = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
@@ -128,7 +128,7 @@ async function loadPage(url) {
 }
 
 async function makeUser(name, { admin = false } = {}) {
-  const id = uuid();
+  const id = randomUUID();
   const email = `demo-${name.toLowerCase().replace(/\W+/g, '-')}-${Date.now()}@example.com`;
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin)
@@ -211,14 +211,14 @@ async function main() {
   const adminToken = await login(admin.email);
   const strangerToken = await login(stranger.email);
 
-  const giveawayId = uuid();
+  const giveawayId = randomUUID();
   await pool.query(
     `INSERT INTO giveaways (id, host_id, title, description, prize_description, funded_by, entry_deadline, status)
      VALUES ($1, $2, 'Espresso machine giveaway (demo)', 'A fabricated demo giveaway',
              'One espresso machine', 'Marketing budget (fabricated)', $3, 'drawn')`,
     [giveawayId, host.id, new Date(Date.now() - 86400000).toISOString()]
   );
-  const entryId = uuid();
+  const entryId = randomUUID();
   await pool.query(
     'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)',
     [entryId, giveawayId, winner.id]

@@ -257,6 +257,80 @@ of live tokens for an operation that moves an account's recovery address. **We n
 confirmation** that the resulting user-facing wording is adequate, and whether anything
 must be disclosed about it. See `docs/PRIVACY_AND_RIGHTS.md` section 6a.
 
+### B16. The Arabic Terms and Privacy Policy are a draft of a draft
+Both policies now exist in Arabic — `public/js/i18n/terms.js` and
+`public/js/i18n/privacy.js`. They are **machine-drafted translations of documents
+that are themselves unapproved drafts with no effective date**, and no native
+speaker and no lawyer has read either version.
+
+That compounds two different risks rather than adding them. A translation can
+change the meaning of a clause while remaining a plausible translation of its
+words, and neither the English original nor the Arabic rendering has been
+reviewed by anyone qualified to notice.
+
+**We need to know** which version governs if the two ever disagree, whether an
+Arabic version must be offered at all for a UAE consumer-facing service, and
+whether presenting an unreviewed translation is itself a problem separate from
+presenting an unreviewed original. Until then both remain drafts, no acceptance
+is recorded against either, and `policy_acceptances` refuses writes for a policy
+that is not effective.
+
+Sequence, if it helps: approve the English, then translate, then review the
+translation. Translating an unapproved document twice does not make it approved.
+
+### B17. The word used for "giveaway" in Arabic
+The dictionaries use **مسابقة** throughout. It is the ordinary marketing term in
+the region, and consistency matters more than picking the perfect word
+inconsistently — but it also carries a sense of *contest*, and this platform is
+emphatically not one: entry is free, no skill is involved, and the winner is
+drawn uniformly at random.
+
+**We need to know** whether مسابقة carries any regulatory implication in the UAE
+that سحب (draw) or a phrase like سحب مجاني would not, given that the whole
+structural argument for this model rests on entry being free and the outcome
+being random. This is a terminology question with a possible legal edge, which is
+why it is here and not only in `docs/ARABIC_RTL.md` §2.
+
+### B19. The age declaration is shown in English on an Arabic page, deliberately
+`server/lib/eligibility.js` holds the exact sentence — *"I confirm that I am 18
+years of age or older."* — and records **which version of it** a person agreed
+to. The comment above it says why: so the words read and the words recorded
+cannot drift apart.
+
+Translating it client-side would break that on purpose. The person would read an
+Arabic sentence and the audit trail would record agreement to an English one, so
+the record would attest to something nobody saw. That is worse than the untidiness
+of an English sentence on an Arabic page, so the element is marked
+`data-lang-exempt="attestation-wording"` and the browser sweep excludes it by
+that marker rather than by adding its words to a general ignore list.
+
+**We need to know:** whether an Arabic declaration must be offered to a UAE
+consumer; if so, whether it needs its own version identifier recorded alongside
+the language (the schema records a version, not a language); and which version
+governs if a person is shown one and the record holds the other. Until that is
+answered the sentence stays in English and stays marked.
+
+The same question applies to the limitation note beneath it, which is also
+served from `eligibility.js`.
+
+### B18. Structured data as a statement about the operator
+`index.html` carried a schema.org `Organization` node — a name, a URL, a
+description and `areaServed: "AE"` — published in the format search engines treat
+as the site's own machine-readable statement about itself. Naseeb has no company,
+no trade licence and no VAT registration.
+
+It has been removed, and `test/seo.test.js` seo6 now fails the build if
+`Organization`, `LocalBusiness`, `Corporation`, `aggregateRating`, `review`,
+`address`, `taxID` or `vatID` appears in any structured-data block on any page.
+Recorded here because it is the one place a claim can be made that nobody
+reviewing the rendered page will ever see, and because it should go back — with
+the right entity name — once §A is closed.
+
+The per-campaign `Event` node that remains asserts the campaign's dates, that
+entry costs **AED 0**, and nothing about who is behind it. Its `organizer` node
+was removed for the same reason: it said `Organization` for every host, and a
+host may be one person with no company at all.
+
 ---
 
 ## C. What we changed, and what we deliberately did not
@@ -282,6 +356,12 @@ will not imply it.
 - [ ] Section A facts supplied by the owner and published
 - [ ] Section B questions answered by qualified UAE counsel
 - [ ] Terms and Privacy revised to reflect that advice, with a new version and date
+- [ ] The **Arabic** Terms and Privacy translated again from the approved English,
+      and that translation reviewed by a native speaker and by counsel — see B16.
+      The Arabic committed today is a translation of an unapproved draft and must
+      not survive into the approved version by default
+- [ ] The Arabic word for "giveaway" confirmed against B17 before any Arabic copy
+      is shown to a real user
 - [ ] Retention periods confirmed and the provisional wording removed
 - [ ] Both policies moved from `draft` to `approved` in `server/lib/policies.js`, recording
       who approved them and when

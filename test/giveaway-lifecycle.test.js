@@ -9,7 +9,7 @@ const crypto = require('node:crypto');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 
 const {
   api,
@@ -94,7 +94,7 @@ async function seedEntries(giveawayId, n, { startTicket = 1, status = 'eligible'
   const ids = [];
   for (let i = 0; i < n; i += 1) {
     const user = await makeUser(`entrant-${giveawayId.slice(0, 6)}-${i}`);
-    const entryId = uuid();
+    const entryId = randomUUID();
     ids.push({ entryId, userId: user.id });
     await pool.query(
       `INSERT INTO entries (id, giveaway_id, user_id, ticket_number, integrity_status,
@@ -930,9 +930,18 @@ test('gl19. approval records the administrator, the time and an append-only hist
   assert.equal(row.prize_evidence_verified_by, admin.id);
   assert.equal(row.prize_governance_version, 1);
 
-  // Exactly 30 calendar days.
-  const days = (new Date(row.closes_at) - new Date(row.published_at)) / 86400000;
-  assert.ok(Math.abs(days - 30) < 0.01, `the window is 30 days, got ${days}`);
+  // Exactly one calendar month — which is 28, 29, 30 or 31 days depending on
+  // when the campaign was published, and is deliberately NOT a fixed day count.
+  // The approved rule is a calendar month; thirty days was a different rule the
+  // code used to enforce while the copy promised it.
+  const published = new Date(row.published_at);
+  const expected = new Date(published);
+  expected.setUTCMonth(expected.getUTCMonth() + 1);
+  const skewMs = Math.abs(new Date(row.closes_at) - expected);
+  assert.ok(
+    skewMs < 2000,
+    `the window is not one calendar month: closes_at ${row.closes_at}, expected ${expected.toISOString()}`
+  );
   // `entry_deadline` is the legacy text column, kept in step with `closes_at`
   // for the readers that already existed. Compared to the millisecond.
   assert.ok(

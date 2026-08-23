@@ -6,7 +6,7 @@
  */
 
 /* --- from host-apply.html --- */
-  .status-panel { border-left:4px solid var(--gold); background:#fff; border-radius:10px; padding:20px 22px; margin-bottom:26px; }
+  .status-panel { border-inline-start:4px solid var(--gold); background:#fff; border-radius:10px; padding:20px 22px; margin-bottom:26px; }
   .status-panel h3 { margin:0 0 8px; font-size:1.05rem; }
   .status-panel p { color:var(--text-soft); margin:0 0 6px; font-size:0.94rem; }
   .status-panel .reason { font-style:italic; }

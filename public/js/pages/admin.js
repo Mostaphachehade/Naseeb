@@ -3,24 +3,31 @@
   // administrator produces a screen full of 403s rather than an admin panel.
   const ready = requireSession('/admin.html');
 
+  // Dates follow the page's language, not the operating system's:
+  // toLocaleDateString(undefined) asks the browser and gets the OS locale, which
+  // put an English date in the middle of an Arabic line.
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
+
 
   async function loadStats() {
     const content = document.getElementById('stats-content');
     try {
       const s = await api('/admin/stats');
       const cards = [
-        { num: s.pending_host_applications, label: 'Pending applications', attention: s.pending_host_applications > 0 },
-        { num: s.pending_ad_inquiries, label: 'Pending ad inquiries', attention: s.pending_ad_inquiries > 0 },
-        { num: s.live_giveaways, label: 'Live giveaways' },
-        { num: s.total_hosts, label: 'Total hosts' },
-        { num: s.verified_hosts, label: 'Verified hosts' },
-        { num: s.approved_hosts, label: 'Approved hosts' },
-        { num: s.suspended_hosts, label: 'Suspended hosts', attention: s.suspended_hosts > 0 },
+        { num: s.pending_host_applications, label: t('admin.statPendingApplications'), attention: s.pending_host_applications > 0 },
+        { num: s.pending_ad_inquiries, label: t('admin.statPendingAdInquiries'), attention: s.pending_ad_inquiries > 0 },
+        { num: s.live_giveaways, label: t('admin.statLiveGiveaways') },
+        { num: s.total_hosts, label: t('admin.statTotalHosts') },
+        { num: s.verified_hosts, label: t('admin.statVerifiedHosts') },
+        { num: s.approved_hosts, label: t('admin.statApprovedHosts') },
+        { num: s.suspended_hosts, label: t('admin.statSuspendedHosts'), attention: s.suspended_hosts > 0 },
         // The advertiser's business name, inside a label. Text, like every
         // other value on this page.
         {
           num: s.active_ad ? s.active_ad.click_count : '—',
-          label: s.active_ad ? `Clicks — ${s.active_ad.business_name}` : 'No active ad',
+          label: s.active_ad
+            ? t('admin.statClicksFor', { business: isolate(s.active_ad.business_name) })
+            : t('admin.statNoActiveAd'),
         },
       ];
       mount(content, cards.map((c) => el('div', { class: c.attention ? 'admin-stat attention' : 'admin-stat' }, [
@@ -44,7 +51,7 @@
   };
 
   function shortDate(value) {
-    return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(value).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function pill(text, extraClass) {
@@ -62,7 +69,7 @@
 
     const openBtn = el('button', {
       class: 'btn ghost app-open-btn u-51820e15',
-      text: 'Review',
+      text: t('admin.review'),
       on: { click: () => openApplication(a.id, detailRow, detailCell) },
     });
 
@@ -73,7 +80,7 @@
     const closeBtn = a.status === 'pending'
       ? el('button', {
           class: 'btn ghost app-close-btn u-51820e15',
-          text: 'Close without deciding',
+          text: t('admin.closeWithoutDeciding'),
           on: {
             click: async (e) => {
               const btn = e.currentTarget;
@@ -102,7 +109,7 @@
       tdNode([
         a.display_name || '—',
         a.user_id ? null : el('br'),
-        a.user_id ? null : el('span', { class: 'u-73c3c8ab', text: 'Legacy enquiry — no account attached' }),
+        a.user_id ? null : el('span', { class: 'u-73c3c8ab', text: t('admin.legacyEnquiryNoAccount') }),
       ]),
       tdNode(pill(STATUS_LABELS[a.status] || a.status)),
       td(shortDate(a.created_at)),
@@ -148,7 +155,7 @@
         const reasonInput = el('input', {
           class: 'decision-reason',
           maxLength: 1000,
-          placeholder: 'Why this decision?',
+          placeholder: t('admin.whyThisDecision'),
         });
         const decide = (decision, label, className) => el('button', {
           class: className,
@@ -177,7 +184,7 @@
         });
 
         decisionBlock = frag([
-          el('label', { class: 'u-1964b55e', text: 'Reason (recorded against this decision, and shown to the applicant)' }),
+          el('label', { class: 'u-1964b55e', text: t('admin.reasonRecordedAgainstThis') }),
           reasonInput,
           el('div', { class: 'u-d8a81eac' }, [
             decide('approved', 'Approve to host', 'btn primary decide-btn u-14da4875'),
@@ -185,7 +192,7 @@
           ]),
           el('p', {
             class: 'hint u-b1ecc496',
-            text: 'Approving is the only thing that grants host access. Nothing else on this page does.',
+            text: t('admin.approvingIsTheOnly'),
           }),
         ]);
       }
@@ -205,7 +212,11 @@
         a.message ? el('p', { class: 'u-f06aec11', text: a.message }) : null,
         el('p', { class: 'u-acb85f03' }, [
           'Account host status: ',
-          el('strong', { text: a.host_status || 'no account' }),
+          el('strong', {
+            text: a.host_status
+              ? (HOST_STATUS_LABELS[a.host_status] ? t(HOST_STATUS_LABELS[a.host_status]) : a.host_status)
+              : t('admin.noAccount'),
+          }),
         ]),
         decisionBlock,
       ]));
@@ -219,13 +230,13 @@
     try {
       const applications = await api('/admin/host-applications');
       if (applications.length === 0) {
-        mount(content, emptyNode('No applications yet.'));
+        mount(content, emptyNode(t('admin.noApplicationsYet')));
         return;
       }
       mount(content, dataTable(
-        ['Type', 'Who', 'Status', 'Submitted', 'Decided', 'Actions'],
+        [t('admin.colType'), t('admin.colWho'), t('admin.colStatus'), t('admin.colSubmitted'), t('admin.colDecided'), t('admin.colActions')],
         applications.flatMap(appRow),
-        'No applications yet.'
+        t('admin.noApplicationsYet')
       ));
     } catch (err) {
       mount(content, emptyNode(err.message));
@@ -260,11 +271,11 @@
 
     const remove = el('button', {
       class: 'btn ghost inquiry-delete-btn u-54750247',
-      text: 'Delete',
+      text: t('admin.delete'),
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
-          if (!confirm('Delete this inquiry? This cannot be undone.')) return;
+          if (!confirm(t('admin.deleteThisInquiry'))) return;
           btn.disabled = true;
           try {
             await api(`/admin/ad-inquiries/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
@@ -296,13 +307,13 @@
     try {
       const inquiries = await api('/admin/ad-inquiries');
       if (inquiries.length === 0) {
-        mount(content, emptyNode('No ad inquiries yet.'));
+        mount(content, emptyNode(t('admin.noAdInquiriesYet')));
         return;
       }
       mount(content, dataTable(
-        ['Business', 'Contact', 'Message', 'Submitted', 'Actions'],
+        [t('owner.colBusiness'), t('admin.colContact'), t('admin.colMessage'), t('admin.colSubmitted'), t('admin.colActions')],
         inquiries.map(adInquiryRow),
-        'No ad inquiries yet.'
+        t('admin.noAdInquiriesYet')
       ));
     } catch (err) {
       mount(content, emptyNode(err.message));
@@ -377,11 +388,11 @@
 
     const remove = el('button', {
       class: 'btn ghost ad-delete-btn u-162e4030',
-      text: 'Delete',
+      text: t('admin.delete'),
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
-          if (!confirm('Delete this ad? This cannot be undone.')) return;
+          if (!confirm(t('admin.deleteThisAd'))) return;
           btn.disabled = true;
           try {
             await api(`/admin/ads/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
@@ -409,13 +420,13 @@
     try {
       const ads = await api('/admin/ads');
       if (ads.length === 0) {
-        mount(content, emptyNode('No ads yet. Add one above.'));
+        mount(content, emptyNode(t('admin.noAdsYet')));
         return;
       }
       mount(content, dataTable(
-        ['Banner', 'Business', 'Destination', 'Clicks', 'Status', 'Actions'],
+        [t('admin.colBanner'), t('owner.colBusiness'), t('admin.colDestination'), t('admin.colClicks'), t('admin.colStatus'), t('admin.colActions')],
         ads.map(adRow),
-        'No ads yet. Add one above.'
+        t('admin.noAdsYet')
       ));
     } catch (err) {
       mount(content, emptyNode(err.message));
@@ -471,7 +482,7 @@
     try {
       const giveaways = await api('/admin/giveaways');
       if (giveaways.length === 0) {
-        mount(content, emptyNode('No giveaways yet.'));
+        mount(content, emptyNode(t('admin.noGiveawaysYet')));
         return;
       }
       mount(content, dataTable(
@@ -488,6 +499,15 @@
     const verifiedToggle = el('input', {
       type: 'checkbox',
       class: 'verified-toggle',
+      // Named per row. A column header is not an accessible name: somebody
+      // moving through the table cell by cell hears "checkbox, not checked"
+      // with no indication of WHOSE verified badge is about to be toggled.
+      // aria: { label }, not 'aria-label'. el() routes 'aria' through
+      // setAttribute and THROWS on any other unrecognised key, so the direct
+      // form did not add an accessible name — it aborted the render of every
+      // row in this table. It was invisible because the admin table only builds
+      // for a signed-in administrator, which axe never is.
+      aria: { label: t('admin.verifiedBadgeFor', { who: isolate(u.name || u.email || t('admin.thisAccount')) }) },
       checked: Boolean(u.is_verified_business),
       on: {
         change: async (e) => {
@@ -517,7 +537,8 @@
     // somebody reached for it. See docs/PRIVACY_AND_RIGHTS.md §8.
 
     return el('tr', {}, [
-      tdNode([u.name, u.is_admin ? ' ' : null, u.is_admin ? pill('admin', 'company') : null]),
+      // The display name is a person's own text: isolated, never translated.
+      tdNode([isolate(u.name), u.is_admin ? ' ' : null, u.is_admin ? pill(t('admin.roleAdmin'), 'company') : null]),
       td(u.email),
       td(u.giveaways_hosted, 'mono'),
       td(shortDate(u.created_at)),
@@ -527,26 +548,29 @@
     ]);
   }
 
+  // Keys, resolved at render time. A map of finished labels built at module
+  // scope is evaluated before applyI18n() has run and would freeze this column
+  // in whichever language loaded first.
   const HOST_STATUS_LABELS = {
-    not_requested: 'Never applied',
-    pending: 'Waiting for review',
-    approved: 'Approved',
-    rejected: 'Not approved',
-    suspended: 'Suspended',
+    not_requested: 'admin.hostStatusNeverApplied',
+    pending: 'admin.hostStatusWaiting',
+    approved: 'admin.hostStatusApproved',
+    rejected: 'admin.hostStatusNotApproved',
+    suspended: 'admin.hostStatusSuspended',
   };
 
   function hostStatusCell(u) {
     return [
-      pill(HOST_STATUS_LABELS[u.host_status] || u.host_status || '—'),
+      pill(HOST_STATUS_LABELS[u.host_status] ? t(HOST_STATUS_LABELS[u.host_status]) : (u.host_status || '—')),
       u.host_status_changed_at ? el('br') : null,
       u.host_status_changed_at
         ? el('span', {
             class: 'u-5e8e7900',
-            text: new Date(u.host_status_changed_at).toLocaleDateString(),
+            text: new Date(u.host_status_changed_at).toLocaleDateString(locale),
           })
         : null,
       u.is_admin ? el('br') : null,
-      u.is_admin ? el('span', { class: 'u-5e8e7900', text: 'admin — this gate does not apply' }) : null,
+      u.is_admin ? el('span', { class: 'u-5e8e7900', text: t('admin.adminThisGateDoes') }) : null,
     ];
   }
 
@@ -555,12 +579,16 @@
   function hostActions(u) {
     const status = u.host_status === 'approved' ? 'suspended' : 'approved';
     const label = u.host_status === 'approved'
-      ? 'Suspend hosting'
-      : u.host_status === 'suspended' ? 'Reinstate' : 'Grant hosting';
+      ? t('admin.suspendHosting')
+      : u.host_status === 'suspended' ? t('admin.reinstate') : t('admin.grantHosting');
 
     return el('button', {
-      class: 'btn ghost host-status-btn u-51820e15',
+      // `on-light`: this ghost button sits on the white admin table, where
+      // `.btn`'s paper text measures 1.11:1. See public/css/style.css.
+      class: 'btn ghost on-light host-status-btn u-51820e15',
       text: label,
+      // "Suspend hosting" is unambiguous only if you can see which row it is in.
+      aria: { label: t('admin.actionForAccount', { action: label, who: isolate(u.name || u.email || t('admin.thisAccount')) }) },
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
@@ -602,11 +630,11 @@
     try {
       const users = await api('/admin/users');
       if (users.length === 0) {
-        mount(content, emptyNode('No accounts yet.'));
+        mount(content, emptyNode(t('admin.noAccountsYet')));
         return;
       }
       mount(content, dataTable(
-        ['Name', 'Email', 'Hosted', 'Joined', 'Verified', 'Host access', 'Actions'],
+        [t('admin.colName'), t('common.email'), t('admin.colHosted'), t('admin.colJoined'), t('admin.colVerified'), t('admin.colHostAccess'), t('admin.colActions')],
         users.map(userRow),
         'No accounts yet.'
       ));
@@ -622,7 +650,7 @@
     if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
       cloudinaryConfig = config;
       document.getElementById('ad-image-upload-row').classList.remove('is-hidden');
-      document.getElementById('ad-image-url-hint').textContent = 'Upload a file above, or paste a media URL.';
+      document.getElementById('ad-image-url-hint').textContent = t('admin.uploadAFileAbove');
     }
   }).catch(() => {});
 
@@ -648,7 +676,7 @@
     const file = e.target.files[0];
     if (!file || !cloudinaryConfig) return;
     const statusEl = document.getElementById('ad-upload-status');
-    statusEl.textContent = 'Uploading…';
+    statusEl.textContent = t('admin.uploading');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
@@ -665,13 +693,13 @@
       const target = adMediaType === 'video' ? videoPreview : imgPreview;
       const other = adMediaType === 'video' ? imgPreview : videoPreview;
       if (!NaseebDom.setMediaSrc(target, data.secure_url)) {
-        statusEl.textContent = 'Upload returned a media address we do not accept.';
+        statusEl.textContent = t('admin.uploadReturnedAMedia');
         return;
       }
       document.getElementById('ad_image_url').value = data.secure_url;
       target.classList.remove('is-hidden');
       other.classList.add('is-hidden');
-      statusEl.textContent = 'Uploaded.';
+      statusEl.textContent = t('admin.uploaded');
     } catch (err) {
       statusEl.textContent = err.message;
     }
@@ -728,9 +756,9 @@
   // server/lib/claimStateMachine.js; the server refuses anything else outright,
   // so this only decides which button to draw.
   const RESCUE_NEXT = {
-    claimed: { to: 'preparing_delivery', label: 'Mark preparing delivery' },
-    preparing_delivery: { to: 'shipped_or_arranged', label: 'Mark shipped / arranged' },
-    shipped_or_arranged: { to: 'delivered_pending_confirmation', label: 'Report delivered — winner confirms' },
+    claimed: { to: 'preparing_delivery', label: t('admin.markPreparingDelivery') },
+    preparing_delivery: { to: 'shipped_or_arranged', label: t('admin.markShippedArranged') },
+    shipped_or_arranged: { to: 'delivered_pending_confirmation', label: t('admin.reportDeliveredWinnerConfirms') },
   };
 
   const CLAIM_STATE_LABELS = {
@@ -782,7 +810,7 @@
     const detailsBtn = r.delivery_available
       ? el('button', {
           class: 'btn ghost rescue-details u-51820e15',
-          text: 'Open delivery details',
+          text: t('admin.openDeliveryDetails'),
           on: {
             click: async (e) => {
               const btn = e.currentTarget;
@@ -805,7 +833,7 @@
                 mount(detailCell, el('div', { class: 'u-1b074808' }, [
                   el('p', {
                     class: 'u-06519697',
-                    text: `Opened for fulfilment and recorded in this claim's history. Winner consented ${new Date(result.delivery.consentedAt).toLocaleDateString()} (${result.delivery.consentVersion}).`,
+                    text: `Opened for fulfilment and recorded in this claim's history. Winner consented ${new Date(result.delivery.consentedAt).toLocaleDateString(locale)} (${result.delivery.consentVersion}).`,
                   }),
                   el('p', { class: 'u-1da9facb', text: `${d.recipient_name} · ${d.phone}` }),
                   el('p', {
@@ -823,7 +851,7 @@
             },
           },
         })
-      : el('span', { class: 'u-73c3c8ab', text: 'no details available' });
+      : el('span', { class: 'u-73c3c8ab', text: t('admin.noDetailsAvailable') });
 
     const row = el('tr', {}, [
       tdNode([
@@ -833,7 +861,7 @@
       ]),
       tdNode(pill(CLAIM_STATE_LABELS[r.claim_status] || r.claim_status)),
       tdNode([
-        new Date(r.opened_at).toLocaleDateString(),
+        new Date(r.opened_at).toLocaleDateString(locale),
         el('br'),
         // The reason an administrator typed when suspending the host.
         el('span', { class: 'u-a76e0798', text: r.opened_reason || '' }),
@@ -843,7 +871,7 @@
         detailsBtn,
         next ? null : el('span', {
           class: 'u-c2238623',
-          text: 'Nothing for you to do here — this one is waiting on the winner.',
+          text: t('admin.nothingForYouTo'),
         }),
       ]), 'u-a9efa544'),
     ]);
@@ -856,7 +884,7 @@
     try {
       const rows = await api('/claims/admin/rescue-queue');
       if (rows.length === 0) {
-        mount(content, emptyNode('No suspended host has an unfinished claim.'));
+        mount(content, emptyNode(t('admin.noSuspendedHostClaim')));
         return;
       }
       mount(content, dataTable(
@@ -877,7 +905,7 @@
         box.replaceChildren();
         const empty = document.createElement('p');
         empty.className = 'hint';
-        empty.textContent = 'Nothing waiting. Disputes and expired claims appear here.';
+        empty.textContent = t('admin.nothingWaitingDisputesAnd');
         box.appendChild(empty);
         return;
       }
@@ -913,7 +941,7 @@
 
         const open = document.createElement('button');
         open.className = 'btn ghost';
-        open.textContent = 'Open case';
+        open.textContent = t('admin.openCase');
         // Delivery details are loaded only here, on a deliberate click by an
         // authenticated administrator — never as part of the list above.
         open.onclick = () => openCase(row, card);
@@ -957,7 +985,7 @@
       const box = document.createElement('div');
       box.classList.add('js-mint-box');
       const label = document.createElement('strong');
-      label.textContent = 'Delivery details (opened deliberately, for this case)';
+      label.textContent = t('admin.deliveryDetailsOpenedDeliberately');
       box.appendChild(label);
       [d.recipient_name, d.phone, d.address_line1, d.address_line2, [d.city, d.emirate].filter(Boolean).join(', ')]
         .filter(Boolean)
@@ -981,7 +1009,7 @@
     const act = async (to) => {
       error.classList.remove('show');
       if (!reason.value.trim()) {
-        error.textContent = 'A reason is required — it is recorded against the claim.';
+        error.textContent = t('admin.aReasonIsRequired');
         error.classList.add('show');
         return;
       }
@@ -1013,7 +1041,7 @@
     } else {
       const reissue = document.createElement('button');
       reissue.className = 'btn primary';
-      reissue.textContent = 'Reissue claim link to the same winner';
+      reissue.textContent = t('admin.reissueClaimLinkTo');
       reissue.onclick = async () => {
         error.classList.remove('show');
         try {
@@ -1031,7 +1059,7 @@
 
       const close = document.createElement('button');
       close.className = 'btn ghost';
-      close.textContent = 'Close claim';
+      close.textContent = t('admin.closeClaim');
       close.onclick = () => act('cancelled');
       buttons.appendChild(close);
     }
@@ -1047,7 +1075,7 @@
       if (!rows.length) {
         const empty = document.createElement('p');
         empty.className = 'hint';
-        empty.textContent = 'None — every drawn giveaway has a claim.';
+        empty.textContent = t('admin.noneEveryDrawnGiveaway');
         box.appendChild(empty);
         return;
       }
@@ -1065,7 +1093,7 @@
 
         const button = document.createElement('button');
         button.className = 'btn primary';
-        button.textContent = 'Issue claim to that winner';
+        button.textContent = t('admin.issueClaimToThat');
         button.onclick = async () => {
           button.disabled = true;
           try {
@@ -1108,7 +1136,7 @@
 
     const openBtn = el('button', {
       class: 'btn ghost u-51820e15',
-      text: 'Open',
+      text: t('admin.open'),
       on: { click: () => openIntegrityEntry(r.entry_id, detailRow, detailCell) },
     });
 
@@ -1132,7 +1160,7 @@
           r.is_winner ? pill('winner', 'company') : null,
         ]),
         tdNode(signals.length ? spaced(signals) : el('span', { class: 'u-a2aae0fb', text: '—' })),
-        td(new Date(r.entered_at).toLocaleDateString()),
+        td(new Date(r.entered_at).toLocaleDateString(locale)),
         tdNode(
           r.case_open
             ? pill(r.case_post_draw ? 'case open · post-draw' : 'case open')
@@ -1170,7 +1198,7 @@
     const notesInput = el('textarea', {
       class: 'js-spaced-input',
       maxLength: 4000,
-      placeholder: 'Administrator notes — internal. Evidence, accounts compared, what a signal showed. The entrant never sees this.',
+      placeholder: t('admin.administratorNotesInternalEvidence'),
     });
     const error = el('p', { class: 'form-error' });
     const preview = el('p', { class: 'hint js-flush' });
@@ -1196,12 +1224,12 @@
           error.classList.remove('show');
           fillCodes(status);
           if (!notesInput.value.trim()) {
-            error.textContent = 'Administrator notes are required — they are the record of why this decision was made.';
+            error.textContent = t('admin.administratorNotesAreRequired');
             error.classList.add('show');
             return;
           }
           if (!codeSelect.value) {
-            error.textContent = 'Choose the explanation the entrant will be given.';
+            error.textContent = t('admin.chooseTheExplanationThe');
             error.classList.add('show');
             return;
           }
@@ -1244,19 +1272,19 @@
     const winnerNote = data.entry.is_winner
       ? el('p', {
           class: 'hint u-b1ecc496',
-          text: 'This entry won. It cannot be disqualified here — open an integrity case instead, which pauses fulfilment and leaves the winner in place.',
+          text: t('admin.thisEntryWonIt'),
         })
       : null;
 
     const caseBtn = el('button', {
       class: 'btn ghost u-51820e15',
-      text: 'Open integrity case (pauses fulfilment)',
+      text: t('admin.openIntegrityCasePauses'),
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
           error.classList.remove('show');
           if (!notesInput.value.trim()) {
-            error.textContent = 'Administrator notes are required to open a case.';
+            error.textContent = t('admin.administratorNotesAreRequired2');
             error.classList.add('show');
             return;
           }
@@ -1300,7 +1328,7 @@
                 const btn = e.currentTarget;
                 error.classList.remove('show');
                 if (!notesInput.value.trim()) {
-                  error.textContent = 'Administrator notes are required to resolve a case.';
+                  error.textContent = t('admin.administratorNotesAreRequired3');
                   error.classList.add('show');
                   return;
                 }
@@ -1334,30 +1362,30 @@
       ]),
       el('p', {
         class: 'u-3e786f67',
-        text: `Account created ${new Date(data.account.created_at).toLocaleDateString()} · entered ${new Date(data.entry.entered_at).toLocaleString()} · ticket #${data.entry.ticket_number}`,
+        text: `Account created ${new Date(data.account.created_at).toLocaleDateString(locale)} · entered ${new Date(data.entry.entered_at).toLocaleString()} · ticket #${data.entry.ticket_number}`,
       }),
 
-      el('p', { class: 'u-5bf9ad33', text: 'Signals' }),
+      el('p', { class: 'u-5bf9ad33', text: t('admin.signals') }),
       data.signals.length
         ? el('div', { class: 'js-history' }, data.signals.map((sig) =>
             el('div', {
-              text: `${SIGNAL_LABELS[sig.code] || sig.code} · ${sig.severity} · seen ${new Date(sig.observed_at).toLocaleString()} · expires ${new Date(sig.expires_at).toLocaleDateString()}`,
+              text: `${SIGNAL_LABELS[sig.code] || sig.code} · ${sig.severity} · seen ${new Date(sig.observed_at).toLocaleString()} · expires ${new Date(sig.expires_at).toLocaleDateString(locale)}`,
             })
           ))
-        : el('p', { class: 'hint js-flush', text: 'No signals recorded for this entry.' }),
+        : el('p', { class: 'hint js-flush', text: t('admin.noSignalsRecordedFor') }),
       el('p', {
         class: 'hint u-b1ecc496',
-        text: 'Signals are indicators, not proof. A shared network is a household, an office or a phone carrier far more often than it is abuse — nothing here has disqualified anybody, and nothing will unless you do it.',
+        text: t('admin.signalsAreIndicatorsNot'),
       }),
 
-      el('p', { class: 'u-5bf9ad33', text: 'History' }),
+      el('p', { class: 'u-5bf9ad33', text: t('admin.history') }),
       data.history.length
         ? el('div', { class: 'js-history' }, data.history.map((ev) =>
             el('div', {
               text: `${new Date(ev.created_at).toLocaleString()} — ${ev.from_status || 'new'} → ${ev.to_status} (${ev.reason_code}) by ${ev.actor_name || ev.actor_role}${ev.reason ? `: ${ev.reason}` : ''}`,
             })
           ))
-        : el('p', { class: 'hint js-flush', text: 'No decisions recorded yet.' }),
+        : el('p', { class: 'hint js-flush', text: t('admin.noDecisionsRecordedYet') }),
 
       openCase
         ? el('p', {
@@ -1369,9 +1397,9 @@
         : null,
 
       winnerNote,
-      el('label', { class: 'u-1964b55e', text: 'Administrator notes (internal — never shown to the entrant)' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.administratorNotesInternalNever') }),
       notesInput,
-      el('label', { class: 'u-1964b55e', text: 'Explanation the entrant will be given' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.explanationTheEntrantWill') }),
       codeSelect,
       preview,
       el('div', { class: 'js-button-row' }, spaced([...actions, openCase ? null : caseBtn, ...resolveButtons])),
@@ -1415,7 +1443,7 @@
 
     const openBtn = el('button', {
       class: 'btn ghost u-51820e15',
-      text: 'Open',
+      text: t('admin.open'),
       on: { click: () => openPrivacyRequest(r.id, detailRow, detailCell) },
     });
 
@@ -1467,7 +1495,7 @@
     const notesInput = el('textarea', {
       class: 'js-spaced-input',
       maxLength: 4000,
-      placeholder: 'Administrator notes — internal. What you checked, what you decided, why. The requester never sees this.',
+      placeholder: t('admin.administratorNotesInternalWhat'),
     });
 
     // Offered by the server, not assumed here. A deletion request has a shorter
@@ -1485,36 +1513,36 @@
     const erasedInput = el('input', {
       class: 'js-spaced-input',
       maxLength: 500,
-      placeholder: 'Categories erased, comma separated (e.g. account_name, account_email)',
+      placeholder: t('admin.categoriesErasedCommaSeparated'),
     });
     const anonymisedInput = el('input', {
       class: 'js-spaced-input',
       maxLength: 500,
-      placeholder: 'Categories anonymised, comma separated',
+      placeholder: t('admin.categoriesAnonymisedCommaSeparated'),
     });
     const retainedInput = el('textarea', {
       class: 'js-spaced-input',
       maxLength: 2000,
       rows: 3,
-      placeholder: 'Categories retained, one per line, as "category — reason it must be kept"',
+      placeholder: t('admin.categoriesRetainedOnePer'),
     });
     const summaryInput = el('input', {
       class: 'js-spaced-input',
       maxLength: 1000,
-      placeholder: 'What was provided, sent or corrected',
+      placeholder: t('admin.whatWasProvidedSent'),
     });
     const evidenceBlock = el('div', { class: 'is-hidden' }, [
       el('p', {
         class: 'hint',
-        text: 'A request is only completed when something was actually done. Record it here — it is written to an append-only evidence table alongside the decision.',
+        text: t('admin.aRequestIsOnly'),
       }),
-      el('label', { class: 'u-1964b55e', text: 'What was provided or corrected' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.whatWasProvidedOr') }),
       summaryInput,
-      el('label', { class: 'u-1964b55e', text: 'Categories erased' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.categoriesErased') }),
       erasedInput,
-      el('label', { class: 'u-1964b55e', text: 'Categories anonymised' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.categoriesAnonymised') }),
       anonymisedInput,
-      el('label', { class: 'u-1964b55e', text: 'Categories retained, and why' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.categoriesRetainedAndWhy') }),
       retainedInput,
     ]);
 
@@ -1544,7 +1572,7 @@
       const codes = data.outcome_codes[statusSelect.value] || [];
       clear(codeSelect);
       if (!codes.length) {
-        codeSelect.appendChild(el('option', { value: '', text: '— no outcome for this status —' }));
+        codeSelect.appendChild(el('option', { value: '', text: t('admin.noOutcomeForThis') }));
         setText(preview, 'The requester will not be given an outcome sentence for this status.');
         return;
       }
@@ -1565,13 +1593,13 @@
 
     const submit = el('button', {
       class: 'btn primary u-51820e15',
-      text: 'Record decision',
+      text: t('admin.recordDecision'),
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
           error.classList.remove('show');
           if (!notesInput.value.trim()) {
-            error.textContent = 'Administrator notes are required — they are the record of this decision.';
+            error.textContent = t('admin.administratorNotesAreRequired4');
             error.classList.add('show');
             return;
           }
@@ -1630,14 +1658,14 @@
         el('strong', { text: req.reference }),
         ` · ${PRIVACY_TYPE_LABELS[req.type] || req.type} · ${PRIVACY_STATUS_LABELS[req.status] || req.status} · opened ${new Date(req.created_at).toLocaleString()}`,
       ]),
-      el('p', { class: 'u-a76e0798', text: `${data.account.name} · ${data.account.email} · account created ${new Date(data.account.created_at).toLocaleDateString()}` }),
+      el('p', { class: 'u-a76e0798', text: `${data.account.name} · ${data.account.email} · account created ${new Date(data.account.created_at).toLocaleDateString(locale)}` }),
       req.user_message
         ? el('p', { class: 'js-mint-box', text: `They wrote: ${req.user_message}` })
-        : el('p', { class: 'u-a2aae0fb', text: 'They did not add a message.' }),
+        : el('p', { class: 'u-a2aae0fb', text: t('admin.theyDidNotAdd') }),
 
       blockers.length
         ? el('div', {}, [
-            el('p', { class: 'u-5bf9ad33', text: 'What currently stands in the way of erasure' }),
+            el('p', { class: 'u-5bf9ad33', text: t('admin.whatCurrentlyStandsIn') }),
             el('ul', { class: 'u-a2aae0fb' }, blockers),
           ])
         : null,
@@ -1646,28 +1674,28 @@
         ? el('p', { class: 'hint', text: `Currently shown to them: ${req.requester_sees}` })
         : null,
 
-      el('label', { class: 'u-1964b55e', text: 'Administrator notes (internal — never shown to the requester)' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.administratorNotesInternalNever2') }),
       notesInput,
-      el('label', { class: 'u-1964b55e', text: 'Status' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.status') }),
       statusSelect,
-      el('label', { class: 'u-1964b55e', text: 'Outcome the requester will be given' }),
+      el('label', { class: 'u-1964b55e', text: t('admin.outcomeTheRequesterWill') }),
       codeSelect,
       preview,
       evidenceBlock,
       // Said on the screen where the mistake would be made.
       el('p', {
         class: 'hint',
-        text: 'Recording a decision here changes the status and writes the history. It does not delete or anonymise any record — that is a separate, deliberate action.',
+        text: t('admin.recordingADecisionHere'),
       }),
       req.type === 'deletion' && !data.deletion_execution_implemented
         ? el('p', {
             class: 'js-mint-box',
-            text: 'This is a deletion request and it cannot be marked completed. Nothing erases data yet, and the rules for which records may be erased, anonymised or kept are not approved. Use "Awaiting retention policy" to leave it honestly open with us, or close it as unable to complete or declined.',
+            text: t('admin.thisIsADeletion'),
           })
         : null,
       (data.executions || []).length
         ? el('div', { class: 'u-680b5a65' }, [
-            el('p', { class: 'u-5bf9ad33', text: 'What was carried out' }),
+            el('p', { class: 'u-5bf9ad33', text: t('admin.whatWasCarriedOut') }),
             data.executions.map((ex) =>
               el('p', { class: 'u-a76e0798' }, [
                 `${new Date(ex.executed_at).toLocaleString()} · ${ex.action_kind} · by ${ex.executed_by || ex.executed_by_job}`,
@@ -1686,7 +1714,7 @@
       el('div', { class: 'js-button-row' }, submit),
       error,
       history.length
-        ? el('div', { class: 'u-680b5a65' }, [el('p', { class: 'u-5bf9ad33', text: 'History' }), history])
+        ? el('div', { class: 'u-680b5a65' }, [el('p', { class: 'u-5bf9ad33', text: t('admin.history') }), history])
         : null,
     ]));
   }
@@ -1696,7 +1724,7 @@
     try {
       const rows = await api('/admin/privacy-requests');
       if (!rows.length) {
-        mount(content, emptyNode('No privacy requests.'));
+        mount(content, emptyNode(t('admin.noPrivacyRequests')));
         return;
       }
       mount(content, dataTable(
@@ -1731,7 +1759,7 @@
 
     const openBtn = el('button', {
       class: 'btn ghost u-51820e15',
-      text: 'History',
+      text: t('admin.history'),
       on: { click: () => openNotification(n, detailRow, detailCell) },
     });
 
@@ -1740,7 +1768,7 @@
     const retryBtn = n.status === 'failed'
       ? el('button', {
           class: 'btn ghost u-51820e15',
-          text: 'Retry',
+          text: t('admin.retry'),
           on: {
             click: async (e) => {
               const btn = e.currentTarget;
@@ -1812,7 +1840,7 @@
       ]),
       el('p', {
         class: 'hint',
-        text: 'This record holds no address, message or link. Every retry issues a fresh link and stops the previous one working.',
+        text: t('admin.thisRecordHoldsNo'),
       }),
       events.map((ev) =>
         el('p', { class: 'u-a76e0798' }, [
@@ -1832,7 +1860,7 @@
     try {
       const rows = await api('/admin/email-change-notifications');
       if (!rows.length) {
-        mount(content, emptyNode('No email-change notifications.'));
+        mount(content, emptyNode(t('admin.noEmailChangeNotifications')));
         return;
       }
       mount(content, dataTable(
@@ -1850,13 +1878,13 @@
     try {
       const rows = await api('/admin/integrity/queue');
       if (!rows.length) {
-        mount(content, emptyNode('Nothing to review. Entries appear here when a signal fires, a case is opened, or a decision has been made.'));
+        mount(content, emptyNode(t('admin.nothingToReviewLong')));
         return;
       }
       mount(content, dataTable(
-        ['Giveaway / entry', 'Status', 'Signals', 'Entered', 'Case', 'Actions'],
+        [t('admin.colGiveawayEntry'), t('admin.colStatus'), t('admin.colSignals'), t('admin.colEntered'), t('admin.colCase'), t('admin.colActions')],
         rows.flatMap(integrityRow),
-        'Nothing to review.'
+        t('admin.nothingToReview')
       ));
     } catch (err) {
       mount(content, emptyNode(err.message));

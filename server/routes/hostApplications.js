@@ -1,5 +1,5 @@
 const express = require('express');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { pool } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { applicationLimiter } = require('../middleware/rateLimit');
@@ -132,7 +132,7 @@ router.post('/', applicationLimiter, requireAuth, async (req, res) => {
     const emailRes = await client.query('SELECT email FROM users WHERE id = $1', [req.userId]);
     const accountEmail = emailRes.rows[0].email;
 
-    const id = uuid();
+    const id = randomUUID();
     await client.query(
       `INSERT INTO host_applications
          (id, user_id, applicant_type, full_name, business_name, trade_license,

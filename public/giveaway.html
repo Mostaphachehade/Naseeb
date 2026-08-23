@@ -3,15 +3,29 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Giveaway — Naseeb</title>
-<meta name="description" content="Enter this free giveaway on Naseeb — no purchase necessary, ever." />
+<title data-i18n="detail.pageTitle">Giveaway — Naseeb</title>
+<meta name="description" data-i18n-content="detail.metaDescription" content="Enter this free giveaway on Naseeb — no purchase necessary, ever." />
+<link rel="canonical" href="https://www.mynaseeb.ae/giveaway.html" />
+<link rel="alternate" hreflang="en" href="https://www.mynaseeb.ae/giveaway.html" />
+<link rel="alternate" hreflang="ar" href="https://www.mynaseeb.ae/giveaway.html?lang=ar" />
+<link rel="alternate" hreflang="x-default" href="https://www.mynaseeb.ae/giveaway.html" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Naseeb" />
+<meta property="og:url" content="https://www.mynaseeb.ae/giveaway.html" />
+<meta property="og:locale" content="en_AE" />
+<meta property="og:locale:alternate" content="ar_AE" />
+<meta property="og:title" content="Giveaway — Naseeb" />
+<meta property="og:description" content="Enter this free giveaway on Naseeb — no purchase necessary, ever." />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Giveaway — Naseeb" />
+<meta name="twitter:description" content="Enter this free giveaway on Naseeb — no purchase necessary, ever." />
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
 <link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to content</a>
+<a href="#main" class="skip-link" data-i18n="common.skipToContent">Skip to content</a>
 
 <header class="site">
   <div class="wrap">
@@ -22,8 +36,8 @@
 
 <section class="detail-hero">
   <div class="wrap">
-    <span class="eyebrow mono" id="status-eyebrow">LOADING…</span>
-    <h1 id="title" class="u-ad7e3130">Loading…</h1>
+    <span class="eyebrow mono" id="status-eyebrow"><span data-i18n="detail.loading">LOADING…</span></span>
+    <h1 id="title" class="u-ad7e3130"><span data-i18n="detail.loading2">Loading…</span></h1>
     <p class="lede" id="hosted-by"></p>
   </div>
 </section>
@@ -60,7 +74,7 @@
                workflow is switched off — a dead button is worse than none. -->
           <div id="claim-panel" class="u-680b5a65 is-hidden">
             <div class="u-39a6b632">
-              <strong id="claim-state-label">Prize delivery</strong>
+              <strong id="claim-state-label"><span data-i18n="detail.prizeDelivery">Prize delivery</span></strong>
               <span class="pill-badge" id="claim-state-pill"></span>
             </div>
             <p class="hint u-2fd7789b" id="claim-state-help"></p>
@@ -73,9 +87,9 @@
             <div id="claim-actions" class="u-b7e103a1"></div>
 
             <div id="claim-dispute-box" class="u-674ae4aa is-hidden">
-              <label for="claim-dispute-reason" class="u-6646d472">What went wrong?</label>
+              <label for="claim-dispute-reason" class="u-6646d472"><span data-i18n="detail.whatWentWrong">What went wrong?</span></label>
               <textarea id="claim-dispute-reason" maxlength="500" placeholder="A short description — an administrator will read this."></textarea>
-              <button class="btn ghost u-b1ecc496" id="claim-dispute-submit">Send to review</button>
+              <button class="btn ghost u-b1ecc496" id="claim-dispute-submit"><span data-i18n="detail.sendToReview">Send to review</span></button>
             </div>
 
             <p class="form-error" id="claim-error"></p>
@@ -94,6 +108,7 @@
 
 <script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/i18n/errors.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/pages/giveaway.js"></script>
 </body>

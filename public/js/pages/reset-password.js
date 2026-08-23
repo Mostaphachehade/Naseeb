@@ -1,6 +1,7 @@
+
   const token = new URLSearchParams(window.location.search).get('token');
   if (!token) {
-    document.getElementById('error').textContent = 'This reset link is missing its token. Request a new one from the sign-in page.';
+    document.getElementById('error').textContent = t('resetpassword.missingToken');
     document.getElementById('error').classList.add('show');
     document.getElementById('reset-form').querySelector('button').disabled = true;
   }

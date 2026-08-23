@@ -9,7 +9,7 @@
 // Everything here uses fabricated accounts against the isolated test database.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { api, pool, ensureInit, signIn, anon, publishGiveaway, seedGiveaway, FABRICATED_PRIZE, closePool, approveGiveaway } = require('../testHelpers');
 
@@ -66,7 +66,7 @@ function uniqueIp() {
 }
 
 async function createUser(tag, { admin = false, hostStatus = HOST_STATUS.NOT_REQUESTED, verified = true } = {}) {
-  const id = uuid();
+  const id = randomUUID();
   const email = `test-hostaccess-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status, age_attestation_status, age_attestation_version)
@@ -711,7 +711,7 @@ test('a suspended host loses claim access, and every record survives it', async 
   });
   createdGiveawayIds.push(giveawayId);
 
-  const entryId = uuid();
+  const entryId = randomUUID();
   await pool.query('INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)', [
     entryId,
     giveawayId,
@@ -770,7 +770,7 @@ test('suspending a host reports how many open claims it hands to administrators'
     closesAt: new Date(Date.now() - 86400000),
   });
   createdGiveawayIds.push(giveawayId);
-  const entryId = uuid();
+  const entryId = randomUUID();
   await pool.query('INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)', [
     entryId,
     giveawayId,
@@ -817,7 +817,7 @@ test('the backfill approves accounts that were already hosting, and only those',
   // form promised billing and was never reviewed, so it is not an application
   // to this beta and must not be recorded as one.
   const legacyEnquirer = await createUser('legacy-enquirer');
-  const enquiryId = uuid();
+  const enquiryId = randomUUID();
   await pool.query(
     `INSERT INTO host_applications
        (id, user_id, applicant_type, full_name, contact_email, plan, status)

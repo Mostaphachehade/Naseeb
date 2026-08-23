@@ -16,7 +16,10 @@
     "maintenance": "node scripts/maintenance.js",
     "migrate": "node scripts/migrate.js",
     "backup:verify": "node scripts/backup-verify.js",
-    "schema:snapshot": "node scripts/schema-snapshot.js"
+    "schema:snapshot": "node scripts/schema-snapshot.js",
+    "rehearse:giveaway": "node scripts/rehearsal-giveaway.js",
+    "test:accessibility": "node scripts/browser-accessibility.js",
+    "test:arabic-rtl": "node scripts/browser-arabic-rtl.js"
   },
   "dependencies": {
     "@sentry/node": "^10.68.0",
@@ -28,10 +31,11 @@
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.3.0",
     "pg": "^8.11.5",
-    "stripe": "^22.5.0",
-    "uuid": "^9.0.1"
+    "stripe": "^22.5.0"
   },
   "devDependencies": {
+    "axe-core": "4.10.2",
+    "playwright-core": "1.55.0",
     "supertest": "^7.2.2"
   },
   "engines": {

@@ -12,7 +12,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const Stripe = require('stripe');
 const { api, pool, ensureInit, signIn, nextTestIp, TEST_ORIGIN, uniqueEmail, publishGiveaway, seedGiveaway, FABRICATED_PRIZE, closePool, markDrawn } = require('../testHelpers');
@@ -62,7 +62,7 @@ after(async () => {
 });
 
 async function createAccount(tag, { admin = false, hostStatus = 'approved' } = {}) {
-  const id = uuid();
+  const id = randomUUID();
   const email = uniqueEmail(`csrf-${tag}`);
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status, age_attestation_status, age_attestation_version)
@@ -362,7 +362,7 @@ test('the claim fragment workflow still works, with no session and no token in a
       closesAt: new Date(Date.now() - 86400000),
     });
     createdGiveawayIds.push(giveawayId);
-    const entryId = uuid();
+    const entryId = randomUUID();
     await pool.query(
       'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)',
       [entryId, giveawayId, winner.id]

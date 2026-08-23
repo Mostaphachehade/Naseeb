@@ -6,7 +6,7 @@
 // sure that lock is actually doing its job, not just present in the code.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { api, pool, ensureInit, signIn, anon, nextTestIp, seedGiveaway, closePool } = require('../testHelpers');
 
@@ -42,7 +42,7 @@ after(async () => {
 // Inserted directly rather than via POST /api/auth/signup so tests don't
 // depend on (or have to fake) the email verification flow.
 async function createVerifiedUser(tag) {
-  const id = uuid();
+  const id = randomUUID();
   const email = `test-race-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   const password = 'correcthorse123';
   await pool.query(
@@ -123,7 +123,7 @@ test('two simultaneous draws only let one succeed', async () => {
   const entrant = await createVerifiedUser('draw-entrant');
   await pool.query(
     `INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)`,
-    [uuid(), giveawayId, entrant.id]
+    [randomUUID(), giveawayId, entrant.id]
   );
 
   const [resA, resB] = await Promise.all([
@@ -152,7 +152,7 @@ test('only the host can draw a winner', async () => {
   const entrant = await createVerifiedUser('authz-entrant');
   await pool.query(
     `INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)`,
-    [uuid(), giveawayId, entrant.id]
+    [randomUUID(), giveawayId, entrant.id]
   );
 
   const res = await stranger.post(`/api/giveaways/${giveawayId}/draw`)

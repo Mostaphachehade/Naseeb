@@ -154,7 +154,7 @@
       if (!NaseebDom.setMediaSrc(media, ad.image_url)) return;
 
       mount(document.getElementById('ad-banner-slot'), el('div', { class: 'ad-banner-wrap' }, [
-        el('span', { class: 'ad-banner-label', text: 'Advertisement' }),
+        el('span', { class: 'ad-banner-label', text: t('home.advertisement') }),
         el('a', {
           class: 'ad-banner',
           href: '/api/ads/' + encodeURIComponent(ad.id) + '/click',

@@ -1,6 +1,5 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { api, pool, ensureInit, signIn, anon, nextTestIp, seedGiveaway, markDrawn, closePool } = require('../testHelpers');
@@ -33,7 +32,7 @@ after(async () => {
 });
 
 async function createVerifiedUser(tag) {
-  const id = uuid();
+  const id = crypto.randomUUID();
   const email = `test-delivery-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   const password = 'correcthorse123';
   await pool.query(
@@ -57,7 +56,7 @@ async function createDrawnGiveaway(hostId, winnerId) {
     closesAt: new Date(Date.now() - 60 * 1000),
   });
   createdGiveawayIds.push(id);
-  const entryId = uuid();
+  const entryId = crypto.randomUUID();
   await pool.query(
     `INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, 1)`,
     [entryId, id, winnerId]

@@ -18,7 +18,7 @@
   // to the account it is about, which makes it the shortest path from one user's
   // keyboard to another user's screen anywhere in the product — text node.
   function reasonNode(reason) {
-    return reason ? el('p', { class: 'u-3a46e857', text: 'Reason given: ' + reason }) : null;
+    return reason ? el('p', { class: 'u-3a46e857', text: t('create.reasonGiven') + reason }) : null;
   }
 
   async function gateOnHostAccess() {
@@ -40,7 +40,7 @@
         'Verify your email first',
         el('p', {
           class: 'u-a2aae0fb',
-          text: 'We need a working email address on your account before you can host. Check your inbox, or resend the verification email from the banner above.',
+          text: t('create.weNeedAWorking'),
         })
       ));
       return false;
@@ -51,39 +51,39 @@
         'Hosting is a closed beta',
         el('p', {
           class: 'u-a2aae0fb',
-          text: 'Host access is granted one account at a time. Apply, and an administrator will review it.',
+          text: t('create.hostAccessIsGranted'),
         }),
-        el('a', { class: 'btn primary', href: '/host-apply.html', text: 'Apply to host' })
+        el('a', { class: 'btn primary', href: '/host-apply.html', text: t('create.applyToHost') })
       ),
       pending: () => accessPanel_(
         'Your application is with an administrator',
         el('p', {
           class: 'u-a2aae0fb',
-          text: 'You cannot publish a giveaway while an application is open. We have not set a review deadline, so we are not promising one.',
+          text: t('create.youCannotPublishA'),
         }),
-        el('a', { class: 'btn ghost u-e21d2b9e', href: '/dashboard.html', text: 'Back to my giveaways' })
+        el('a', { class: 'btn ghost u-e21d2b9e', href: '/dashboard.html', text: t('create.backToMyGiveaways') })
       ),
       rejected: () => accessPanel_(
         'This account has not been approved to host',
         [
           el('p', {
             class: 'u-a2aae0fb',
-            text: 'An administrator reviewed your application and did not approve it.',
+            text: t('create.anAdministratorReviewedYour'),
           }),
           reasonNode(state.status_reason),
         ],
-        el('a', { class: 'btn primary', href: '/host-apply.html', text: 'Apply again' })
+        el('a', { class: 'btn primary', href: '/host-apply.html', text: t('create.applyAgain') })
       ),
       suspended: () => accessPanel_(
         'Hosting access is suspended',
         [
           el('p', {
             class: 'u-a2aae0fb',
-            text: 'Your existing giveaways, entries and records are unchanged. What has stopped is publishing new giveaways and drawing winners.',
+            text: t('create.yourExistingGiveawaysEntries'),
           }),
           reasonNode(state.status_reason),
         ],
-        el('a', { class: 'btn ghost u-e21d2b9e', href: '/about.html#get-in-touch', text: 'Contact us' })
+        el('a', { class: 'btn ghost u-e21d2b9e', href: '/about.html#get-in-touch', text: t('create.contactUs') })
       ),
     };
     mount(accessPanel, (panels[state.host_status] || panels.not_requested)());
@@ -97,7 +97,7 @@
     if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
       cloudinaryConfig = config;
       document.getElementById('image-upload-row').classList.remove('is-hidden');
-      document.getElementById('image-url-hint').textContent = 'Upload a file above, or paste an image URL.';
+      document.getElementById('image-url-hint').textContent = t('create.uploadAFileAbove');
     }
   }).catch(() => {});
 
@@ -105,7 +105,7 @@
     const file = e.target.files[0];
     if (!file || !cloudinaryConfig) return;
     const statusEl = document.getElementById('upload-status');
-    statusEl.textContent = 'Uploading…';
+    statusEl.textContent = t('create.uploading');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
@@ -121,12 +121,12 @@
       // validator as a stored one before it becomes a src.
       const preview = document.getElementById('image-preview');
       if (!NaseebDom.setMediaSrc(preview, data.secure_url)) {
-        statusEl.textContent = 'Upload returned an image address we do not accept.';
+        statusEl.textContent = t('create.uploadReturnedAnImage');
         return;
       }
       document.getElementById('image_url').value = data.secure_url;
       preview.classList.remove('is-hidden');
-      statusEl.textContent = 'Uploaded.';
+      statusEl.textContent = t('create.uploaded');
     } catch (err) {
       statusEl.textContent = err.message;
     }
@@ -156,8 +156,13 @@
           prize_restrictions: document.getElementById('prize_restrictions').value || null,
           prize_expiry_date: document.getElementById('prize_expiry_date').value || null,
           // `entry_deadline` is deliberately NOT sent. It is a consequence of
-          // publication — exactly 30 days from the moment Naseeb approves the
+          // publication — one calendar month from the moment Naseeb approves the
           // campaign — not something a host chooses.
+          //
+          // This comment asserted the old day-count rule until the deadline test
+          // started reading page scripts. The code has enforced a calendar month
+          // for a while; a comment stating the superseded rule is how somebody
+          // later "corrects" the code back to it.
         }),
       });
       // Submitted, not published. Saying "your giveaway is live" here would be
@@ -165,7 +170,7 @@
       const form = document.getElementById('create-form');
       form.classList.add('is-hidden');
       const done = NaseebDom.el('div', { class: 'card narrow u-34caecf2' }, [
-        NaseebDom.el('h3', { text: 'Submitted for review' }),
+        NaseebDom.el('h3', { text: t('create.submittedForReview') }),
         NaseebDom.el('p', {
           text:
             g.next_step ||
@@ -173,8 +178,7 @@
         }),
         NaseebDom.el('p', {
           class: 'hint',
-          text:
-            'It is not visible to anyone yet, and nobody can enter it. Once approved it runs for 30 days, or until it reaches 100 eligible entries — whichever comes first.',
+          text: t('create.itIsNotVisible'),
         }),
       ]);
       form.insertAdjacentElement('afterend', done);

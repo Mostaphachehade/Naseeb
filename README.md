@@ -108,6 +108,23 @@ Already have a Postgres you'd rather use? Skip `test:db:start` and point
 `TEST_DATABASE_URL` at a scratch database of your own whose name contains
 `test`. CI does exactly this with an ephemeral `postgres:16` service container.
 
+Six CI jobs, not one. `npm test` is the suite that needs only a database; the
+other five drive a real browser or walk a whole journey, and each is a separate
+job so a failure names itself:
+
+| Job | Command | What it does |
+| --- | --- | --- |
+| `test` | `npm test` | Every `test/*.test.js`, including the pure ones — SEO metadata, i18n parity, server-error coverage, deadline integrity, database TLS posture |
+| `browser-security` | `npm run test:browser-security` | Hostile data in every field, in Chromium |
+| `operations` | `npm run test:operations` | The nine maintenance jobs |
+| `rehearsal` | `npm run test:rehearsal` | A giveaway from submission to delivery, 21 requirements |
+| `accessibility` | `npm run test:accessibility` | axe-core over 23 pages at two viewports |
+| `arabic-rtl` | `npm run test:arabic-rtl` | 23 pages × 2 languages × 2 viewports |
+
+The suites that drive a browser refuse to run against anything but the test
+database, twice over: `configureTestEnv()` and a second guard that rejects a
+Neon host outright.
+
 ## Project structure
 
 ```
@@ -718,6 +735,70 @@ none should be treated as satisfied by a passing test suite.
    deployed, and nothing should be until the gates above and the counsel review in
    `docs/UAE_COUNSEL_REVIEW.md` are resolved.
 
+## Language, Arabic and RTL
+
+Every page renders in English and Arabic: markup, page scripts, `<title>`, meta
+descriptions, and the sentences the server sends back when it refuses something.
+Direction comes from `document.documentElement.dir`, and everything that depends
+on it uses CSS logical properties, which flip on their own.
+
+**The Arabic is machine-drafted and has had no native review.** Every dictionary
+file says so in its own header. It is committed so it can be reviewed, not
+because it is finished. The Arabic Terms and Privacy Policy translate documents
+that are themselves unapproved drafts — a draft of a draft.
+
+Three things are worth knowing before touching it.
+
+**A key is not a translation.** `applyI18n()` overwrites `textContent` from the
+dictionary, so the text sitting in the HTML is a fallback for the moment before
+the script runs and nothing else. Editing a page's copy without editing the
+dictionary changes nothing a visitor sees. `i18n4` fails when the two disagree.
+
+**Text with no `data-i18n` is invisible to every parity test.** All of them
+compare dictionary against dictionary, and all of them passed while fifteen
+Arabic pages rendered English paragraphs. `i18n8` walks the markup and fails on
+any visible text no dictionary can reach; `i18n10` fails when a page uses a key
+from a dictionary it does not load, because `t()` returns the key itself and the
+literal key renders on screen.
+
+**Values get `isolate()`, copy does not.** An address, a price or a display name
+dropped into an Arabic sentence is a run of the other direction, and the bidi
+algorithm moves the surrounding punctuation to the wrong end of it. Worse, a
+value carrying its own override character reorders everything after it, and
+display names are attacker-controlled.
+
+```bash
+npm run test:arabic-rtl        # 92 page/language/viewport combinations, needs a database
+```
+
+See `docs/ARABIC_RTL.md`, including §2 — what this does not establish — and §3,
+the list of entries that are deliberately identical in both languages.
+
+## Search engines
+
+**The site is not indexable.** Every response carries
+`X-Robots-Tag: noindex, nofollow, noarchive` while `DEPLOYMENT_STATE` is anything
+but `public_launch`, read from `isPublicLaunch()` so it cannot drift from what
+the site tells its visitors.
+
+`robots.txt` and `sitemap.xml` are generated per request from that same state,
+not committed as files — whether a site should be crawled is a property of the
+deployment, and a file cannot know which deployment it is in.
+
+Pre-launch, `robots.txt` **allows** crawling. This looks wrong and is not:
+`Disallow` means "do not fetch", not "do not index", and a blocked URL can still
+be indexed from an external link and then cannot be removed, because removal
+requires reading the `noindex` the crawler is forbidden to fetch. Crawling is
+allowed so the refusal is read. The sitemap is what is withheld.
+
+Structured data says as little as possible. A homepage `Organization` node
+asserting a UAE service area was removed: Naseeb has no company, no trade licence
+and no VAT registration, and structured data is the one place a claim can be made
+that nobody reviewing the rendered page will see. `seo6` keeps it out, along with
+`LocalBusiness`, `aggregateRating`, `address` and `taxID`.
+
+See `docs/SEO.md`.
+
 ## Legal and compliance status
 
 **This platform has not been reviewed or approved by qualified UAE legal counsel, and is
@@ -786,6 +867,16 @@ just set the same environment variables and run `npm start`.
       compliance status" above
 - [x] Revocable server-side sessions in HttpOnly cookies, with CSRF protection
 - [x] Enforced Content Security Policy with no inline script or style anywhere
+- [x] Arabic and RTL across all 23 pages, including server refusals — but the
+      Arabic itself has had **no native review** (`docs/ARABIC_RTL.md` §2)
+- [x] SEO metadata prepared behind the deployment-state switch, with the site
+      still `noindex` (`docs/SEO.md`)
+- [ ] A screen-reader pass and a manual keyboard walkthrough. **Neither has ever
+      happened**, and both are prerequisites for public launch
+      (`docs/ACCESSIBILITY.md`)
+- [ ] `sslmode=verify-full` pinned in the deployed `DATABASE_URL`, before `pg`
+      reaches v9 and certificate verification switches itself off
+      (`test/database-tls-posture.test.js`)
 - [ ] A scheduled job that deletes expired sessions — nothing sweeps them today
       (`docs/SESSIONS.md` §9b)
 - [ ] A payment processor for hosting, *if* hosting ever stops being free. It is free

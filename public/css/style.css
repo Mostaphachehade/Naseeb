@@ -5,6 +5,10 @@
   --ink-deep: #072925;
   --gold: #C9A15A;
   --gold-bright: #E4C078;
+  /* The same gold, taken dark enough to be readable as small text on --paper.
+   * Not a replacement for --gold: as a border or an accent on the dark hero the
+   * brand gold is right, and only text needs this. */
+  --gold-deep: #7F5E28;
   --paper: #F7F3EA;
   --mint: #DCEEE7;
   --text: #17231F;
@@ -41,6 +45,32 @@ body {
 }
 .skip-link:focus {
   top: 12px;
+}
+
+/* A label that is announced but not drawn.
+ *
+ * For controls whose meaning is obvious to a sighted user from context — an
+ * admin search box sitting directly above the table it filters — but which
+ * would otherwise reach a screen reader as "edit text, blank". A placeholder is
+ * NOT a label: it is not exposed as an accessible name reliably, and it
+ * disappears the moment somebody types, which is exactly when a person who
+ * cannot see the field most needs to know what it is (WCAG 3.3.2, 4.1.2).
+ *
+ * clip-path plus a 1px box rather than display:none or visibility:hidden —
+ * both of those remove the element from the accessibility tree as well, which
+ * would defeat the entire purpose. white-space:nowrap stops a long label being
+ * wrapped into a tall invisible column that can still be scrolled to.
+ */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 :focus-visible {
@@ -238,6 +268,33 @@ nav.site-nav a:hover, nav.site-nav button:hover { border-color: rgba(220,238,231
 .btn.primary:hover { background: var(--gold-bright); }
 .btn.ghost { border-color: rgba(247,243,234,0.4); }
 .btn.ghost:hover { border-color: var(--paper); }
+
+/* A ghost button standing on a light surface.
+ *
+ * `.btn` sets `color: var(--paper)`, which is right on the dark hero and wrong
+ * everywhere else: paper on white measures 1.11:1, so the label is very nearly
+ * invisible. The advertise page's "Send inquiry" — its primary action — was
+ * shipped that way.
+ *
+ * The variant already existed as an extracted utility applied to exactly one
+ * button on about.html, which is how the others were missed. Naming it means
+ * the next ghost button on a light background can be given the right class
+ * rather than the right hash.
+ */
+.btn.ghost.on-light {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.btn.ghost.on-light:hover { border-color: var(--ink-deep); }
+
+/* Softened body copy ON A DARK SURFACE.
+ *
+ * `--text-soft` is a dark green-grey meant for light pages. Inside the hero it
+ * measures 2.2:1 against `--ink` — the inline-style extraction moved it there
+ * mechanically without noticing the background had changed. This is the same
+ * intent expressed the other way round: light, slightly recessive, and 8.9:1.
+ */
+.on-dark-soft { color: rgba(247, 243, 234, 0.82); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Perforated ticket-stub decoration behind the hero — hidden once the
@@ -440,7 +497,17 @@ main { padding: 56px 0 96px; }
 .card.narrow { margin: 0 auto; }
 label { display: block; font-weight: 600; font-size: 0.88rem; margin: 18px 0 6px; color: var(--ink-deep); }
 label:first-of-type { margin-top: 0; }
-input, textarea {
+/* select is here, and was not.
+ *
+ * It was styled by nothing at all, so it took the browser default: sized to its
+ * widest option rather than to its container. On create.html at 390px that made
+ * it 397px wide and pushed the whole page into horizontal scrolling — a WCAG
+ * 1.4.10 reflow failure in English and Arabic alike, found by the RTL sweep
+ * rather than by looking at the form.
+ *
+ * It also just looked wrong: the one control on the page that did not match the
+ * fields above and below it. */
+input, select, textarea {
   width: 100%;
   padding: 12px 14px;
   border-radius: 8px;
@@ -450,11 +517,28 @@ input, textarea {
   background: var(--paper);
   color: var(--text);
 }
-input:focus, textarea:focus {
+input:focus, select:focus, textarea:focus {
   outline: 3px solid var(--gold-bright);
   outline-offset: 1px;
   border-color: var(--gold);
 }
+/* Placeholder text is text, and 1.4.3 applies to it.
+ *
+ * Left unstyled, this inherits the browser default — Chrome uses #757575, which
+ * against `--paper` measures 4.16:1 and fails the 4.5:1 needed at this size.
+ * Every placeholder on the site was below the line.
+ *
+ * axe does not evaluate ::placeholder, so nothing in the automated sweep would
+ * ever have reported this. It is a good illustration of why the green job in
+ * docs/ACCESSIBILITY.md is described as a floor: this was found by measuring
+ * the rendered page, not by the tool.
+ *
+ * `--text-soft` is 6.38:1 on paper and already the palette's recessive tone, so
+ * placeholders stay visibly secondary to typed input (`--text`) without being
+ * unreadable.
+ */
+input::placeholder, textarea::placeholder { color: var(--text-soft); opacity: 1; }
+
 textarea { resize: vertical; min-height: 90px; }
 .hint { color: var(--text-soft); font-size: 0.82rem; margin-top: 4px; }
 form .btn { margin-top: 24px; width: 100%; justify-content: center; }
@@ -537,7 +621,17 @@ form .btn { margin-top: 24px; width: 100%; justify-content: center; }
   font-size: 0.74rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--gold);
+  /* `--gold` on `--paper` is 2.17:1, and at 11.8px this is small text, so it
+   * needs 4.5:1. This is the LAUNCHING SOON badge — the single clearest
+   * statement the homepage makes about the platform's state right now — and it
+   * was the hardest thing on the page to read.
+   *
+   * `--gold-deep` rather than a change to `--gold`: the brand gold is correct
+   * as a border, a rule and an accent on the dark hero, where contrast is not
+   * the question. Only gold used as small text on a light surface needs to be
+   * darker, so only that case changes. 5.4:1.
+   */
+  color: var(--gold-deep);
   font-weight: 600;
   margin-bottom: 10px;
 }
@@ -723,7 +817,9 @@ footer.site a:hover { color: var(--gold-bright); }
 .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid rgba(11,59,54,0.1); }
 .admin-table { width: 100%; border-collapse: collapse; background: #fff; }
 .admin-table th {
-  text-align: left;
+  /* Logical, not physical: an Arabic admin table aligns its headers to the
+     right on its own, with no [dir="rtl"] override needed to undo this one. */
+  text-align: start;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -756,7 +852,7 @@ footer.site a:hover { color: var(--gold-bright); }
 }
 .pill-badge.company { background: var(--gold-bright); }
 
-.verified-badge { vertical-align: -2px; margin-left: 4px; }
+.verified-badge { vertical-align: -2px; margin-inline-start: 4px; }
 
 /* ---------- Ad banner ---------- */
 .ad-banner-wrap { margin-bottom: 40px; }
@@ -853,7 +949,7 @@ footer.site a:hover { color: var(--gold-bright); }
 .promo-notch.l { left: -7px; }
 .promo-notch.r { right: -7px; }
 .promo-perf { position: absolute; top: 84px; left: 12px; right: 12px; border-top: 1.5px dashed rgba(11,59,54,0.22); }
-.promo-ticket-body { padding: 14px 14px 16px; text-align: left; }
+.promo-ticket-body { padding: 14px 14px 16px; text-align: start; }
 .promo-ticket-label { font-family: 'IBM Plex Mono', monospace; font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); opacity: 0.6; }
 .promo-ticket-title { font-family: 'Fraunces', serif; font-size: 0.94rem; line-height: 1.25; color: var(--ink-deep); margin: 4px 0 8px; }
 .promo-ticket-value { display: inline-flex; align-items: center; gap: 5px; background: var(--gold); color: var(--ink-deep); font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 0.62rem; padding: 4px 9px; border-radius: 100px; }
@@ -920,4 +1016,5 @@ footer.site a:hover { color: var(--gold-bright); }
 [dir="rtl"] .skip-link { left: auto; right: 12px; }
 [dir="rtl"] .hero::after { right: auto; left: -60px; transform: translateY(-50%) rotate(-8deg); }
 [dir="rtl"] .hero-promo-frame { right: auto; left: 20px; }
-[dir="rtl"] .verified-badge { margin-left: 0; margin-right: 4px; }
+/* .verified-badge now uses margin-inline-start, which flips on its own. The
+   override that used to live here was deleted rather than left as a no-op. */

@@ -20,7 +20,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 
 const { api, pool, ensureInit, closePool } = require('../testHelpers');
 const {
@@ -358,7 +358,7 @@ test('the server link validator refuses hostile destinations', () => {
 test('the ad click-through refuses to redirect to a hostile stored destination', async () => {
   // A row written before this validation existed, inserted directly so the
   // create-time check cannot mask the read-time one.
-  const id = uuid();
+  const id = randomUUID();
   createdAdIds.push(id);
   await pool.query(
     `INSERT INTO ads (id, business_name, image_url, target_url, media_type, active)
@@ -371,7 +371,7 @@ test('the ad click-through refuses to redirect to a hostile stored destination',
   assert.equal(res.status, 400);
   assert.ok(!res.headers.location, 'no Location header may be sent for a rejected destination');
 
-  const safeId = uuid();
+  const safeId = randomUUID();
   createdAdIds.push(safeId);
   await pool.query(
     `INSERT INTO ads (id, business_name, image_url, target_url, media_type, active)

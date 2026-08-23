@@ -43,8 +43,18 @@ const app = require(path.join(ROOT, 'server', 'app'));
 const { pool, init } = require(path.join(ROOT, 'server', 'db'));
 const { encryptDeliveryDetails } = require(path.join(ROOT, 'server', 'lib', 'claimCrypto'));
 
-const APP_PORT = 45021;
-const PROXY_PORT = 45022;
+// Ephemeral by default, and assigned once the sockets are actually listening.
+//
+// These used to be fixed at 45021 and 45022, which failed in CI with
+// EADDRINUSE: the job runs this harness twice in a row — once inverted as the
+// self-test, then for real — and the second run could reach `listen` before the
+// first process had finished releasing the port. Intermittent, and the kind of
+// red that gets re-run rather than read.
+//
+// Port 0 asks the OS for a free port, so two runs cannot collide however close
+// together they start. Override only if something outside needs a known port.
+let APP_PORT = Number(process.env.HOSTILE_APP_PORT || 0);
+let PROXY_PORT = Number(process.env.HOSTILE_PROXY_PORT || 0);
 // Resolved rather than hard-coded, so the same command works on a developer's
 // machine and on a CI runner that installed a pinned Playwright Chromium.
 // headless_shell is preferred over the full chrome binary: --dump-dom on full
@@ -608,7 +618,19 @@ async function unseed() {
 
   const server = app.listen(APP_PORT);
   const proxy = http.createServer(proxyRequest).listen(PROXY_PORT);
-  await new Promise((r) => setTimeout(r, 300));
+
+  // Wait for `listening` rather than sleeping 300ms and hoping. The sleep was
+  // doing two jobs badly: covering the bind, and covering the port collision
+  // that the fixed ports made possible. With ephemeral ports the second job
+  // disappears, and the first is better done by waiting for the actual event.
+  await Promise.all([server, proxy].map((s) => new Promise((resolve, reject) => {
+    if (s.listening) return resolve();
+    s.once('listening', resolve);
+    s.once('error', reject);
+    return undefined;
+  })));
+  APP_PORT = server.address().port;
+  PROXY_PORT = proxy.address().port;
 
   async function cookieFor(email) {
     const agent = request.agent(app);

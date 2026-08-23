@@ -6,6 +6,11 @@
   // holder typed, text an administrator wrote back, and an email address.
   const ready = requireSession('/account.html');
 
+  // Dates follow the page's language, not the operating system's:
+  // toLocaleDateString(undefined) asks the browser and gets the OS locale, which
+  // put an English date in the middle of an Arabic line.
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
+
   const content = document.getElementById('account-content');
   const dataContent = document.getElementById('data-content');
   const policyState = document.getElementById('policy-state');
@@ -37,7 +42,7 @@
     const save = el('button', {
       class: 'btn primary u-8a359a76',
       type: 'button',
-      text: 'Save name',
+      text: t('account.saveName'),
       on: {
         click: async (e) => {
           const btn = e.currentTarget;
@@ -58,20 +63,24 @@
       },
     });
 
-    return card('Your details', [
-      el('label', { htmlFor: 'account-name', text: 'Display name' }),
+    return card(t('account.yourDetails'), [
+      el('label', { htmlFor: 'account-name', text: t('account.displayName') }),
       nameInput,
-      el('p', { class: 'hint', text: 'This is the name shown beside your entries and on the winners page.' }),
+      el('p', { class: 'hint', text: t('account.displayNameHint') }),
       save,
       note,
       el('p', { class: 'u-680b5a65' }, [
-        el('strong', { text: 'Email: ' }),
-        state.account.email,
-        state.account.email_verified ? ' (verified)' : ' (not verified)',
+        el('strong', { text: t('account.emailLabel') }),
+        // An address is a Latin run inside an Arabic line; without isolation the
+        // trailing punctuation ends up at the wrong end of it.
+        isolate(state.account.email),
+        state.account.email_verified ? t('account.verifiedSuffix') : t('account.notVerifiedSuffix'),
       ]),
       el('p', {
         class: 'u-a2aae0fb',
-        text: `Account created ${new Date(state.account.created_at).toLocaleDateString()}.`,
+        text: t('account.accountCreated', {
+          when: new Date(state.account.created_at).toLocaleDateString(locale),
+        }),
       }),
     ]);
   }
@@ -81,30 +90,47 @@
   function eligibilityCard() {
     const e = state.eligibility;
     if (!e.needs_attestation) {
-      return card('Eligibility', [
-        el('p', { text: `You confirmed you are 18 or older on ${new Date(e.attested_at).toLocaleDateString()}.` }),
-        el('p', { class: 'hint', text: e.limitation }),
+      return card(t('account.eligibility'), [
+        el('p', {
+          text: t('account.youConfirmedOn', {
+            when: new Date(e.attested_at).toLocaleDateString(locale),
+          }),
+        }),
+        el('p', { class: 'hint', attrs: { 'data-lang-exempt': 'attestation-wording' }, text: e.limitation }),
       ]);
     }
 
     const box = el('input', { id: 'age-confirm', type: 'checkbox' });
     const note = feedback();
 
-    return card('Eligibility', [
-      el('p', {
-        text: 'Your account was created before we started asking this, so we have no answer on file. Please confirm before entering a giveaway or hosting one.',
-      }),
-      el('label', { class: 'u-age-attest', htmlFor: 'age-confirm' }, [box, el('span', { text: e.wording })]),
-      el('p', { class: 'hint', text: e.limitation }),
+    return card(t('account.eligibility'), [
+      el('p', { text: t('account.createdBeforeAttestation') }),
+      // The declaration itself stays in English, and is marked as deliberately
+      // so rather than left to look like an oversight.
+      //
+      // server/lib/eligibility.js holds the exact sentence and records which
+      // VERSION of it a person agreed to, precisely so that the words read and
+      // the words recorded cannot drift apart. Rendering an Arabic sentence
+      // while recording the English version would break that on purpose: the
+      // audit trail would say somebody agreed to a sentence they never saw.
+      //
+      // An Arabic declaration needs its own version identifier and a decision on
+      // which language governs — a counsel question, recorded as B16/B19 in
+      // docs/UAE_COUNSEL_REVIEW.md — not a translation.
+      el('label', { class: 'u-age-attest', htmlFor: 'age-confirm', attrs: { 'data-lang-exempt': 'attestation-wording' } }, [
+        box,
+        el('span', { text: e.wording }),
+      ]),
+      el('p', { class: 'hint', attrs: { 'data-lang-exempt': 'attestation-wording' }, text: e.limitation }),
       el('button', {
         class: 'btn primary u-8a359a76',
         type: 'button',
-        text: 'Confirm',
+        text: t('account.confirm'),
         on: {
           click: async (evt) => {
             const btn = evt.currentTarget;
             if (!box.checked) {
-              show(note, 'Tick the box to confirm.', false);
+              show(note, t('account.tickTheBox'), false);
               return;
             }
             btn.disabled = true;
@@ -132,7 +158,7 @@
 
     if (state.pending_email_change) {
       const pending = state.pending_email_change;
-      return card('Change your email address', [
+      return card(t('account.changeYourEmailAddress'), [
         el('p', { class: 'js-mint-box' }, [
           'A change to ',
           el('strong', { text: pending.new_email }),
@@ -143,7 +169,7 @@
         el('button', {
           class: 'btn ghost u-e21d2b9e u-8a359a76',
           type: 'button',
-          text: 'Cancel this change',
+          text: t('account.cancelThisChange'),
           on: {
             click: async (e) => {
               e.currentTarget.disabled = true;
@@ -163,19 +189,19 @@
     const newEmail = el('input', { id: 'new-email', type: 'email' });
     const password = el('input', { id: 'email-password', type: 'password', autocomplete: 'current-password' });
 
-    return card('Change your email address', [
-      el('label', { htmlFor: 'new-email', text: 'New email address' }),
+    return card(t('account.changeYourEmailAddress'), [
+      el('label', { htmlFor: 'new-email', text: t('account.newEmailAddress') }),
       newEmail,
-      el('label', { htmlFor: 'email-password', text: 'Your current password' }),
+      el('label', { htmlFor: 'email-password', text: t('account.yourCurrentPassword') }),
       password,
       el('p', {
         class: 'hint',
-        text: 'Your address does not change until you confirm it from the new inbox. We will tell your current address once it does, and you will be signed out everywhere at that point. If the confirmation email does not arrive, we keep retrying — each attempt sends a new link and stops the previous one working, so use the most recent email.',
+        text: t('account.yourAddressDoesNot'),
       }),
       el('button', {
         class: 'btn primary u-8a359a76',
         type: 'button',
-        text: 'Send confirmation',
+        text: t('account.sendConfirmation'),
         on: {
           click: async (e) => {
             const btn = e.currentTarget;
@@ -203,12 +229,12 @@
 
   function sessionsCard() {
     const note = feedback();
-    return card('Signed-in devices', [
-      el('p', { text: 'Sign out everywhere, including here. Use this if you think somebody else has access.' }),
+    return card(t('account.signedInDevices'), [
+      el('p', { text: t('account.signOutEverywhereIncluding') }),
       el('button', {
         class: 'btn ghost u-e21d2b9e u-8a359a76',
         type: 'button',
-        text: 'Sign out everywhere',
+        text: t('account.signOutEverywhere'),
         on: {
           click: async (e) => {
             e.currentTarget.disabled = true;
@@ -232,18 +258,18 @@
     const password = el('input', { id: 'export-password', type: 'password', autocomplete: 'current-password' });
     const note = feedback();
 
-    return card('Download your data', [
-      el('p', { text: 'A JSON file with your account, your entries, giveaways you host, your applications, your claims and your requests.' }),
+    return card(t('account.downloadYourData'), [
+      el('p', { text: t('account.aJsonFileWith') }),
       el('p', {
         class: 'hint',
-        text: 'It does not include passwords, session or login links, other people’s data, internal notes, or the technical signals used to spot entry abuse. Delivery details you gave for a prize stay in the claim itself.',
+        text: t('account.itDoesNotInclude'),
       }),
-      el('label', { htmlFor: 'export-password', text: 'Your current password' }),
+      el('label', { htmlFor: 'export-password', text: t('account.yourCurrentPassword') }),
       password,
       el('button', {
         class: 'btn primary u-8a359a76',
         type: 'button',
-        text: 'Download',
+        text: t('account.download'),
         on: {
           click: async (e) => {
             const btn = e.currentTarget;
@@ -284,17 +310,20 @@
 
   // ---- privacy requests ----------------------------------------------------
 
+  // Keys, resolved at render time. A map of finished sentences built at module
+  // scope would be evaluated before applyI18n() has run and would freeze the
+  // page in whatever language loaded first.
   const REQUEST_LABELS = {
-    access: 'Ask for a copy of my data',
-    correction: 'Ask for something to be corrected',
-    deletion: 'Ask for my data to be deleted',
-    objection: 'Object to how something is used',
+    access: 'account.requestAccess',
+    correction: 'account.requestCorrection',
+    deletion: 'account.requestDeletion',
+    objection: 'account.requestObjection',
   };
 
   function requestsCard() {
     const type = el('select', { id: 'request-type' });
     Object.keys(REQUEST_LABELS).forEach((key) => {
-      type.appendChild(el('option', { value: key, text: REQUEST_LABELS[key] }));
+      type.appendChild(el('option', { value: key, text: t(REQUEST_LABELS[key]) }));
     });
     const message = el('textarea', { id: 'request-message', maxLength: 4000, rows: 4 });
     const note = feedback();
@@ -303,10 +332,18 @@
       el('div', { class: 'u-request-row' }, [
         el('p', { class: 'u-1da9facb' }, [
           el('strong', { text: r.reference }),
-          ` · ${REQUEST_LABELS[r.type] || r.type} · ${r.status.replace(/_/g, ' ')}`,
+          // The status is the server's own machine value, shown as-is. Inventing
+          // a translation namespace for a set this file does not define would be
+          // a dictionary nobody maintains against a list nobody enumerated.
+          ` · ${REQUEST_LABELS[r.type] ? t(REQUEST_LABELS[r.type]) : r.type} · ${r.status.replace(/_/g, ' ')}`,
         ]),
-        el('p', { class: 'u-a2aae0fb', text: `Submitted ${new Date(r.submitted_at).toLocaleDateString()}` }),
-        r.your_message ? el('p', { class: 'u-a2aae0fb', text: `You wrote: ${r.your_message}` }) : null,
+        el('p', {
+          class: 'u-a2aae0fb',
+          text: t('account.submittedOn', { when: new Date(r.submitted_at).toLocaleDateString(locale) }),
+        }),
+        r.your_message
+          ? el('p', { class: 'u-a2aae0fb', text: t('account.youWrote', { message: isolate(r.your_message) }) })
+          : null,
         // The outcome sentence the server chose from its allowlist. Never an
         // administrator's working notes.
         r.outcome ? el('p', { class: 'js-mint-box', text: r.outcome }) : null,
@@ -316,26 +353,26 @@
       ])
     );
 
-    return card('Ask us to do something', [
-      el('label', { htmlFor: 'request-type', text: 'What would you like?' }),
+    return card(t('account.askUsToDo'), [
+      el('label', { htmlFor: 'request-type', text: t('account.whatWouldYouLike') }),
       type,
-      el('label', { htmlFor: 'request-message', text: 'Anything you want to add (optional)' }),
+      el('label', { htmlFor: 'request-message', text: t('account.anythingYouWantTo') }),
       message,
       el('p', {
         class: 'hint',
-        text: 'A deletion request is a request for review by a person, not an instant erase. Some records — an open prize claim, a payment record, an audit trail — cannot simply be removed, and we will tell you which.',
+        text: t('account.aDeletionRequestIs'),
       }),
       // Said before the request is sent, not discovered afterwards. Somebody
       // asking to be deleted deserves to know today's answer is "not yet"
       // rather than finding out weeks later.
       el('p', {
         class: 'hint',
-        text: 'To be straight with you about deletion specifically: we have not finished deciding which records can be erased, which can be anonymised, and which we are obliged to keep. Until that is settled we will not carry out an erasure, and we will not close your request as done while nothing has been done. It stays open with us.',
+        text: t('account.toBeStraightWith'),
       }),
       el('button', {
         class: 'btn primary u-8a359a76',
         type: 'button',
-        text: 'Send request',
+        text: t('account.sendRequest'),
         on: {
           click: async (e) => {
             const btn = e.currentTarget;
@@ -357,7 +394,7 @@
       }),
       note,
       existing.length
-        ? el('div', { class: 'u-680b5a65' }, [el('p', { class: 'u-5bf9ad33', text: 'Your requests' }), existing])
+        ? el('div', { class: 'u-680b5a65' }, [el('p', { class: 'u-5bf9ad33', text: t('account.yourRequests') }), existing])
         : null,
       existing.length
         ? el('p', { class: 'hint', text: state.privacy_requests[0].timing_note })
@@ -370,11 +407,16 @@
   function renderPolicies() {
     const rows = Object.values(state.policies).map((p) =>
       el('p', { class: 'u-1da9facb' }, [
-        el('strong', { text: p.id === 'terms' ? 'Terms of Service' : 'Privacy Policy' }),
-        ` — ${p.status.toUpperCase()}, version ${p.version}. `,
-        p.acceptable
-          ? 'In force.'
-          : 'Not in force, and cannot be accepted. Nothing you do on this site records agreement to it.',
+        el('strong', { text: t(p.id === 'terms' ? 'footer.terms' : 'footer.privacy') }),
+        // The version identifier is isolated, not translated: it is the string
+        // that names the document, and a translated one names nothing.
+        t('account.policyStatusLine', {
+          status: t('policy.status.' + p.status) === 'policy.status.' + p.status
+            ? p.status.toUpperCase()
+            : t('policy.status.' + p.status),
+          version: isolate(p.version),
+        }),
+        p.acceptable ? t('account.policyInForce') : t('account.policyNotInForce'),
       ])
     );
 
@@ -382,7 +424,7 @@
       rows,
       el('p', {
         class: 'hint',
-        text: 'Both documents are drafts pending owner information and qualified UAE counsel review. There is no acceptance recorded against your account, and none will be until a document is genuinely in force.',
+        text: t('account.bothDocumentsAreDrafts'),
       }),
       (state.policies_outstanding || []).length
         ? el('p', { class: 'js-mint-box', text: `Outstanding: ${state.policies_outstanding.map((p) => `${p.policy_id} ${p.version}`).join(', ')}` })

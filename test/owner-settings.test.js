@@ -1,6 +1,6 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { api, pool, ensureInit, signIn, anon, nextTestIp, closePool } = require('../testHelpers');
 const { DEFAULTS } = require('../server/lib/settings');
@@ -24,7 +24,7 @@ after(async () => {
 });
 
 async function createVerifiedUser(tag, { admin = false } = {}) {
-  const id = uuid();
+  const id = randomUUID();
   const email = `test-owner-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   const password = 'correcthorse123';
   await pool.query(

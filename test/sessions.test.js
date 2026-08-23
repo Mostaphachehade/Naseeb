@@ -13,7 +13,6 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const request = require('supertest');
 const { api, pool, ensureInit, signIn, nextTestIp, TEST_ORIGIN, uniqueEmail, closePool } = require('../testHelpers');
@@ -40,7 +39,7 @@ after(async () => {
 });
 
 async function createAccount(tag, { admin = false, accountStatus = 'active' } = {}) {
-  const id = uuid();
+  const id = crypto.randomUUID();
   const email = uniqueEmail(`session-${tag}`);
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, account_status, age_attestation_status, age_attestation_version)

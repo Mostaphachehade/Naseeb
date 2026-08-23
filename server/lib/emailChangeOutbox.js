@@ -52,7 +52,6 @@
 // the original deadline, so an undeliverable change cannot be kept alive
 // indefinitely by the retry loop itself.
 const crypto = require('crypto');
-const { v4: uuid } = require('uuid');
 const { pool } = require('../db');
 const { sendEmail } = require('./email');
 const { emailChangeConfirmHtml, emailChangeNoticeHtml } = require('./emailTemplates');
@@ -115,7 +114,7 @@ async function recordEvent(client, notification, event, extra = {}) {
         actor_user_id, actor_role)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
-      uuid(),
+      crypto.randomUUID(),
       notification.id,
       notification.change_id,
       notification.user_id,
@@ -143,7 +142,7 @@ async function enqueue(client, { changeId, userId, kind }) {
   if (!Object.values(KINDS).includes(kind)) {
     throw new Error(`Unknown email-change notification kind: ${kind}`);
   }
-  const id = uuid();
+  const id = crypto.randomUUID();
   const idempotencyKey = `${changeId}:${kind}`;
 
   const inserted = await client.query(
@@ -465,7 +464,7 @@ function drainInBackground(options = {}) {
 
 // Safe to call from a scheduler, from an admin action, or from both at once.
 async function processDue({ limit = 10, appUrl, send, now = new Date(), workerId } = {}) {
-  const worker = workerId || `worker-${uuid()}`;
+  const worker = workerId || `worker-${crypto.randomUUID()}`;
   const summary = { claimed: 0, sent: 0, retry: 0, failed: 0, cancelled: 0 };
 
   let due;

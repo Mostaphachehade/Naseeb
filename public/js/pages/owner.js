@@ -1,3 +1,6 @@
+
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
+
   const ready = requireSession('/owner.html');
 
   // ---- Quick-host ----
@@ -13,7 +16,7 @@
     const file = e.target.files[0];
     if (!file || !qhCloudinaryConfig) return;
     const statusEl = document.getElementById('qh-upload-status');
-    statusEl.textContent = 'Uploading…';
+    statusEl.textContent = t('owner.uploading');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', qhCloudinaryConfig.cloudinary_upload_preset);
@@ -26,12 +29,12 @@
       if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
       const preview = document.getElementById('qh-image-preview');
       if (!NaseebDom.setMediaSrc(preview, data.secure_url)) {
-        statusEl.textContent = 'Upload returned an image address we do not accept.';
+        statusEl.textContent = t('owner.uploadReturnedAnImage');
         return;
       }
       document.getElementById('qh_image_url').value = data.secure_url;
       preview.classList.remove('is-hidden');
-      statusEl.textContent = 'Uploaded.';
+      statusEl.textContent = t('owner.uploaded');
     } catch (err) {
       statusEl.textContent = err.message;
     }
@@ -67,7 +70,7 @@
       e.target.reset();
       document.getElementById('qh-image-preview').classList.add('is-hidden');
       document.getElementById('qh_funded_by').value = 'Naseeb marketing budget';
-      successEl.textContent = 'Published — live on the homepage now.';
+      successEl.textContent = t('owner.publishedLiveOnThe');
       successEl.classList.add('show');
     } catch (err) {
       errorEl.textContent = err.message;
@@ -91,19 +94,19 @@
       ]));
       const bookingRows = r.recent_bookings.map((b) => el('tr', {}, [
         td(b.business_name),
-        td('AED ' + Number(b.amount_aed).toLocaleString(), 'mono'),
+        td(t('owner.aedAmount', { amount: Number(b.amount_aed).toLocaleString(locale) }), 'mono'),
         td(`${b.starts_at} – ${b.ends_at}`),
       ]));
 
       mount(content, [
         el('div', { class: 'admin-dashboard u-8b9688e6' }, [
-          statCard('AED ' + r.total_revenue_aed.toLocaleString(), 'Total ad revenue'),
-          statCard(r.total_bookings, 'Paid bookings'),
-          statCard('AED ' + r.revenue_last_30_days_aed.toLocaleString(), 'Last 30 days'),
+          statCard(t('owner.aedAmount', { amount: isolate(r.total_revenue_aed.toLocaleString(locale)) }), t('owner.statTotalAdRevenue')),
+          statCard(r.total_bookings, t('owner.statPaidBookings')),
+          statCard(t('owner.aedAmount', { amount: isolate(r.revenue_last_30_days_aed.toLocaleString(locale)) }), t('owner.statLast30Days')),
         ]),
-        dataTable(['Month', 'Bookings', 'Revenue'], monthRows, 'No revenue yet.', 'u-7dde5e56'),
-        el('p', { class: 'u-5bf9ad33', text: 'Recent bookings' }),
-        dataTable(['Business', 'Amount', 'Dates'], bookingRows, 'No bookings yet.'),
+        dataTable([t('owner.colMonth'), t('owner.colBookings'), t('owner.colRevenue')], monthRows, t('owner.noRevenueYet'), 'u-7dde5e56'),
+        el('p', { class: 'u-5bf9ad33', text: t('owner.recentBookings') }),
+        dataTable([t('owner.colBusiness'), t('owner.colAmount'), t('owner.colDates')], bookingRows, t('owner.noBookingsYet')),
       ]);
     } catch (err) {
       mount(content, emptyNode(err.message));
@@ -154,7 +157,7 @@
           maintenance_message: document.getElementById('s_maintenance_message').value,
         }),
       });
-      successEl.textContent = 'Saved.';
+      successEl.textContent = t('owner.saved');
       successEl.classList.add('show');
     } catch (err) {
       errorEl.textContent = err.message;

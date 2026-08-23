@@ -3,22 +3,37 @@
 // is a syntax error too — the browser check added in this phase is what
 // finally surfaced it.
 (async () => {
+  // Dates follow the page's language, not the operating system's:
+  // toLocaleDateString(undefined) asks the browser and gets the OS locale, which
+  // put an English date in the middle of an Arabic line.
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
   const id = new URLSearchParams(window.location.search).get('id');
   await sessionReady;
   const user = getUser();
   let currentGiveaway = null;
 
   async function load() {
+    // Without an id there is nothing to fetch. Asking anyway sent
+    // /api/giveaways/null, took a 404, and logged a console error for a request
+    // this page already knew could not succeed — noise that makes a real failure
+    // harder to see.
+    if (!id) {
+      document.getElementById('title').textContent = t('detail.notFound');
+      document.getElementById('description').textContent = t('errors.giveawayDoesNotExist');
+      return;
+    }
     try {
       const g = await api(`/giveaways/${id}`);
       currentGiveaway = g;
 
-      document.title = `${g.title} — Naseeb`;
+      // Isolated: a title in the other direction otherwise drags the dash and
+      // the brand to the wrong end of the tab label.
+      document.title = t('detail.documentTitle', { title: isolate(g.title) });
       document.getElementById('title').textContent = g.title;
       // The host's display name is host-controlled. It is a text node beside the
       // badge element, not a string concatenated into markup.
       mount(document.getElementById('hosted-by'), [
-        t('detail.hostedBy', { name: g.host_name }),
+        t('detail.hostedBy', { name: isolate(g.host_name) }),
         g.host_verified ? verifiedBadge() : null,
       ]);
       document.getElementById('description').textContent = g.description;
@@ -233,7 +248,7 @@
       deliveryEl.classList.remove('is-hidden');
       deliveryEl.replaceChildren();
       const heading = document.createElement('strong');
-      heading.textContent = 'Deliver to';
+      heading.textContent = t('detail.deliverTo');
       deliveryEl.appendChild(heading);
       [
         d.recipient_name,
@@ -253,7 +268,9 @@
       const consent = document.createElement('p');
       consent.className = 'hint';
       consent.classList.add('js-flush');
-      consent.textContent = `Shared with your consent on ${new Date(claim.delivery.consentedAt).toLocaleDateString()}. Deleted once delivery is confirmed and the retention period passes.`;
+      consent.textContent = t('detail.sharedWithConsentOn', {
+        when: new Date(claim.delivery.consentedAt).toLocaleDateString(locale),
+      });
       deliveryEl.appendChild(consent);
     } else {
       deliveryEl.classList.add('is-hidden');
@@ -275,7 +292,7 @@
     if (DISPUTABLE.includes(claim.status) && (claim.role === 'host' || claim.role === 'winner')) {
       const raise = document.createElement('button');
       raise.className = 'btn ghost';
-      raise.textContent = 'Report a problem';
+      raise.textContent = t('detail.reportAProblem');
       raise.onclick = () => {
         disputeBox.classList.toggle('is-hidden');
       };
@@ -304,7 +321,7 @@
     const reason = document.getElementById('claim-dispute-reason').value.trim();
     const errorEl = document.getElementById('claim-error');
     if (!reason) {
-      errorEl.textContent = 'Please describe the problem so an administrator can act on it.';
+      errorEl.textContent = t('detail.pleaseDescribeTheProblem');
       errorEl.classList.add('show');
       return;
     }

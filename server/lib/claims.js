@@ -3,7 +3,7 @@
 // Everything that decides who may do what reads the database on the request
 // that is doing it. Nothing here trusts a role, an id or a status supplied by
 // the browser.
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { pool } = require('../db');
 const {
   STATES,
@@ -97,7 +97,7 @@ async function lockClaimById(client, claimId) {
 // Created the moment a winner is drawn, along with the token that lets them
 // claim without signing in.
 async function createClaimForDraw(client, { giveawayId, winnerUserId, entryId }) {
-  const id = uuid();
+  const id = randomUUID();
   const { token, tokenHash, expiresAt } = issueToken();
 
   await client.query(

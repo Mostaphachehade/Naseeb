@@ -14,7 +14,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 
@@ -36,7 +36,7 @@ after(async () => {
 });
 
 async function createUser() {
-  const id = uuid();
+  const id = randomUUID();
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, email_verified, age_attestation_status, age_attestation_version)
      VALUES ($1, 'Policy Test User', $2, $3, TRUE, 'confirmed', '2026-08-eligibility-18')`,

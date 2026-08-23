@@ -20,7 +20,6 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
-const { v4: uuid } = require('uuid');
 const bcrypt = require('bcryptjs');
 const { api, pool, ensureInit, signIn, nextTestIp, TEST_ORIGIN, uniqueEmail, publishGiveaway, FABRICATED_PRIZE, closePool } = require('../testHelpers');
 
@@ -42,7 +41,7 @@ after(async () => {
 });
 
 async function createAccount(tag, { admin = false } = {}) {
-  const id = uuid();
+  const id = crypto.randomUUID();
   const email = uniqueEmail(`family-${tag}`);
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, age_attestation_status, age_attestation_version)
@@ -153,7 +152,7 @@ test('the database refuses a second successor for one predecessor', async () => 
     pool.query(
       `INSERT INTO sessions (id, family_id, user_id, token_hash, expires_at, rotated_from_session_id)
        VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 hour', $5)`,
-      [uuid(), scene.familyId, scene.account.id, 'rival-hash-1', predecessorId]
+      [crypto.randomUUID(), scene.familyId, scene.account.id, 'rival-hash-1', predecessorId]
     ),
     (err) => err.code === '23505',
     'a chain must not be able to branch'
@@ -167,7 +166,7 @@ test('the database refuses two live members in one family', async () => {
     pool.query(
       `INSERT INTO sessions (id, family_id, user_id, token_hash, expires_at)
        VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 hour')`,
-      [uuid(), scene.familyId, scene.account.id, 'rival-hash-2']
+      [crypto.randomUUID(), scene.familyId, scene.account.id, 'rival-hash-2']
     ),
     (err) => err.code === '23505',
     'exactly one member of a family may be live'

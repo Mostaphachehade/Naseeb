@@ -19,11 +19,54 @@ function read(relative) {
   return fs.readFileSync(path.join(ROOT, relative), 'utf8');
 }
 
+// A claim is made by what a page SAYS, and the markup between two words is not
+// something a reader sees. Scanning the raw file conflated the two, and both
+// directions of that were wrong.
+//
+// It missed claims: "compliant <em>by design</em>" is one sentence to a reader
+// and two fragments to a regex, so splitting a prohibited phrase across an
+// element hid it entirely.
+//
+// And it invented one. "This document has <strong>not</strong> been reviewed or
+// approved by qualified UAE legal counsel" is a disclaimer; the negation guard
+// looks back 60 characters to tell it apart from the claim. Wrapping the tail of
+// that sentence in a translation span pushed "not" past the window, and the
+// disclaimer was reported as the claim it disclaims. Widening the window is the
+// wrong repair — a window long enough to reach across markup is also long enough
+// to reach across a sentence boundary and excuse a real claim.
+//
+// So an HTML page is scanned as two strings. The first is its visible text, with
+// every tag replaced by a space, which is what a reader reads and is immune to
+// markup entirely. The second is the attribute values that reach a person
+// anyway — a meta description in a search result, a title on hover, alt text
+// read aloud — joined by a full stop so a negation in one value cannot excuse a
+// claim in the next.
+const READER_FACING_ATTRS = /\s(?:content|alt|title|aria-label|placeholder)="([^"]*)"/g;
+
+function visibleText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/g, ' ')
+    .replace(/<style[\s\S]*?<\/style>/g, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[ \t]+/g, ' ');
+}
+
+function readerFacingAttributes(html) {
+  return [...html.matchAll(READER_FACING_ATTRS)].map((m) => m[1]).join(' . ');
+}
+
 function publicPages() {
   return fs
     .readdirSync(path.join(ROOT, 'public'))
     .filter((name) => name.endsWith('.html'))
-    .map((name) => ({ name: `public/${name}`, text: read(`public/${name}`) }));
+    .flatMap((name) => {
+      const html = read(`public/${name}`);
+      return [
+        { name: `public/${name}`, text: visibleText(html) },
+        { name: `public/${name} (metadata)`, text: readerFacingAttributes(html) },
+      ];
+    });
 }
 
 // Everything a reader could take as a legal conclusion about our regulatory

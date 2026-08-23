@@ -201,14 +201,14 @@ function assertAcceptable(policyId, now = new Date(), registry = POLICIES) {
 async function recordAcceptance(client, { userId, policyId, now = new Date(), registry = POLICIES, source = 'web' }) {
   const policy = assertAcceptable(policyId, now, registry);
 
-  const { v4: uuid } = require('uuid');
+  const { randomUUID } = require('node:crypto');
   await client.query(
     `INSERT INTO policy_acceptances
        (id, user_id, policy_id, policy_version, policy_effective_date, acceptance_kind, source)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (user_id, policy_id, policy_version) DO NOTHING`,
     [
-      uuid(),
+      randomUUID(),
       userId,
       policy.id,
       policy.version,

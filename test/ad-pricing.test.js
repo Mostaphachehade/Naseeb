@@ -13,7 +13,7 @@ const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const Stripe = require('stripe');
 const { api, pool, ensureInit, signIn, anon, closePool } = require('../testHelpers');
 const { aedToFils, formatFils, getAdPriceQuote, PRICE_SETTING_KEY } = require('../server/lib/adPricing');
@@ -550,7 +550,7 @@ test('a currency that does not match the booking is refused', async () => {
 
 test('the owner panel rejects prices that cannot be charged exactly', async () => {
   const adminEmail = `test-pricing-admin-${Date.now()}@example.com`;
-  const adminId = uuid();
+  const adminId = randomUUID();
   const bcrypt = require('bcryptjs');
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, is_admin, email_verified, age_attestation_status, age_attestation_version)

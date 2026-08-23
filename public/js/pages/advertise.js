@@ -1,3 +1,5 @@
+  // Dates follow the page's language, not the operating system's.
+  const locale = getLang() === 'ar' ? 'ar-AE' : 'en-GB';
   let nextAvailableDate = null;
   // Fail closed: nothing shows a payment form until the server has said, in
   // this response, that checkout is on.
@@ -18,12 +20,12 @@
       checkoutEnabled = availability.checkoutEnabled === true;
       nextAvailableDate = availability.nextAvailableDate;
       applyQuote(availability);
-      const formatted = new Date(nextAvailableDate + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      const formatted = new Date(nextAvailableDate + 'T00:00:00').toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
       document.getElementById('next-available').textContent = formatted;
       document.getElementById('form-start-date').textContent = formatted;
     } catch (err) {
       checkoutEnabled = false;
-      document.getElementById('next-available').textContent = 'now';
+      document.getElementById('next-available').textContent = t('advertise.now');
     }
     applyCheckoutState();
   }
@@ -76,10 +78,10 @@
 
     notice.classList.remove('is-hidden');
     form.classList.add('is-hidden');
-    document.getElementById('pricing-badge').textContent = 'Booked by inquiry';
-    document.getElementById('inquiry-heading').textContent = 'Book the banner slot';
+    document.getElementById('pricing-badge').textContent = t('advertise.bookedByInquiry');
+    document.getElementById('inquiry-heading').textContent = t('advertise.bookTheBannerSlot');
     document.getElementById('inquiry-subheading').textContent =
-      "Tell us your dates and what you'd like to run. We'll confirm availability and invoice you directly.";
+      t('advertise.tellUsYourDates');
   }
 
   document.getElementById('weeks').addEventListener('change', renderTotal);
@@ -89,7 +91,7 @@
     if (config.cloudinary_cloud_name && config.cloudinary_upload_preset) {
       cloudinaryConfig = config;
       document.getElementById('image-upload-row').classList.remove('is-hidden');
-      document.getElementById('image-url-hint').textContent = 'Upload a file above, or paste an image URL.';
+      document.getElementById('image-url-hint').textContent = t('advertise.uploadOrPasteUrl');
     }
   }).catch(() => {});
 
@@ -97,7 +99,7 @@
     const file = e.target.files[0];
     if (!file || !cloudinaryConfig) return;
     const statusEl = document.getElementById('upload-status');
-    statusEl.textContent = 'Uploading…';
+    statusEl.textContent = t('advertise.uploading');
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', cloudinaryConfig.cloudinary_upload_preset);
@@ -107,15 +109,15 @@
         body: formData,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Upload failed.');
+      if (!res.ok) throw new Error(data.error?.message || t('advertise.uploadFailed'));
       const preview = document.getElementById('image-preview');
       if (!NaseebDom.setMediaSrc(preview, data.secure_url)) {
-        statusEl.textContent = 'Upload returned an image address we do not accept.';
+        statusEl.textContent = t('advertise.uploadAddressRejected');
         return;
       }
       document.getElementById('image_url').value = data.secure_url;
       preview.classList.remove('is-hidden');
-      statusEl.textContent = 'Uploaded.';
+      statusEl.textContent = t('advertise.uploaded');
     } catch (err) {
       statusEl.textContent = err.message;
     }
@@ -135,13 +137,13 @@
     }
 
     if (!quote) {
-      errorEl.textContent = 'Prices are still loading. Give it a moment and try again.';
+      errorEl.textContent = t('advertise.pricesAreStillLoading');
       errorEl.classList.add('show');
       return;
     }
 
     btn.disabled = true;
-    btn.textContent = 'Starting checkout…';
+    btn.textContent = t('advertise.startingCheckout');
 
     // Deliberately sends no price and no total — only which duration was
     // chosen, and which quote the customer was looking at when they chose it.
@@ -163,10 +165,10 @@
         body: JSON.stringify(payload),
       });
     } catch (err) {
-      errorEl.textContent = 'Could not reach the server. Please try again.';
+      errorEl.textContent = t('advertise.couldNotReachThe');
       errorEl.classList.add('show');
       btn.disabled = false;
-      btn.textContent = 'Continue to payment';
+      btn.textContent = t('advertise.continueToPayment');
       return;
     }
 
@@ -186,7 +188,7 @@
       notice.classList.remove('is-hidden');
 
       btn.disabled = false;
-      btn.textContent = 'Confirm new price and continue';
+      btn.textContent = t('advertise.confirmNewPriceAnd');
       return;
     }
 
@@ -203,7 +205,7 @@
     // Stripe's hosted checkout, relayed by our API. Checked against the one
     // origin it may be, because "our API said so" is not a property of a URL.
     if (!NaseebDom.navigateToCheckout(data.checkoutUrl)) {
-      errorEl.textContent = 'Checkout is unavailable right now. Please try again later.';
+      errorEl.textContent = t('advertise.checkoutIsUnavailableRight');
       errorEl.classList.add('show');
       btn.disabled = false;
     }
@@ -223,7 +225,7 @@
         }),
       });
       document.getElementById('inquiry-form').classList.add('is-hidden');
-      document.getElementById('inquiry-success').textContent = "Got it — we'll be in touch.";
+      document.getElementById('inquiry-success').textContent = t('advertise.gotItWeLl');
       document.getElementById('inquiry-success').classList.add('show');
     } catch (err) {
       errorEl.textContent = err.message;
@@ -244,7 +246,7 @@
         document.getElementById('processing-panel').classList.add('is-hidden');
         document.getElementById('success-panel').classList.remove('is-hidden');
 
-        const runs = `${new Date(booking.starts_at + 'T00:00:00').toLocaleDateString()} – ${new Date(booking.ends_at + 'T00:00:00').toLocaleDateString()}`;
+        const runs = `${new Date(booking.starts_at + 'T00:00:00').toLocaleDateString(locale)} – ${new Date(booking.ends_at + 'T00:00:00').toLocaleDateString(locale)}`;
 
         // This page no longer decides whether the payment succeeded — it only
         // reports what the confirmed booking record says. Stripe's webhook is
@@ -255,11 +257,11 @@
           document.getElementById('success-details').textContent =
             `${booking.business_name}'s banner runs ${runs} (${booking.amountDisplay} paid).`;
         } else {
-          document.getElementById('success-heading').textContent = 'Payment received — confirming';
+          document.getElementById('success-heading').textContent = t('advertise.paymentReceivedConfirming');
           document.getElementById('success-details').textContent =
             `We're waiting for your bank to confirm the payment. Once it clears, ${booking.business_name}'s banner is scheduled for ${runs}.`;
           document.getElementById('success-note').textContent =
-            "This usually takes a few seconds. You'll get an email as soon as it's confirmed — you don't need to stay on this page or pay again.";
+            t('advertise.thisUsuallyTakesA');
         }
       } catch (err) {
         document.getElementById('processing-panel').classList.add('is-hidden');

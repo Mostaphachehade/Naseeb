@@ -3,15 +3,29 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Sign in — Naseeb</title>
-<meta name="description" content="Sign in to Naseeb to enter and host free giveaways." />
+<title data-i18n="login.signInNaseeb">Sign in — Naseeb</title>
+<meta name="description" data-i18n-content="login.metaDescription" content="Sign in to Naseeb to enter and host free giveaways." />
+<link rel="canonical" href="https://www.mynaseeb.ae/login.html" />
+<link rel="alternate" hreflang="en" href="https://www.mynaseeb.ae/login.html" />
+<link rel="alternate" hreflang="ar" href="https://www.mynaseeb.ae/login.html?lang=ar" />
+<link rel="alternate" hreflang="x-default" href="https://www.mynaseeb.ae/login.html" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Naseeb" />
+<meta property="og:url" content="https://www.mynaseeb.ae/login.html" />
+<meta property="og:locale" content="en_AE" />
+<meta property="og:locale:alternate" content="ar_AE" />
+<meta property="og:title" content="Sign in — Naseeb" />
+<meta property="og:description" content="Sign in to Naseeb to enter and host free giveaways." />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Sign in — Naseeb" />
+<meta name="twitter:description" content="Sign in to Naseeb to enter and host free giveaways." />
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
 <link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to content</a>
+<a href="#main" class="skip-link" data-i18n="common.skipToContent">Skip to content</a>
 
 <header class="site">
   <div class="wrap">
@@ -22,19 +36,19 @@
 
 <main id="main">
   <div class="wrap u-29cd8c40">
-    <div class="section-head"><div><h2>Sign in</h2><p>Welcome back.</p></div></div>
+    <div class="section-head"><div><h2 data-i18n="nav.signIn">Sign in</h2><p data-i18n="login.welcomeBack">Welcome back.</p></div></div>
     <form class="card narrow" id="login-form">
-      <label for="email">Email</label>
+      <label for="email" data-i18n="common.email">Email</label>
       <input id="email" type="email" required />
 
-      <label for="password">Password</label>
+      <label for="password" data-i18n="common.password">Password</label>
       <input id="password" type="password" required />
-      <p class="hint"><a href="/forgot-password.html" class="u-b1c3aa06">Forgot your password?</a></p>
+      <p class="hint"><a href="/forgot-password.html" class="u-b1c3aa06" data-i18n="login.forgotYourPassword">Forgot your password?</a></p>
 
-      <button class="btn primary" type="submit">Sign in</button>
+      <button class="btn primary" type="submit" data-i18n="nav.signIn">Sign in</button>
       <p class="form-error" id="error"></p>
     </form>
-    <p class="u-11d6131e">New here? <a id="signup-link" href="/signup.html" class="u-0b87e9e0">Join free</a></p>
+    <p class="u-11d6131e"><span data-i18n="auth.newHere">New here?</span> <a id="signup-link" href="/signup.html" class="u-0b87e9e0" data-i18n="nav.joinFree">Join free</a></p>
   </div>
 </main>
 
@@ -42,6 +56,8 @@
 
 <script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/i18n/errors.js"></script>
+<script src="/js/i18n/auth.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/pages/login.js"></script>
 </body>

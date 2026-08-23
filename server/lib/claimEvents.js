@@ -3,14 +3,14 @@
 //
 // Holds no delivery details by design: when retention erases an address, this
 // history survives intact, which is the whole point of keeping them apart.
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 
 async function recordEvent(client, { claimId, from, to, actorUserId, actorRole, note }) {
   await client.query(
     `INSERT INTO prize_claim_events (id, claim_id, from_status, to_status, actor_user_id, actor_role, note)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
-      uuid(),
+      randomUUID(),
       claimId,
       from,
       to,

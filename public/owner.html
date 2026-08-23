@@ -3,15 +3,16 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Owner — Naseeb</title>
-<meta name="robots" content="noindex" />
+<title data-i18n="owner.ownerNaseeb">Owner — Naseeb</title>
+<meta name="description" data-i18n-content="owner.metaDescription" content="Owner tools for site settings, advertising revenue and publishing a giveaway." />
+<meta name="robots" content="noindex, nofollow" />
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
 <link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to content</a>
+<a href="#main" class="skip-link" data-i18n="common.skipToContent">Skip to content</a>
 
 <header class="site">
   <div class="wrap">
@@ -24,73 +25,73 @@
   <div class="wrap">
     <div class="section-head" id="owner">
       <div>
-        <h2>Owner</h2>
-        <p>Site settings, ad revenue, and a fast way to publish a giveaway yourself. <a href="/admin.html" class="u-b1c3aa06">&larr; Back to Admin</a></p>
+        <h2 data-i18n="owner.owner">Owner</h2>
+        <p><span data-i18n="owner.siteSettingsAdRevenue">Site settings, ad revenue, and a fast way to publish a giveaway yourself.</span> <a href="/admin.html" class="u-b1c3aa06" data-i18n="owner.larrBackToAdmin">← Back to Admin</a></p>
       </div>
     </div>
 
     <div class="card narrow u-66f3f8de">
-      <h3 class="u-291b7bbb">Quick-host a giveaway</h3>
-      <p class="hint u-cddf9bb0">Publishes immediately under your own account — same as create.html, just faster.</p>
+      <h3 class="u-291b7bbb" data-i18n="owner.quickHostAGiveaway">Quick-host a giveaway</h3>
+      <p class="hint u-cddf9bb0" data-i18n="owner.publishesImmediatelyUnderYour">Publishes immediately under your own account — same as create.html, just faster.</p>
       <form id="quick-host-form">
-        <label for="qh_title">Title</label>
+        <label for="qh_title" data-i18n="owner.title">Title</label>
         <input id="qh_title" required maxlength="200" />
 
-        <label for="qh_description">Description</label>
+        <label for="qh_description" data-i18n="owner.description">Description</label>
         <textarea id="qh_description" required maxlength="5000" rows="3"></textarea>
 
-        <label for="qh_prize_description">Prize</label>
+        <label for="qh_prize_description" data-i18n="owner.prize">Prize</label>
         <input id="qh_prize_description" required maxlength="2000" />
 
-        <label for="qh_estimated_value_aed">Estimated value (AED, optional)</label>
+        <label for="qh_estimated_value_aed" data-i18n="owner.estimatedValueAedOptional">Estimated value (AED, optional)</label>
         <input id="qh_estimated_value_aed" type="number" min="0" step="1" />
 
-        <label for="qh_image_file">Image (optional)</label>
+        <label for="qh_image_file" data-i18n="owner.imageOptional">Image (optional)</label>
         <div id="qh-image-upload-row" class="u-7a0acf60 is-hidden">
           <input type="file" id="qh_image_file" accept="image/*" />
           <span class="hint" id="qh-upload-status"></span>
           <img id="qh-image-preview" alt="" class="u-e51fc531 is-hidden" />
         </div>
-        <input id="qh_image_url" type="url" placeholder="https://…" />
+        <input id="qh_image_url" type="url" placeholder="https://…" / data-i18n-attr="placeholder:owner.https">
 
-        <label for="qh_funded_by">Funded by</label>
+        <label for="qh_funded_by" data-i18n="owner.fundedBy">Funded by</label>
         <input id="qh_funded_by" required maxlength="300" value="Naseeb marketing budget" />
 
-        <label for="qh_entry_deadline">Entry deadline</label>
+        <label for="qh_entry_deadline" data-i18n="owner.entryDeadline">Entry deadline</label>
         <input id="qh_entry_deadline" type="date" required />
 
-        <button class="btn primary" type="submit">Publish giveaway</button>
+        <button class="btn primary" type="submit" data-i18n="owner.publishGiveaway">Publish giveaway</button>
         <p class="form-error" id="qh-error"></p>
         <p class="form-success" id="qh-success"></p>
       </form>
     </div>
 
     <div class="card narrow u-66f3f8de">
-      <h3 class="u-291b7bbb">Ad revenue</h3>
-      <p class="hint u-cddf9bb0">Real Stripe collections only — hosting plans aren't wired to billing yet, so there's nothing to show there.</p>
-      <div id="revenue-content"><p>Loading…</p></div>
+      <h3 class="u-291b7bbb" data-i18n="owner.adRevenue">Ad revenue</h3>
+      <p class="hint u-cddf9bb0" data-i18n="owner.realStripeCollectionsOnly">Real Stripe collections only — hosting plans aren't wired to billing yet, so there's nothing to show there.</p>
+      <div id="revenue-content"><p data-i18n="common.loading">Loading…</p></div>
     </div>
 
     <div class="card narrow u-66f3f8de">
-      <h3 class="u-291b7bbb">Site settings</h3>
-      <p class="hint u-cddf9bb0">Values used sitewide — changes take effect immediately, no deploy needed.</p>
+      <h3 class="u-291b7bbb" data-i18n="owner.siteSettings">Site settings</h3>
+      <p class="hint u-cddf9bb0" data-i18n="owner.valuesUsedSitewideChanges">Values used sitewide — changes take effect immediately, no deploy needed.</p>
       <form id="settings-form">
-        <label for="s_ad_price">Ad banner price (AED / week)</label>
+        <label for="s_ad_price" data-i18n="owner.adBannerPriceAed">Ad banner price (AED / week)</label>
         <input id="s_ad_price" type="number" min="1" step="1" required />
 
-        <p class="hint">The two hosting plan prices that used to sit here are gone. They priced plans that were advertised but never built — no checkout, no listing limit, no entitlement. Hosting is a closed beta and free while it lasts; see docs/HOST_ACCESS.md.</p>
+        <p class="hint" data-i18n="owner.theTwoHostingPlan">The two hosting plan prices that used to sit here are gone. They priced plans that were advertised but never built — no checkout, no listing limit, no entitlement. Hosting is a closed beta and free while it lasts; see docs/HOST_ACCESS.md.</p>
 
-        <label for="s_maintenance_mode" class="u-9eb125f5">Maintenance banner</label>
+        <label for="s_maintenance_mode" class="u-9eb125f5" data-i18n="owner.maintenanceBanner">Maintenance banner</label>
         <div class="segmented" id="maintenance-toggle">
-          <button type="button" class="segmented-option" data-value="false" aria-pressed="true">Off</button>
-          <button type="button" class="segmented-option" data-value="true" aria-pressed="false">On</button>
+          <button type="button" class="segmented-option" data-value="false" aria-pressed="true" data-i18n="owner.off">Off</button>
+          <button type="button" class="segmented-option" data-value="true" aria-pressed="false" data-i18n="owner.on">On</button>
         </div>
-        <p class="hint">Shows a dismissible banner sitewide. Informational only — doesn't block anything.</p>
+        <p class="hint" data-i18n="owner.showsADismissibleBanner">Shows a dismissible banner sitewide. Informational only — doesn't block anything.</p>
 
-        <label for="s_maintenance_message">Maintenance message</label>
+        <label for="s_maintenance_message" data-i18n="owner.maintenanceMessage">Maintenance message</label>
         <input id="s_maintenance_message" maxlength="500" />
 
-        <button class="btn primary u-9eb125f5" type="submit">Save settings</button>
+        <button class="btn primary u-9eb125f5" type="submit" data-i18n="owner.saveSettings">Save settings</button>
         <p class="form-error" id="settings-error"></p>
         <p class="form-success" id="settings-success"></p>
       </form>
@@ -102,6 +103,8 @@
 
 <script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/i18n/errors.js"></script>
+<script src="/js/i18n/admin.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/pages/owner.js"></script>
 </body>

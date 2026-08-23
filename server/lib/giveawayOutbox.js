@@ -26,7 +26,7 @@
 // a session value, or a provider error message. Bounce text routinely quotes the
 // recipient's address back at you, so only a category is kept. The recipient is
 // derived from the referenced account at send time.
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { pool } = require('../db');
 const { sendEmail } = require('./email');
 const {
@@ -78,7 +78,7 @@ async function recordEvent(client, notification, toStatus, extra = {}) {
        (id, notification_id, from_status, to_status, error_category, actor_role)
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [
-      uuid(),
+      randomUUID(),
       notification.id,
       notification.status || null,
       toStatus,
@@ -109,7 +109,7 @@ async function enqueue(client, { giveawayId, userId, kind }) {
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (idempotency_key) DO NOTHING
      RETURNING *`,
-    [uuid(), giveawayId, userId, kind, idempotencyKey]
+    [randomUUID(), giveawayId, userId, kind, idempotencyKey]
   );
   if (inserted.rows[0]) {
     await recordEvent(client, { id: inserted.rows[0].id, status: null }, STATUS.PENDING);
@@ -354,7 +354,7 @@ async function settle() {
 }
 
 async function processDue({ limit = 10, appUrl, send, workerId } = {}) {
-  const worker = workerId || `${process.pid}:${uuid()}`;
+  const worker = workerId || `${process.pid}:${randomUUID()}`;
   const client = await pool.connect();
   let rows;
   try {

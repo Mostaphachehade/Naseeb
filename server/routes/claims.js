@@ -498,7 +498,21 @@ router.post('/:id/admin/reissue', claimActionLimiter, requireAdmin, async (req, 
   try {
     await client.query('BEGIN');
 
-    const existing = await claims.getClaimById(client, req.params.id);
+    // Locked, not just read.
+    //
+    // This route writes three things — the claim's tokens, its notification
+    // outbox row, and invitation_sent_at — and it used to take its first lock
+    // several statements in, on whichever of them it reached first. Two
+    // administrators clicking "resend" at the same moment could therefore
+    // acquire those locks in opposite orders, and Postgres resolved it the only
+    // way it can: `deadlock detected`, surfacing to one of them as a 500.
+    //
+    // Locking the claim row first makes the two requests serial from the start.
+    // The second waits, then reads what the first actually did. This is the same
+    // fix lockClaimById already carries for the winner-facing path — the comment
+    // on it describes this exact failure — and this route simply had not been
+    // moved onto it.
+    const existing = await claims.lockClaimById(client, req.params.id);
     if (!existing) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'This claim does not exist.' });
@@ -644,7 +658,10 @@ router.post('/:id/rescue/transition', claimActionLimiter, requireAdmin, async (r
     // The rescue path is a fulfilment step too, so an open integrity case pauses
     // it for the same reason it pauses the host's own steps. An administrator
     // acting for an absent host is still shipping a prize that is under review.
-    const claimRow = await claims.getClaimById(client, req.params.id);
+    // Locked for the same reason as the reissue route above: this transaction
+    // goes on to transition the claim, so it must hold the claim's row before it
+    // touches anything else rather than after.
+    const claimRow = await claims.lockClaimById(client, req.params.id);
     if (claimRow && (await integrity.hasBlockingCase(client, claimRow.giveaway_id))) {
       await client.query('ROLLBACK');
       return res.status(409).json({
@@ -722,7 +739,9 @@ router.post('/:id/rescue/delivery-details', claimActionLimiter, requireAdmin, as
     await client.query('BEGIN');
     await rescue.assertRescueAllowed(client, { claimId: req.params.id, adminUserId: req.userId });
 
-    const claim = await claims.getClaimById(client, req.params.id);
+    // Writes an audit event before it commits, so it takes the claim's lock
+    // first like every other writing path here.
+    const claim = await claims.lockClaimById(client, req.params.id);
     const delivery = claims.hostVisibleDelivery(claim);
     if (!delivery.available) {
       await client.query('ROLLBACK');

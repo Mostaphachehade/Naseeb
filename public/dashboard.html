@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>My giveaways — Naseeb</title>
-<meta name="description" content="Manage the giveaways you're hosting and track the ones you've entered on Naseeb." />
-<meta name="robots" content="noindex" />
+<title data-i18n="dashboard.myGiveawaysNaseeb">My giveaways — Naseeb</title>
+<meta name="description" data-i18n-content="dashboard.metaDescription" content="Manage the giveaways you're hosting and track the ones you've entered on Naseeb." />
+<meta name="robots" content="noindex, nofollow" />
 <meta name="theme-color" content="#0B3B36" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="stylesheet" href="/css/style.css" />
 <link rel="stylesheet" href="/css/utilities.css" />
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to content</a>
+<a href="#main" class="skip-link" data-i18n="common.skipToContent">Skip to content</a>
 
 <header class="site">
   <div class="wrap">
@@ -24,16 +24,16 @@
 <main id="main">
   <div class="wrap">
     <div class="section-head">
-      <div><h2>Giveaways you're hosting</h2><p>Manage your listings and draw winners once entries close.</p></div>
+      <div><h2 data-i18n="dashboard.giveawaysYouReHosting">Giveaways you're hosting</h2><p data-i18n="dashboard.manageYourListingsAnd">Manage your listings and draw winners once entries close.</p></div>
       <span id="host-action"></span>
     </div>
     <div id="host-status-note"></div>
-    <div class="grid u-1e0e3812" id="hosted-grid"><p>Loading…</p></div>
+    <div class="grid u-1e0e3812" id="hosted-grid"><p data-i18n="common.loading">Loading…</p></div>
 
     <div class="section-head">
-      <div><h2>Giveaways you've entered</h2><p>Your live tickets, all in one place.</p></div>
+      <div><h2 data-i18n="dashboard.giveawaysYouVeEntered">Giveaways you've entered</h2><p data-i18n="dashboard.yourLiveTicketsAll">Your live tickets, all in one place.</p></div>
     </div>
-    <div class="grid" id="entered-grid"><p>Loading…</p></div>
+    <div class="grid" id="entered-grid"><p data-i18n="common.loading">Loading…</p></div>
   </div>
 </main>
 
@@ -41,6 +41,8 @@
 
 <script src="/js/dom.js"></script>
 <script src="/js/i18n.js"></script>
+<script src="/js/i18n/errors.js"></script>
+<script src="/js/i18n/member.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/pages/dashboard.js"></script>
 </body>

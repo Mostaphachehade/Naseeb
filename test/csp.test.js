@@ -12,7 +12,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const Stripe = require('stripe');
 const { api, pool, ensureInit, signIn, nextTestIp, TEST_ORIGIN, uniqueEmail, publishGiveaway, seedGiveaway, approveGiveaway, closePool, FABRICATED_PRIZE } = require('../testHelpers');
@@ -47,7 +47,7 @@ after(async () => {
 });
 
 async function createAccount(tag, { admin = false, hostStatus = 'approved' } = {}) {
-  const id = uuid();
+  const id = randomUUID();
   const email = uniqueEmail(`csp-${tag}`);
   await pool.query(
     `INSERT INTO users (id, name, email, password_hash, email_verified, is_admin, host_status, age_attestation_status, age_attestation_version)

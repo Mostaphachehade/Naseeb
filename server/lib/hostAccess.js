@@ -20,7 +20,7 @@
 //     users.is_admin read fresh from the database. The site owner must not be
 //     able to lock themselves out of their own platform.
 
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { pool } = require('../db');
 const rescue = require('./claimRescue');
 
@@ -216,7 +216,7 @@ async function setHostStatus(client, { userId, toStatus, reason, changedBy, sour
     [toStatus, reason || null, changedBy || null, userId]
   );
 
-  const eventId = uuid();
+  const eventId = randomUUID();
   await client.query(
     `INSERT INTO host_status_events
        (id, user_id, from_status, to_status, reason, source, changed_by, application_id)

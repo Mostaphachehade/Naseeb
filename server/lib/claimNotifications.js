@@ -13,7 +13,7 @@
 // The outbox never holds a token. Each attempt issues a fresh one and
 // invalidates whatever came before it, which means a leaked outbox row is not a
 // claim link, and an expired or undelivered link cannot be resurrected from it.
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { pool } = require('../db');
 const { issueToken } = require('./claimTokens');
 const { sendEmail } = require('./email');
@@ -49,7 +49,7 @@ async function queueInvitation(client, claimId) {
   await client.query(
     `INSERT INTO claim_notifications (id, claim_id, kind, status, next_attempt_at)
      VALUES ($1, $2, $3, 'pending', NOW())`,
-    [uuid(), claimId, KINDS.INVITATION]
+    [randomUUID(), claimId, KINDS.INVITATION]
   );
 }
 

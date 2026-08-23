@@ -225,9 +225,14 @@ See `docs/RELEASE_CANDIDATE.md` for the deployment checklist this produces.
 
 
 Technical deployment and public launch are different decisions.
-`DEPLOYMENT_STATE` is one of `development`, `staging`, `private_beta`,
-`public_launch`. Unset means `development` locally and **`private_beta`** in
-production — never `public_launch` by omission.
+`DEPLOYMENT_STATE` is one of `development`, `staging`, `pre_launch`,
+`private_beta`, `public_launch`.
+
+**Unset or misspelled means `pre_launch`, everywhere.** This paragraph used to
+say `private_beta` in production, and that was left behind when the default was
+tightened — worth naming rather than quietly correcting, because a stale
+statement about a fail-closed default is the kind that gets believed. There is no
+inference from `NODE_ENV`, and `public_launch` is never reached by omission.
 
 A staging or private-beta deployment **must identify itself truthfully**:
 `config.stateDisclosure()` returns the wording, it is logged at boot, and
@@ -243,7 +248,7 @@ any of these is true — each checked, not asserted:
 - checkout is enabled without `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`;
 - claims are enabled while claim encryption is unavailable.
 
-`render.yaml` pins `DEPLOYMENT_STATE: private_beta`. **No committed file sets
+`render.yaml` pins `DEPLOYMENT_STATE: pre_launch`. **No committed file sets
 `public_launch`.**
 
 ---
@@ -320,6 +325,75 @@ in-process timers. The in-process scheduler still exists and is now explicitly a
 bottom of `render.yaml`. If the plan does not include cron jobs, that is a
 commercial decision for the owner — and until it is made, **retention is not
 running on a schedule**, which is a fact to record rather than paper over.
+
+### Scheduling status, verified 2026-08-21
+
+Checked against Render's own documentation rather than assumed. Three findings,
+two of which corrected what this repository previously said.
+
+**Cron is available to this account, and cost is the only obstacle.** Cron jobs
+cannot run on a *Free* instance, but they are separate services with their own
+instance type, and the `naseeb` web service is on **Starter**, not Free. Each
+cron job bills at a **minimum of $1/month**, prorated by the second. The earlier
+note implying the plan made cron impossible was wrong; `render.yaml` also
+declared `plan: free` for a web service that is actually Starter, and that has
+been corrected.
+
+**The previous blueprint draft would not have worked.** It nested cron entries
+under a top-level `jobs:` key. There is no such key in a Render blueprint — cron
+jobs are services, declared in the `services:` list with `type: cron` and a
+`schedule`. Uncommenting it as written would have failed the sync. Corrected in
+`render.yaml`, and still commented.
+
+**Committing `render.yaml` provisions nothing.** A Blueprint must be created and
+synced from the dashboard, CLI or API, and no Blueprint is synced for this
+repository. The cron definitions stay commented so that even an accidental
+future sync cannot create billable services. Activation is two deliberate acts:
+uncomment, then sync.
+
+#### What to create
+
+| Service | Command | Schedule (UTC) | Dubai | Timeout |
+| --- | --- | --- | --- | --- |
+| `naseeb-maintenance` | `node scripts/maintenance.js all` | `*/15 * * * *` | every 15m | 10 min |
+| `naseeb-giveaway-lifecycle` | `node scripts/maintenance.js giveaway_lifecycle giveaway_outbox` | `7 * * * *` | hourly :07 | 10 min |
+| `naseeb-retention-daily` | `node scripts/maintenance.js sessions risk_signals claims` | `23 3 * * *` | 07:23 | 15 min |
+
+**Minimum viable is one service** — `all` covers every job, so
+`naseeb-maintenance` alone is a complete schedule (~$1/month plus runtime). The
+other two are redundancy: they keep the lifecycle and retention jobs running on
+their own cadence if the frequent job is failing and nobody has noticed. Three
+services is the recommendation; one is the floor. **Zero is what exists today.**
+
+Retry and alerting: Render surfaces a non-zero cron exit as a failed run. Every
+job is idempotent and advisory-locked, so a retry is always safe and overlapping
+runs collapse to one worker plus a `skipped`. No retry logic belongs in the job.
+
+Emergency manual equivalents, safe to run at any time:
+
+```
+node scripts/maintenance.js --list
+node scripts/maintenance.js all
+node scripts/maintenance.js claim_outbox email_change_outbox giveaway_outbox
+node scripts/maintenance.js sessions risk_signals claims
+```
+
+#### Environment
+
+`fromGroup: naseeb-shared` assumes an environment group that **does not exist
+yet** — the web service holds its variables directly. Creating it, or setting
+variables on each cron service, is an owner action. A cron service that runs any
+outbox job needs `RESEND_API_KEY` and `EMAIL_FROM`: **the outboxes send email**,
+and without them those jobs cannot deliver.
+
+#### Consequence of doing nothing
+
+No maintenance job runs in production at all. Expired sessions are never swept,
+both outboxes never drain, claims never expire, delivery addresses are never
+erased on schedule, risk signals are never purged, ad holds are never released,
+and a campaign that reaches its deadline is never closed or drawn by anything
+other than a visitor happening to trigger it. This is tracked as the largest
+operational gap in `docs/LAUNCH_READINESS.md` §2.
 
 ---
 
@@ -920,6 +994,72 @@ remains `false` regardless — see §3.
 | 16 | Decide and register the operating entity. Naseeb is currently Mostapha Chehade personally, in Dubai, under development — with no company, trade licence, VAT registration or commercial operation | 👤⚖️ |
 | 17 | Stand up `support@`, `privacy@` and `legal@mynaseeb.ae` before any page points people at them. None is published today | 👤🖥️ |
 | 18 | Build the administrator review screen for the prize queue. The API exists (`GET /api/admin/giveaway-submissions`, approve/reject/cancel); the admin page has no controls for it yet | 👤 |
+| 19 | **Pin `sslmode=verify-full` in the deployed `DATABASE_URL`.** An `sslmode` in the connection string silently replaces the `ssl` option the code builds, and `require`, `prefer` and `verify-ca` will all switch from full verification to none when `pg` reaches v9 — during a routine dependency upgrade, with no code change to review. The process warns at startup when the mode is one that will change meaning; only the owner can edit the variable. See `test/database-tls-posture.test.js` | 👤🖥️ |
+| 20 | **Native review of the Arabic**, all twelve dictionary files. The translation is machine-drafted and unread by a native speaker. Register, idiom, numeral convention and the choice of مسابقة for "giveaway" are all open — `docs/ARABIC_RTL.md` §2, §8 | 👤 |
+| 21 | **A share image** (1200×630 PNG) before Open Graph cards carry one. Until it exists the cards are text-only, which is correct: a declared image that 404s is a broken preview rather than a missing one — `docs/SEO.md` §7 | 👤 |
+| 22 | **Re-check `robots.txt` and `/sitemap.xml` in the deployment**, after `DEPLOYMENT_STATE` changes. Both are generated from that state, and the only way to know a crawler agrees is to look at what it was served | 👤🖥️ |
+
+---
+
+## 10a. A deadlock the suite caught, and what it says about the pattern
+
+`test/prize-claims-amendments.test.js` failed once, intermittently, with two
+concurrent "resend claim link" requests returning `[200, 500]` and the server log
+line `Claim operation failed: deadlock detected`.
+
+The reissue route writes three things — the claim's tokens, its notification
+outbox row, and `invitation_sent_at` — and took its first lock several statements
+in, on whichever of those it reached first. Two administrators clicking resend at
+the same moment could acquire them in opposite orders, and Postgres resolves that
+the only way it can: it kills one transaction.
+
+`lockClaimById` already existed for exactly this reason, and the comment on it
+describes the failure. The reissue route and both rescue routes had never been
+moved onto it. All three now take the claim's row lock as their first statement,
+so the second request waits and then reads what the first actually did.
+
+**The rule this generalises to:** a transaction that will write a claim takes the
+claim's row lock first, before it touches tokens, notifications, events or
+anything else that hangs off it. Lock the parent, then the children, always in
+that order. A deadlock is not a database problem to be retried around — it is two
+code paths disagreeing about an order, and the fix is to write the order down.
+
+Worth noting how it was found: not by review, and not reliably. It appeared in
+one CI run out of several and would have appeared in production as a rare 500
+with no reproduction. An intermittent test failure is evidence, not noise.
+
+---
+
+## 11a. Where the runtime evidence comes from
+
+This development machine has no PostgreSQL, no Docker and no `psql`, and the
+application requires a database at startup. **Nothing runtime is executed
+locally** — not the suite, not the browser harnesses, not the app. Every runtime
+claim in these documents comes from GitHub Actions, against an ephemeral
+`postgres:16` service container, and every account in every one of them is
+fabricated.
+
+Six jobs, deliberately separate so a failure names itself rather than arriving as
+one red tick:
+
+| Job | What it exercises | Artifact |
+| --- | --- | --- |
+| `test` | Every `test/*.test.js`. Includes the file-reading ones that need no database: SEO metadata, i18n parity and key reachability, server-error translation coverage, deadline integrity, database TLS posture, legal copy | — |
+| `browser-security` | Hostile data in all 43 input fields, eleven payload families, in Chromium. `HOSTILE_SELFTEST=1` proves the detector still reports red | — |
+| `operations` | The nine maintenance jobs, their bounds and their advisory locks | — |
+| `rehearsal` | One giveaway from submission through approval, entry, closure, draw, claim and delivery — 21 requirements, reporting separately what it walked and what an existing suite proves | `.rehearsal/` |
+| `accessibility` | axe-core over 23 pages at two viewports, with proof the rules actually ran | `.accessibility/` |
+| `arabic-rtl` | 23 pages × 2 languages × 2 viewports: direction, English leakage, horizontal overflow, console errors, bidi isolation, and that the language switch cannot navigate | `.arabic-rtl/rtl-report.json` |
+
+The browser suites refuse a non-test database twice over: `configureTestEnv()`,
+and a second guard that rejects a Neon host outright. Neither reads production
+credentials, sends real email, charges anything, or calls a live fulfilment
+service.
+
+**A green tick is not conformance.** What each suite does *not* establish is
+recorded with it — `docs/ACCESSIBILITY.md` "Not verified", `docs/ARABIC_RTL.md`
+§2, `docs/SEO.md` §6, and the verification limits at the end of
+`docs/LAUNCH_READINESS.md`.
 
 ---
 

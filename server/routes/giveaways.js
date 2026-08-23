@@ -1,5 +1,5 @@
 const express = require('express');
-const { v4: uuid } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { pool } = require('../db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { requireHostAccess } = require('../lib/hostAccess');
@@ -406,7 +406,7 @@ router.post('/', requireAuth, requireHostAccess, async (req, res) => {
     // awaiting deliberate Naseeb approval: not listed, not enterable, with no
     // publication date and no closing deadline, because it has not been
     // published and has nothing to close.
-    const id = uuid();
+    const id = randomUUID();
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -572,7 +572,7 @@ router.post('/:id/enter', enterLimiter, requireAuth, async (req, res) => {
       req.params.id,
     ]);
     const ticketNumber = countRes.rows[0].c + 1;
-    const id = uuid();
+    const id = randomUUID();
     await client.query(
       'INSERT INTO entries (id, giveaway_id, user_id, ticket_number) VALUES ($1, $2, $3, $4)',
       [id, req.params.id, req.userId, ticketNumber]

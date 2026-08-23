@@ -22,6 +22,7 @@ const { securityHeaders } = require('./lib/securityHeaders');
 const healthRoutes = require('./routes/health');
 const { isRenderableMediaUrl } = require('./lib/mediaUrls');
 const { resolveTrustProxy } = require('./lib/proxyTrust');
+const { robotsTxt, sitemapXml } = require('./lib/crawlerDirectives');
 
 const app = express();
 
@@ -127,7 +128,7 @@ app.get('/giveaway.html', async (req, res, next) => {
   try {
     const result = await pool.query(
       `SELECT giveaways.title, giveaways.description, giveaways.prize_description,
-              giveaways.image_url, giveaways.status, giveaways.entry_deadline,
+              giveaways.image_url, giveaways.status, giveaways.closes_at,
               giveaways.created_at, users.name AS host_name
        FROM giveaways
        JOIN users ON users.id = giveaways.host_id
@@ -148,15 +149,34 @@ app.get('/giveaway.html', async (req, res, next) => {
       .trim();
     const url = `${APP_URL}/giveaway.html?id=${encodeURIComponent(id)}`;
 
-    let html = giveawayPageTemplate
-      .replace(
-        '<title>Giveaway — Naseeb</title>',
-        `<title>${escapeHtmlAttr(title)}</title>`
-      )
-      .replace(
-        '<meta name="description" content="Enter this free giveaway on Naseeb — no purchase necessary, ever." />',
-        `<meta name="description" content="${escapeHtmlAttr(description)}" />`
-      );
+    // Matched by shape, not by the exact sentence that happened to be in the
+    // markup when this was written.
+    //
+    // These were two literal string replacements against the generic title and
+    // description. Adding data-i18n to that <title> and data-i18n-content to
+    // that <meta> — a translation change, in another file, with no connection to
+    // this one — turned both into no-ops, and every shared link would have shown
+    // "Giveaway — Naseeb" instead of the prize. Nothing failed; the page still
+    // rendered, still returned 200, and the substitution simply stopped
+    // happening.
+    //
+    // Regex on the element, and an assertion that each one matched, so the same
+    // edit produces a startup-visible error instead of a silently generic share
+    // card. The i18n attributes are dropped from the rewritten tags on purpose:
+    // this response is for crawlers, and applyI18n() would otherwise overwrite
+    // the campaign's own title with the dictionary's generic one the moment a
+    // real visitor's browser ran the script.
+    const substitutions = [
+      [/<title[^>]*>[\s\S]*?<\/title>/, `<title>${escapeHtmlAttr(title)}</title>`],
+      [/<meta name="description"[^>]*>/, `<meta name="description" content="${escapeHtmlAttr(description)}" />`],
+    ];
+    let html = giveawayPageTemplate;
+    for (const [pattern, replacement] of substitutions) {
+      if (!pattern.test(html)) {
+        throw new Error(`giveaway.html no longer contains ${pattern} — share metadata would be generic`);
+      }
+      html = html.replace(pattern, replacement);
+    }
 
     const ogTags = [
       `<meta property="og:title" content="${escapeHtmlAttr(title)}" />`,
@@ -177,19 +197,30 @@ app.get('/giveaway.html', async (req, res, next) => {
       name: giveaway.title,
       description,
       startDate: new Date(giveaway.created_at).toISOString(),
-      endDate: new Date(giveaway.entry_deadline).toISOString(),
+      // closes_at, not entry_deadline. Both are derived from one scalar at
+      // approval, but closes_at is the column the worker acts on, and this
+      // markup is a promise to the outside world about when entries end. It
+      // should quote the authority rather than the mirror of it.
+      endDate: new Date(giveaway.closes_at).toISOString(),
       eventStatus: `https://schema.org/Event${giveaway.status === 'drawn' ? 'Completed' : 'Scheduled'}`,
       eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',
       location: { '@type': 'VirtualLocation', url },
-      organizer: { '@type': 'Organization', name: giveaway.host_name },
+      // No organizer node. It said `Organization` for every host, and a host
+      // may be one person with no company at all — asserting a legal form for
+      // a third party, in the format a search engine reads as our own claim
+      // about them, is not something the listing knows. The host is still named
+      // on the page, which is where the funding disclosure belongs.
       offers: {
         '@type': 'Offer',
         price: '0',
         priceCurrency: 'AED',
+        // OutOfStock rather than SoldOut for a closed giveaway. Nothing was
+        // ever sold — entry is free and no payment path exists — and SoldOut is
+        // the one value here that implies a transaction took place.
         availability:
           giveaway.status === 'active'
             ? 'https://schema.org/InStock'
-            : 'https://schema.org/SoldOut',
+            : 'https://schema.org/OutOfStock',
         url,
       },
       ...(shareableImage ? { image: shareableImage } : {}),
@@ -200,9 +231,28 @@ app.get('/giveaway.html', async (req, res, next) => {
     // markup from a host-controlled field run on the page.
     const eventJsonLdSafe = JSON.stringify(eventJsonLd).replace(/</g, '\\u003c');
 
+    // The static head already carries a generic og:* set and a canonical
+    // pointing at the id-less page. Both have to GO, not merely be followed:
+    // crawlers take the first occurrence of a property, so appending would let
+    // the generic "Giveaway — Naseeb" title win over this campaign's real one,
+    // and would leave every campaign declaring itself a duplicate of
+    // /giveaway.html. Removed first, then replaced with the specific ones.
+    html = html
+      .replace(/^[ \t]*<meta property="og:(?:title|description|type|url|image)"[^>]*>\r?\n/gm, '')
+      .replace(/^[ \t]*<meta name="twitter:card"[^>]*>\r?\n/gm, '')
+      .replace(/^[ \t]*<link rel="canonical"[^>]*>\r?\n/gm, '')
+      .replace(/^[ \t]*<link rel="alternate" hreflang="[^"]*"[^>]*>\r?\n/gm, '');
+
+    const languageTags = [
+      `<link rel="canonical" href="${escapeHtmlAttr(url)}" />`,
+      `<link rel="alternate" hreflang="en" href="${escapeHtmlAttr(url)}" />`,
+      `<link rel="alternate" hreflang="ar" href="${escapeHtmlAttr(`${url}&lang=ar`)}" />`,
+      `<link rel="alternate" hreflang="x-default" href="${escapeHtmlAttr(url)}" />`,
+    ].join('\n');
+
     html = html.replace(
       '</head>',
-      `${ogTags}\n<script type="application/ld+json">${eventJsonLdSafe}</script>\n</head>`
+      `${languageTags}\n${ogTags}\n<script type="application/ld+json">${eventJsonLdSafe}</script>\n</head>`
     );
 
     res.set('Content-Type', 'text/html');
@@ -211,6 +261,27 @@ app.get('/giveaway.html', async (req, res, next) => {
     console.error(err);
     next();
   }
+});
+
+// Crawler directives, before the static handler so they are answered from the
+// deployment state rather than from a file that cannot know which deployment it
+// is in. See server/lib/crawlerDirectives.js for why pre-launch allows crawling
+// instead of disallowing it.
+app.get('/robots.txt', (req, res) => {
+  // eslint-disable-next-line global-require
+  const publicLaunch = require('./lib/config').isPublicLaunch();
+  res.type('text/plain').send(robotsTxt({ publicLaunch, origin: APP_URL }));
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  // eslint-disable-next-line global-require
+  if (!require('./lib/config').isPublicLaunch()) {
+    // Nothing here may be indexed yet, and a sitemap is an invitation to index.
+    // 404 rather than an empty urlset: an empty sitemap is a claim that the site
+    // has no pages, which is a different and wronger statement.
+    return res.status(404).type('text/plain').send('Not found.\n');
+  }
+  return res.type('application/xml').send(sitemapXml({ origin: APP_URL }));
 });
 
 // Serve the frontend

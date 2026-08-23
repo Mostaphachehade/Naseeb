@@ -42,10 +42,63 @@ function sslConfig() {
   return isLocalDatabase(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false };
 }
 
+// An `sslmode` in the connection string does not merge with the `ssl` option
+// above — it replaces it. pg parses the URL and the parsed result wins, so a
+// URL ending in `?sslmode=require` silently discards whatever sslConfig()
+// returned. Right now that is the stronger outcome, not the weaker one:
+// pg-connection-string treats 'prefer', 'require' and 'verify-ca' as aliases
+// for 'verify-full', so the certificate is fully verified and our
+// rejectUnauthorized: false never applies.
+//
+// That is exactly what makes it worth naming. pg-connection-string v3 (pg v9)
+// will give those modes libpq semantics, where 'require' means encrypt without
+// verifying anything. A deployment pinned to `sslmode=require` would therefore
+// lose certificate verification during a routine dependency upgrade, with no
+// code change, no failing test and no log line to notice.
+//
+// So the mode is read and reported at startup rather than left implicit. The
+// deployed URL should pin `sslmode=verify-full`, which means the same thing
+// before and after that change. Nothing here alters the connection; it only
+// makes the choice legible.
+const AMBIGUOUS_SSL_MODES = new Set(['prefer', 'require', 'verify-ca']);
+
+function sslModeInUrl(connectionString = process.env.DATABASE_URL) {
+  if (!connectionString) return null;
+  try {
+    return new URL(connectionString).searchParams.get('sslmode');
+  } catch {
+    const match = /[?&]sslmode=([^&]+)/.exec(connectionString);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+}
+
+function describeSslPosture(connectionString = process.env.DATABASE_URL) {
+  const mode = sslModeInUrl(connectionString);
+  if (!mode) return { source: 'DATABASE_SSL', mode: null, stableAcrossUpgrade: true };
+  return {
+    source: 'connection string',
+    mode,
+    // Only the explicit modes survive the v3 semantics change unchanged.
+    stableAcrossUpgrade: !AMBIGUOUS_SSL_MODES.has(mode.toLowerCase()),
+  };
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: sslConfig(),
 });
+
+{
+  const posture = describeSslPosture();
+  if (posture.mode && !posture.stableAcrossUpgrade) {
+    // Mode name only. Never the connection string, which carries credentials.
+    console.warn(
+      `Database TLS is set by sslmode=${posture.mode} in the connection string, which`
+      + ' overrides DATABASE_SSL and will mean "encrypt without verifying" under pg v9.'
+      + ' Pin sslmode=verify-full to keep certificate verification across that upgrade.'
+    );
+  }
+}
 
 // An idle client that dies must not take the process with it.
 //
@@ -224,4 +277,6 @@ module.exports = {
   ensureSlotExclusionConstraint,
   isSlotProtectionActive,
   SLOT_CONSTRAINT_NAME,
+  describeSslPosture,
+  sslModeInUrl,
 };
