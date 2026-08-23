@@ -316,3 +316,53 @@ any of them stands.
 6. The replacement-guarantee decision has not been made.
 7. `support@`, `privacy@` and `legal@mynaseeb.ae` do not exist, so no page
    points at them.
+
+---
+
+## 5. Added in Phase 2.4B, and what it changes for a release
+
+None of this moves a blocker in §4. All of it changes what a release *is*.
+
+**Six CI jobs, not one.** `test`, `browser-security`, `operations`, `rehearsal`,
+`accessibility`, `arabic-rtl`. A release candidate is not a candidate until all
+six are green on the head commit — separate jobs so a failure names itself
+instead of arriving as one red tick. See `docs/OPERATIONS.md` §11a.
+
+**The site is bilingual.** All 23 pages, including the sentences the server sends
+when it refuses something. **The Arabic has had no native review**, and the
+Arabic Terms and Privacy Policy are a translation of documents that are
+themselves unapproved drafts. Offering the Arabic to real users is an owner
+action (`docs/OPERATIONS.md` §11, item 20), not something a deploy decides.
+
+**SEO metadata exists and is inert.** Canonical URLs, hreflang alternates, Open
+Graph and Twitter metadata on the 12 indexable pages; a page-level `noindex` on
+the other 11. `robots.txt` and `sitemap.xml` are generated from
+`DEPLOYMENT_STATE`, so the switch that opens the platform is also the switch that
+opens it to crawlers. Verify both **in the deployment** after that switch —
+`docs/SEO.md` §7.
+
+**One deadline.** `closes_at` and `entry_deadline` are derived from a single
+scalar in the one statement that writes them, and the rule is one calendar month
+rather than a day count. `test/deadline-integrity.test.js` checks the code, the
+pages, the dictionaries and the page scripts — the last of those because the
+sentence a host read immediately after submitting a prize said "30 days" while
+the code enforced a month.
+
+**Database TLS is pinned against a silent downgrade.** An `sslmode` in
+`DATABASE_URL` replaces the `ssl` option the code builds, and `require`,
+`prefer` and `verify-ca` will all stop verifying certificates when `pg` reaches
+v9 — during a dependency upgrade, with no code change to review. **Pin
+`sslmode=verify-full` before that happens** (`docs/OPERATIONS.md` §11, item 19).
+
+**The `uuid` dependency is gone**, replaced by `crypto.randomUUID()`. `npm audit`
+reports 0.
+
+### Still not done, and still blocking a public launch
+
+- A screen-reader pass. Never performed.
+- A manual keyboard walkthrough. Never performed.
+- Zoom and reflow at 200%/400%, touch-target size, focus appearance.
+- axe against an RTL rendering. The Arabic sweep checks direction and leakage,
+  not accessibility.
+
+`docs/ACCESSIBILITY.md` "Not verified" is the authoritative list.

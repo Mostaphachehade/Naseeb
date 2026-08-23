@@ -182,7 +182,7 @@ async function main() {
             // Kept as an explicit alternation rather than a looser pattern:
             // anything general enough to cover these would also excuse a real
             // untranslated sentence, which is the failure this exists to catch.
-            const IGNORE = /(Naseeb|Stripe|Render|Resend|Cloudinary|Neon|Sentry|Google|Analytics|Signals|PostgreSQL|bcrypt|IPv\d|AES|GCM|GCGRA|WhatsApp|AED|https?|www|draft|CN|LLC|docs|HOST_ACCESS|md)/gi;
+            const IGNORE = /(Naseeb|Stripe|Render|Resend|Cloudinary|Neon|Sentry|Google|Analytics|Signals|PostgreSQL|bcrypt|IPv\d|AES|GCM|GCGRA|WhatsApp|AED|https?|www|draft|CN|LLC|docs|HOST_ACCESS|md|JSON|RTL)/gi;
             // Email addresses and bare hostnames are values, not copy. A
             // member's own address is shown on their account page and is
             // Latin whatever language the page is in; splitting it into

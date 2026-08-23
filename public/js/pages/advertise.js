@@ -1,3 +1,5 @@
+  // Dates follow the page's language, not the operating system's.
+  const locale = getLang() === 'ar' ? 'ar-AE' : 'en-GB';
   let nextAvailableDate = null;
   // Fail closed: nothing shows a payment form until the server has said, in
   // this response, that checkout is on.
@@ -18,10 +20,6 @@
       checkoutEnabled = availability.checkoutEnabled === true;
       nextAvailableDate = availability.nextAvailableDate;
       applyQuote(availability);
-      // The page's language, not the browser's: toLocaleDateString(undefined)
-      // reads the operating system's locale and puts an English date in the
-      // middle of an Arabic sentence.
-      const locale = getLang() === 'ar' ? 'ar-AE' : 'en-GB';
       const formatted = new Date(nextAvailableDate + 'T00:00:00').toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
       document.getElementById('next-available').textContent = formatted;
       document.getElementById('form-start-date').textContent = formatted;
@@ -248,7 +246,7 @@
         document.getElementById('processing-panel').classList.add('is-hidden');
         document.getElementById('success-panel').classList.remove('is-hidden');
 
-        const runs = `${new Date(booking.starts_at + 'T00:00:00').toLocaleDateString()} – ${new Date(booking.ends_at + 'T00:00:00').toLocaleDateString()}`;
+        const runs = `${new Date(booking.starts_at + 'T00:00:00').toLocaleDateString(locale)} – ${new Date(booking.ends_at + 'T00:00:00').toLocaleDateString(locale)}`;
 
         // This page no longer decides whether the payment succeeded — it only
         // reports what the confirmed booking record says. Stripe's webhook is

@@ -1,3 +1,4 @@
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
 // Wrapped in an async IIFE because this file awaits the session bootstrap at
 // the top. It was written inside an inline <script>, where a top-level await
 // is a syntax error too — the browser check added in this phase is what
@@ -264,7 +265,9 @@
       const consent = document.createElement('p');
       consent.className = 'hint';
       consent.classList.add('js-flush');
-      consent.textContent = `Shared with your consent on ${new Date(claim.delivery.consentedAt).toLocaleDateString()}. Deleted once delivery is confirmed and the retention period passes.`;
+      consent.textContent = t('detail.sharedWithConsentOn', {
+        when: new Date(claim.delivery.consentedAt).toLocaleDateString(locale),
+      });
       deliveryEl.appendChild(consent);
     } else {
       deliveryEl.classList.add('is-hidden');

@@ -219,6 +219,11 @@ register({
     'admin.thisAccount': "this account",
     'admin.deleteThisAd': "Delete this ad? This cannot be undone.",
     'admin.deleteThisInquiry': "Delete this inquiry? This cannot be undone.",
+    'admin.colName': "Name",
+    'admin.colHosted': "Hosted",
+    'admin.colJoined': "Joined",
+    'admin.colVerified': "Verified",
+    'admin.colHostAccess': "Host access",
   },
   ar: {
     'owner.ownerNaseeb': 'المالك — نصيب',
@@ -423,5 +428,10 @@ register({
     'admin.thisAccount': "هذا الحساب",
     'admin.deleteThisAd': "هل تريد حذف هذا الإعلان؟ لا يمكن التراجع عن ذلك.",
     'admin.deleteThisInquiry': "هل تريد حذف هذا الاستفسار؟ لا يمكن التراجع عن ذلك.",
+    'admin.colName': "الاسم",
+    'admin.colHosted': "المستضافة",
+    'admin.colJoined': "تاريخ الانضمام",
+    'admin.colVerified': "موثَّق",
+    'admin.colHostAccess': "صلاحية الاستضافة",
   },
 });

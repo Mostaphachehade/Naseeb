@@ -1,3 +1,4 @@
+  const locale = window.NaseebI18n.getLang() === 'ar' ? 'ar-AE' : 'en-GB';
 
   // Cosmetic only. Every route this page calls re-reads users.is_admin from
   // Postgres on the request, so reaching this page without being an
@@ -47,7 +48,7 @@
   };
 
   function shortDate(value) {
-    return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(value).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function pill(text, extraClass) {
@@ -554,7 +555,7 @@
       u.host_status_changed_at
         ? el('span', {
             class: 'u-5e8e7900',
-            text: new Date(u.host_status_changed_at).toLocaleDateString(),
+            text: new Date(u.host_status_changed_at).toLocaleDateString(locale),
           })
         : null,
       u.is_admin ? el('br') : null,
@@ -622,7 +623,7 @@
         return;
       }
       mount(content, dataTable(
-        ['Name', 'Email', 'Hosted', 'Joined', 'Verified', 'Host access', 'Actions'],
+        [t('admin.colName'), t('common.email'), t('admin.colHosted'), t('admin.colJoined'), t('admin.colVerified'), t('admin.colHostAccess'), t('admin.colActions')],
         users.map(userRow),
         'No accounts yet.'
       ));
@@ -821,7 +822,7 @@
                 mount(detailCell, el('div', { class: 'u-1b074808' }, [
                   el('p', {
                     class: 'u-06519697',
-                    text: `Opened for fulfilment and recorded in this claim's history. Winner consented ${new Date(result.delivery.consentedAt).toLocaleDateString()} (${result.delivery.consentVersion}).`,
+                    text: `Opened for fulfilment and recorded in this claim's history. Winner consented ${new Date(result.delivery.consentedAt).toLocaleDateString(locale)} (${result.delivery.consentVersion}).`,
                   }),
                   el('p', { class: 'u-1da9facb', text: `${d.recipient_name} · ${d.phone}` }),
                   el('p', {
@@ -849,7 +850,7 @@
       ]),
       tdNode(pill(CLAIM_STATE_LABELS[r.claim_status] || r.claim_status)),
       tdNode([
-        new Date(r.opened_at).toLocaleDateString(),
+        new Date(r.opened_at).toLocaleDateString(locale),
         el('br'),
         // The reason an administrator typed when suspending the host.
         el('span', { class: 'u-a76e0798', text: r.opened_reason || '' }),
@@ -1148,7 +1149,7 @@
           r.is_winner ? pill('winner', 'company') : null,
         ]),
         tdNode(signals.length ? spaced(signals) : el('span', { class: 'u-a2aae0fb', text: '—' })),
-        td(new Date(r.entered_at).toLocaleDateString()),
+        td(new Date(r.entered_at).toLocaleDateString(locale)),
         tdNode(
           r.case_open
             ? pill(r.case_post_draw ? 'case open · post-draw' : 'case open')
@@ -1350,14 +1351,14 @@
       ]),
       el('p', {
         class: 'u-3e786f67',
-        text: `Account created ${new Date(data.account.created_at).toLocaleDateString()} · entered ${new Date(data.entry.entered_at).toLocaleString()} · ticket #${data.entry.ticket_number}`,
+        text: `Account created ${new Date(data.account.created_at).toLocaleDateString(locale)} · entered ${new Date(data.entry.entered_at).toLocaleString()} · ticket #${data.entry.ticket_number}`,
       }),
 
       el('p', { class: 'u-5bf9ad33', text: t('admin.signals') }),
       data.signals.length
         ? el('div', { class: 'js-history' }, data.signals.map((sig) =>
             el('div', {
-              text: `${SIGNAL_LABELS[sig.code] || sig.code} · ${sig.severity} · seen ${new Date(sig.observed_at).toLocaleString()} · expires ${new Date(sig.expires_at).toLocaleDateString()}`,
+              text: `${SIGNAL_LABELS[sig.code] || sig.code} · ${sig.severity} · seen ${new Date(sig.observed_at).toLocaleString()} · expires ${new Date(sig.expires_at).toLocaleDateString(locale)}`,
             })
           ))
         : el('p', { class: 'hint js-flush', text: t('admin.noSignalsRecordedFor') }),
@@ -1646,7 +1647,7 @@
         el('strong', { text: req.reference }),
         ` · ${PRIVACY_TYPE_LABELS[req.type] || req.type} · ${PRIVACY_STATUS_LABELS[req.status] || req.status} · opened ${new Date(req.created_at).toLocaleString()}`,
       ]),
-      el('p', { class: 'u-a76e0798', text: `${data.account.name} · ${data.account.email} · account created ${new Date(data.account.created_at).toLocaleDateString()}` }),
+      el('p', { class: 'u-a76e0798', text: `${data.account.name} · ${data.account.email} · account created ${new Date(data.account.created_at).toLocaleDateString(locale)}` }),
       req.user_message
         ? el('p', { class: 'js-mint-box', text: `They wrote: ${req.user_message}` })
         : el('p', { class: 'u-a2aae0fb', text: t('admin.theyDidNotAdd') }),

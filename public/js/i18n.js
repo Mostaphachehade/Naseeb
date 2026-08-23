@@ -146,6 +146,7 @@ const TRANSLATIONS = {
     'detail.deliverTo': "Deliver to",
     'detail.reportAProblem': "Report a problem",
     'detail.pleaseDescribeTheProblem': "Please describe the problem so an administrator can act on it.",
+    'detail.sharedWithConsentOn': "Shared with your consent on {when}. Deleted once delivery is confirmed and the retention period passes.",
   },
   ar: {
     'nav.browse': 'تصفح',
@@ -271,6 +272,7 @@ const TRANSLATIONS = {
     'detail.deliverTo': "التسليم إلى",
     'detail.reportAProblem': "الإبلاغ عن مشكلة",
     'detail.pleaseDescribeTheProblem': "يُرجى وصف المشكلة ليتمكّن المشرف من التصرّف بشأنها.",
+    'detail.sharedWithConsentOn': "شورِكت بموافقتك في {when}. وتُحذف بمجرّد تأكيد التسليم وانقضاء فترة الاحتفاظ.",
   },
 };
 
