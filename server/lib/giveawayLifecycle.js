@@ -13,8 +13,8 @@
 // host's own judgement.
 //
 // Now: every published campaign closes at whichever comes first, the 100th
-// accepted entry or the 30-day deadline, and it draws without anybody pressing
-// anything.
+// accepted entry or the one-calendar-month deadline, and it draws without
+// anybody pressing anything.
 //
 // ---------------------------------------------------------------------------
 // "Eligible" means two different things, and conflating them is a bug
@@ -88,7 +88,21 @@ const AWAITING_OUTCOME = [STATUS.CLOSED_PENDING_DRAW, STATUS.PENDING_INTEGRITY_R
 
 // The rules, as numbers in one place.
 const ENTRY_TARGET = 100;
-const ENTRY_WINDOW_DAYS = 30;
+// One calendar month, not thirty days.
+//
+// The approved rule is "closes after one calendar month". The code enforced
+// thirty days, and the public copy promised "exactly 30 days" — so the product
+// and the rule disagreed in every month except June, September, November and
+// April, and nobody could tell because the wording had been written to match
+// the code rather than the rule.
+//
+// PostgreSQL's `INTERVAL '1 month'` does calendar arithmetic: 31 January plus
+// one month is 28 February, and 31 March plus one month is 30 April. That is
+// what "one calendar month" means to a person reading it, which is the only
+// definition that matters on a page a member reads.
+const ENTRY_WINDOW = "INTERVAL '1 month'";
+// Kept for the lifecycle event metadata, which recorded a day count.
+const ENTRY_WINDOW_LABEL = '1 month';
 
 // Why entries closed. An allowlist: "the deadline" and "the target" are
 // different facts and the record should be able to tell them apart later.
@@ -183,11 +197,11 @@ async function countEntries(client, giveawayId) {
   return result.rows[0];
 }
 
-// The closing deadline for a campaign published now. Exactly 30 calendar days,
+// The closing deadline for a campaign published now. One calendar month,
 // computed in the database so the deadline and the clock that will enforce it
 // are the same clock.
 function closesAtSql() {
-  return `NOW() + INTERVAL '${ENTRY_WINDOW_DAYS} days'`;
+  return `NOW() + ${ENTRY_WINDOW}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -661,11 +675,26 @@ async function approveAndPublish(
             prize_evidence_verified_at = NOW(),
             prize_evidence_verified_by = $3,
             published_at = NOW(),
-            closes_at = ${closesAtSql()},
-            entry_deadline = to_char((${closesAtSql()}) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+            -- ONE deadline, written twice in two shapes.
+            --
+            -- closes_at is the authority: the maintenance worker selects on it,
+            -- and entry acceptance compares against it. entry_deadline is the
+            -- text mirror the pages and the API render, and it is DERIVED from
+            -- the same value rather than computed a second time.
+            --
+            -- This used to call the interval expression twice. Both evaluations
+            -- agreed because NOW() is stable within a transaction, so it was
+            -- correct — but only accidentally, and the rehearsal showed how
+            -- easily the two can be made to disagree by anything that writes
+            -- one without the other. Deriving one from the other in a single
+            -- scalar removes the possibility rather than relying on it not
+            -- happening.
+            closes_at = deadline.at,
+            entry_deadline = to_char(deadline.at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
             entry_target = $7,
             prize_governance_version = 1,
             lifecycle_version = lifecycle_version + 1
+       FROM (SELECT ${closesAtSql()} AS at) AS deadline
       WHERE id = $1`,
     [giveawayId, STATUS.ACTIVE, actorUserId, notes, kind, reference, ENTRY_TARGET]
   );
@@ -678,7 +707,7 @@ async function approveAndPublish(
     adminNotes: notes,
     actorUserId,
     actorRole: 'admin',
-    metadata: { evidence_kind: kind, entry_target: ENTRY_TARGET, window_days: ENTRY_WINDOW_DAYS },
+    metadata: { evidence_kind: kind, entry_target: ENTRY_TARGET, entry_window: ENTRY_WINDOW_LABEL },
   });
   await recordEvent(client, {
     giveawayId,
@@ -805,7 +834,8 @@ module.exports = {
   TERMINAL,
   AWAITING_OUTCOME,
   ENTRY_TARGET,
-  ENTRY_WINDOW_DAYS,
+  ENTRY_WINDOW,
+  ENTRY_WINDOW_LABEL,
   CLOSE_REASONS,
   NO_WINNER_REASONS,
   CANCELLATION_GROUNDS,

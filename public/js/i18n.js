@@ -48,7 +48,7 @@ const TRANSLATIONS = {
     // dictionary overwrites the element's text at runtime, the newer copy in
     // the HTML never reached a single visitor. test/i18n-parity.test.js now
     // fails if the two disagree.
-    'hero.lede': 'Naseeb features carefully selected premium prizes intended to create genuine excitement, happiness, and memorable experiences. Every prize is reviewed and approved by Naseeb before publication. Entry is free — no card, no purchase, ever — and every campaign closes at 100 eligible entries or 30 days, whichever comes first.',
+    'hero.lede': 'Naseeb features carefully selected premium prizes intended to create genuine excitement, happiness, and memorable experiences. Every prize is reviewed and approved by Naseeb before publication. Entry is free — no card, no purchase, ever — and every campaign closes at 100 eligible entries or one calendar month, whichever comes first.',
     'hero.browseBtn': 'Browse giveaways',
     'hero.hostBtn': 'Host your own',
 
@@ -140,7 +140,7 @@ const TRANSLATIONS = {
     'hero.eyebrow': 'لا يُشترط الشراء',
     'hero.headlineLine1': 'كل تذكرة مجانية.',
     'hero.headlineLine2': 'كل سحب حقيقي.',
-    'hero.lede': 'تقدّم نصيب جوائز مميّزة مختارة بعناية تهدف إلى صنع حماس حقيقي وسعادة وتجارب لا تُنسى. تراجع نصيب كل جائزة وتعتمدها قبل النشر. المشاركة مجانية — بلا بطاقة دفع وبلا أي عملية شراء على الإطلاق — وتُغلق كل حملة عند بلوغ 100 مشاركة مؤهَّلة أو بعد 30 يوماً، أيّهما أقرب.',
+    'hero.lede': 'تقدّم نصيب جوائز مميّزة مختارة بعناية تهدف إلى صنع حماس حقيقي وسعادة وتجارب لا تُنسى. تراجع نصيب كل جائزة وتعتمدها قبل النشر. المشاركة مجانية — بلا بطاقة دفع وبلا أي عملية شراء على الإطلاق — وتُغلق كل حملة عند بلوغ 100 مشاركة مؤهَّلة أو بعد شهر ميلادي واحد، أيّهما أقرب.',
     'hero.browseBtn': 'تصفح المسابقات',
     'hero.hostBtn': 'استضف مسابقتك',
 

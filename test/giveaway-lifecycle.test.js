@@ -930,9 +930,18 @@ test('gl19. approval records the administrator, the time and an append-only hist
   assert.equal(row.prize_evidence_verified_by, admin.id);
   assert.equal(row.prize_governance_version, 1);
 
-  // Exactly 30 calendar days.
-  const days = (new Date(row.closes_at) - new Date(row.published_at)) / 86400000;
-  assert.ok(Math.abs(days - 30) < 0.01, `the window is 30 days, got ${days}`);
+  // Exactly one calendar month — which is 28, 29, 30 or 31 days depending on
+  // when the campaign was published, and is deliberately NOT a fixed day count.
+  // The approved rule is a calendar month; thirty days was a different rule the
+  // code used to enforce while the copy promised it.
+  const published = new Date(row.published_at);
+  const expected = new Date(published);
+  expected.setUTCMonth(expected.getUTCMonth() + 1);
+  const skewMs = Math.abs(new Date(row.closes_at) - expected);
+  assert.ok(
+    skewMs < 2000,
+    `the window is not one calendar month: closes_at ${row.closes_at}, expected ${expected.toISOString()}`
+  );
   // `entry_deadline` is the legacy text column, kept in step with `closes_at`
   // for the readers that already existed. Compared to the millisecond.
   assert.ok(
